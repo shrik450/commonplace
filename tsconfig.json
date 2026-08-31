@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "commonplace-jsx",
+    "paths": {
+      "commonplace-jsx/jsx-runtime": ["./src/web/views/jsx-runtime.ts"]
+    },
+    "types": ["bun"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*", "scripts/**/*", "test/**/*"]
+}

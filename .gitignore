@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.cache/
+*.db
+*.db-wal
+*.db-shm
+
+# Working artifacts, not repo history.
+plan/
+
+# Real captures are megabytes each and rebuild with `cp fixtures capture`.
+test/fixtures/real/
+
+public/app.css

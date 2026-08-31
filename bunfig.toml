@@ -1,0 +1,12 @@
+[install]
+# Never install a version published in the last 14 days. A stolen publish token
+# lands as a fresh release, and 14 days is long enough for the ecosystem to
+# notice. Bun filters those versions out at resolve time.
+minimumReleaseAge = 1209600
+
+# @types/bun must track the Bun runtime version, so it cannot wait 14 days.
+# It ships only .d.ts files and runs no install script, so a bad version lies
+# to the type checker instead of executing code.
+minimumReleaseAgeExcludes = ["@types/bun"]
+
+exact = true

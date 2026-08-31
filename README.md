@@ -144,6 +144,10 @@ One process, one SQLite database with the FTS5 extension.
   transcript.
 - **API** — CRUD for items and annotations, search, vault export. The web UI
   calls this API; it is also the integration surface for anything else.
+- **CLI** — `cp`, one operator command over the same services: `doctor`,
+  `ingest`, `transcript`, `map`, `search`, `check`. Every subcommand speaks
+  `--json`. It makes the running system observable without a browser, which is
+  what both an operator and an agent need.
 - **Auth** — Pocket ID over OIDC (passkeys only), signed session cookies, and
   hashed long-lived API tokens for non-browser clients.
 
@@ -205,12 +209,46 @@ vault frontmatter) get baked at implementation.
 - **Config** — TOML at `~/.config/commonplace`: `db_root`, `items_root`,
   `issuer_url`, `client_id`, `client_secret`, `session_secret`.
 - **Backups** — `VACUUM INTO` snapshot plus the item dirs. Nothing else.
+- **Layering** — five layers, imports pointing one way only: contracts, core,
+  store, services, then web and cli. The whole domain lives in `core` as pure
+  functions with no I/O, so every behavior is reproducible from a string
+  literal. A test enforces the rule; see `docs/architecture.md`.
+- **One gate** — `bun run verify` runs the type checker, the linter, and the
+  tests, and prints a one-line JSON summary. It is the only definition of done.
+- **Executable invariants** — the rules in this README are tests in
+  `test/invariants/`, not prose. Offsets tile the transcript, `core` stays
+  pure, every row carries `user_id`, the capture view ships no script. A rule
+  nobody checks is a rule that decays.
+- **Errors** — one `AppError` with a stable, namespaced code and one JSON log
+  line per event. Bare `throw new Error` is banned by a test, because a
+  failure should be greppable.
 - **Tooling** — oxlint (oxc) for linting, `tsc --noEmit` for type checking,
   `bun test` for tests. Property tests pin the offset contract: annotate,
   project, and the highlighted text equals the quote. Browser tests drive
   Playwright's `chromium` from inside `bun test`, not `@playwright/test`: one
   test runner, not two. jsdom cannot test the selection script, because it
   implements neither the `Selection` API nor layout.
+
+## Building it
+
+`AGENTS.md` is the entry point: the layer rule, the module list, the commands,
+and the hard invariants, in one short file.
+
+`docs/architecture.md` names every module and states the layer rule: imports
+point one way, from `web` and `cli` down through `services` and `store` to
+`core` and `contracts`. The whole domain lives in `core` as pure functions, so
+any behavior is reproducible from a string literal.
+
+`docs/offset-contract.md` states the offset rules exactly. Read it before
+touching the walker or the projector, because a change there moves every stored
+annotation.
+
+`docs/dependencies.md` records every pinned version and why. `bunfig.toml`
+rejects any package published in the last 14 days.
+
+`bun run verify` is the gate: type check, lint, and tests, printed as one JSON
+line. It fails closed. The rules above are tests under `test/invariants/`, not
+prose, so a rule nobody checks cannot quietly decay.
 
 ## Why single-file-cli
 

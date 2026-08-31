@@ -1,0 +1,25 @@
+{
+  "name": "commonplace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "verify": "bun run scripts/verify.ts",
+    "verify:browser": "bun test test/browser",
+    "seal": "bun run scripts/seal.ts",
+    "css": "bunx @tailwindcss/cli -i src/web/styles.css -o public/app.css",
+    "css:watch": "bunx @tailwindcss/cli -i src/web/styles.css -o public/app.css --watch",
+    "cp": "bun run src/cli/main.ts",
+    "dev": "bun --watch src/web/server.ts"
+  },
+  "dependencies": {
+    "elysia": "1.4.29"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "@types/bun": "1.4.0",
+    "daisyui": "5.7.17",
+    "oxlint": "1.79.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2"
+  }
+}
