@@ -123,8 +123,9 @@ One process, one SQLite database with the FTS5 extension.
   never runs on the walker's thread. Acquisition shells out to
   `single-file-cli`, a thin, swappable adapter (files in, files out). The
   adapter spawns the tool rather than importing it, so a browser crash cannot
-  take down the worker. It passes a `--blocked-URL-pattern` list that strips ads
-  and consent modals before capture. The sanitizer strips every embedded script.
+  take down the worker. It passes a `--blocked-url-pattern` list that strips ads
+  and consent modals before capture. The patterns are regular expressions, not
+  globs, and the output path is a positional argument, not a flag. The sanitizer strips every embedded script.
   In one pass, the walker emits the transcript, the Map, and content flags.
 - **Store** — SQLite on one root: `users`, `items`, `annotations`, `api_tokens`,
   plus an FTS5 table. Each FTS row is one run from the Map, carrying its
@@ -271,7 +272,7 @@ capture the Guardian at all, failing after 229 seconds with
 `SingleFile download for tab did not complete`. On ciechanow.ski it returned 90
 of 95 diagrams as blank white images; enabling its `infiniscroll` plugin did not
 help. Its only real advantage, blocking ads and consent modals, is one
-`--blocked-URL-pattern` flag on the CLI. It costs a Python toolchain, a second
+`--blocked-url-pattern` flag on the CLI. It costs a Python toolchain, a second
 Chromium, and roughly 6.6 MB of scaffolding per capture. Rejected.
 
 **A hand-written inliner is the fallback, not the plan.** About 60 lines of

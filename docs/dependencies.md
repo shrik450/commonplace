@@ -33,6 +33,7 @@ tree.
 | `daisyui` | 5.7.17 | 5.7.18 to 5.7.22 shipped in one week; that burst has not settled | when the cadence returns to normal |
 | `oxlint` | 1.79.0 | 1.80.0 was 7 days old at audit | when 1.80.0 passes 14 days |
 | `typescript` | 7.0.2 | 54 days old, seven maintainers under Microsoft | on next minor |
+| `single-file-cli` | 2.1.3 | 2.6.4 and ten more shipped in one week; 2.1.3 predates the burst | on 2026-09-14, when 2.6.4 ages out |
 | `@types/bun` | 1.4.0 | matches the Bun 1.4.0 runtime; see the note below | with each Bun upgrade |
 
 ## Rejected
@@ -79,3 +80,34 @@ These are not audited yet. Audit each one before it lands.
 
 `dompurify`, `jsdom`, `@mozilla/readability`, `@msgpack/msgpack`, `playwright`,
 `single-file-cli`, and a JOSE library for OIDC token checks.
+
+## single-file-cli flags, confirmed from its source
+
+The README once named these wrongly. These spellings come from `options.js` in
+version 2.1.3.
+
+- `--blocked-url-pattern` takes regular expressions, not globs. The `url` part
+  is lowercase.
+- `--browser-executable-path` points at the Chromium we supply. The package
+  downloads no browser of its own.
+- The output path is the second positional argument, not a flag.
+
+## What 2.1.3 costs us, and how the code covers it
+
+Version 2.6.4 fixes four things that touch our exact use. Every fix landed
+inside the same one-week release burst, so no version old enough to install has
+them. We stay on 2.1.3 until 2026-09-14 and cover the two that matter in our
+own code.
+
+| Gap in 2.1.3 | Fixed in | Our cover |
+| ------------ | -------- | --------- |
+| The process exits 0 even when a capture fails | 2.3.0 | `capture` never trusts the exit code alone. It checks the output file exists and holds more than a trivial number of bytes. |
+| `--blocked-url-pattern` blocks after the response, so the host is still contacted | 2.6.0 | None. Blocked content still stays out of the capture; the request leaks. Accepted until the bump. |
+| Cross-origin iframes are saved empty | 2.3.1 | None. Accepted until the bump. |
+| A circular `@import` hangs until the timeout | 2.6.2 | The adapter's own kill timer bounds it. |
+
+The exit-code check is worth keeping after the bump. A tool that reports
+success while writing nothing is a failure mode worth catching in our code
+rather than trusting a version number to prevent.
+
+See `plan/audits/01b-single-file-cli-versions.md` for the full comparison.

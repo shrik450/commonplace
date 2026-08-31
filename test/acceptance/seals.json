@@ -1,3 +1,4 @@
 {
-  "test/acceptance/00-foundation.test.ts": "ece028b7ee91fa6a67cb9594534cad056402b04db4e325058f8e79321d0b52e6"
+  "test/acceptance/00-foundation.test.ts": "ece028b7ee91fa6a67cb9594534cad056402b04db4e325058f8e79321d0b52e6",
+  "test/acceptance/01-contracts.test.ts": "427c5f1f51d837b349fd23003933a42388df3d6d25bd55e3334d178bd6791ce5"
 }

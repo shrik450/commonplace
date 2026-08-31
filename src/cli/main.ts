@@ -1,7 +1,10 @@
-import { access, stat } from "node:fs/promises";
+import { access, mkdir, readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 import { AppError, toLogLine } from "../contracts/errors";
 import type { Config } from "../contracts/config";
 import { defaultConfigPath, loadConfig } from "../store/config";
+import { capture, SINGLE_FILE_BINARY } from "../services/acquire";
+import type { CaptureRequest } from "../services/acquire";
 
 type Check = { name: string; ok: boolean; detail: string };
 
@@ -38,18 +41,18 @@ async function browserPathCheck(path: string | undefined): Promise<Check> {
 }
 
 function singleFileCliCheck(): Check {
-  const cliPath = Bun.which("single-file-cli");
+  const cliPath = Bun.which(SINGLE_FILE_BINARY);
   if (cliPath) {
     return {
       name: "single_file_cli",
       ok: true,
-      detail: `found single-file-cli at ${cliPath}`,
+      detail: `found ${SINGLE_FILE_BINARY} at ${cliPath}`,
     };
   }
   return {
     name: "single_file_cli",
     ok: false,
-    detail: "single-file-cli was not found on PATH",
+    detail: `${SINGLE_FILE_BINARY} was not found on PATH`,
   };
 }
 
@@ -90,8 +93,66 @@ export async function doctor(
   return { ok: checks.every((check) => check.ok), checks };
 }
 
+const REPO_ROOT = join(import.meta.dir, "..", "..");
+const REAL_FIXTURES_DIR = join(REPO_ROOT, "test", "fixtures", "real");
+
+function captureFilename(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new AppError("CLI_BAD_URL", `malformed URL "${url}"`, { url });
+  }
+  const pathPart = parsed.pathname
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-");
+  return pathPart ? `${parsed.hostname}-${pathPart}.html` : `${parsed.hostname}.html`;
+}
+
+// Captures every URL in urls.txt into test/fixtures/real/. One failing URL
+// does not abort the rest; the exit code reports the outcome. The capture
+// function is injectable so tests can run this without the network.
+export async function fixturesCapture(
+  captureFn: (request: CaptureRequest) => Promise<{ path: string; bytes: number }> = capture,
+  dir: string = REAL_FIXTURES_DIR,
+): Promise<number> {
+  const urlsPath = join(dir, "urls.txt");
+  let text: string;
+  try {
+    text = await readFile(urlsPath, "utf8");
+  } catch {
+    throw new AppError("CLI_BAD_ARGUMENT", `cannot read ${urlsPath}`);
+  }
+
+  const urls = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
+
+  await mkdir(dir, { recursive: true });
+
+  let failures = 0;
+  for (const url of urls) {
+    try {
+      const outputPath = join(dir, captureFilename(url));
+      const result = await captureFn({ url, outputPath });
+      console.log(`captured ${url} -> ${result.path} (${result.bytes} bytes)`);
+    } catch (error) {
+      failures += 1;
+      console.error(toLogLine("error", error, { url }));
+    }
+  }
+
+  if (failures > 0) {
+    console.error(
+      `fixtures capture: ${failures} of ${urls.length} captures failed`,
+    );
+  }
+  return failures > 0 ? 1 : 0;
+}
+
 async function run(argv: string[]): Promise<number> {
-  let command: string | undefined;
+  const positionals: string[] = [];
   let configPath: string | undefined;
   let json = false;
 
@@ -114,26 +175,45 @@ async function run(argv: string[]): Promise<number> {
       configPath = arg.slice("--config=".length);
     } else if (arg.startsWith("--")) {
       throw new AppError("CLI_BAD_ARGUMENT", `unknown option "${arg}"`);
-    } else if (command === undefined) {
-      command = arg;
     } else {
-      throw new AppError(
-        "CLI_BAD_ARGUMENT",
-        `unexpected argument "${arg}" for command "${command}"`,
-      );
+      positionals.push(arg);
     }
   }
+
+  const command = positionals.shift();
 
   if (command === undefined) {
     throw new AppError(
       "CLI_UNKNOWN_COMMAND",
-      "no command given; expected one of: doctor",
+      "no command given; expected one of: doctor, fixtures",
+    );
+  }
+  if (command === "fixtures") {
+    const subcommand = positionals.shift();
+    if (subcommand !== "capture") {
+      throw new AppError(
+        "CLI_UNKNOWN_COMMAND",
+        `unknown fixtures subcommand "${subcommand ?? ""}"; expected: capture`,
+      );
+    }
+    if (positionals.length > 0) {
+      throw new AppError(
+        "CLI_BAD_ARGUMENT",
+        `unexpected argument "${positionals[0]}" for command "fixtures"`,
+      );
+    }
+    return fixturesCapture();
+  }
+  if (positionals.length > 0) {
+    throw new AppError(
+      "CLI_BAD_ARGUMENT",
+      `unexpected argument "${positionals[0]}" for command "${command}"`,
     );
   }
   if (command !== "doctor") {
     throw new AppError(
       "CLI_UNKNOWN_COMMAND",
-      `unknown command "${command}"; expected one of: doctor`,
+      `unknown command "${command}"; expected one of: doctor, fixtures`,
     );
   }
 
@@ -149,10 +229,12 @@ async function run(argv: string[]): Promise<number> {
   return report.ok ? 0 : 1;
 }
 
-const argv = process.argv.slice(2);
-try {
-  process.exit(await run(argv));
-} catch (error) {
-  console.error(toLogLine("error", error));
-  process.exit(1);
+if (import.meta.main) {
+  const argv = process.argv.slice(2);
+  try {
+    process.exit(await run(argv));
+  } catch (error) {
+    console.error(toLogLine("error", error));
+    process.exit(1);
+  }
 }

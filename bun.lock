@@ -6,6 +6,7 @@
       "name": "commonplace",
       "dependencies": {
         "elysia": "1.4.29",
+        "single-file-cli": "2.1.3",
       },
       "devDependencies": {
         "@tailwindcss/cli": "4.3.3",
@@ -255,6 +256,10 @@
     "picocolors": ["picocolors@1.1.1", "", {}, "sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA=="],
 
     "picomatch": ["picomatch@2.3.2", "", {}, "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA=="],
+
+    "simple-cdp": ["simple-cdp@1.10.1", "", {}, "sha512-svGX76zc2MY2ErGAWGb9NWP9aF5XQgDyx00iqAGCgRi1qQd5MQjtBwuC7mcktliFH263gpHdnHicfsB+n7Vnyg=="],
+
+    "single-file-cli": ["single-file-cli@2.1.3", "", { "dependencies": { "simple-cdp": "^1.10.1" }, "bin": { "single-file": "single-file-node.js" } }, "sha512-uV54Yt38NUlKrp8kR1/YISWDxjiA9yW9fW45MapXfJzM+iWsJbb47Mu6D9A56qBuNxFi4xYawuU1fYiblMjlag=="],
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
 
