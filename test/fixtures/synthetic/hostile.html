@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>hostile</title>
+    <base href="https://evil.example/">
+    <meta http-equiv="refresh" content="0;url=https://evil.example/">
+    <link rel="stylesheet" href="https://evil.example/x.css">
+    <style>body { background: url(https://evil.example/y.png) }</style>
+  </head>
+  <body background="https://evil.example/b.png">
+    <script>alert("script element")</script>
+    <p onclick="alert('handler')" style="background:url(https://tracker.example/x)" data-x="1">Attributes are dropped and this text stays.</p>
+    <a href="javascript:alert('scheme')">A scheme link is stripped.</a>
+    <a href="java&#9;script:alert('tab')">A tab-obfuscated scheme link.</a>
+    <a href="#fragment">A fragment link survives.</a>
+    <img src="pictures/dot.png" srcset="dot-2x.png 2x" alt="a relative image">
+    <iframe src="https://evil.example/frame"></iframe>
+    <object data="https://evil.example/o"></object>
+    <embed src="https://evil.example/e">
+    <svg><script>alert("svg script")</script></svg>
+    <math><annotation-xml encoding="text/html"><script>alert("mathml script")</script></annotation-xml></math>
+    <form action="https://evil.example/post"><p>Form text survives the unwrap.</p><input name="secret"></form>
+    <a ping="https://evil.example/ping">A ping link.</a>
+    <video poster="https://evil.example/p.png"></video>
+    <noscript><img src="pictures/lazy.png" alt="the real image"></noscript>
+  </body>
+</html>

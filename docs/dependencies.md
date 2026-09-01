@@ -10,9 +10,18 @@ pin, why, and when to look again.
 
 **Nothing younger than 14 days.** `bunfig.toml` sets
 `install.minimumReleaseAge = 1209600`. Bun filters out any version published
-more recently, at resolve time, for direct and transitive packages alike. A
-stolen publish token shows up as a fresh release, so age is a cheap filter that
-works even when nobody is watching.
+more recently when it resolves a range, for direct and transitive packages
+alike. A stolen publish token shows up as a fresh release, so age is a cheap
+filter that works even when nobody is watching.
+
+**The rule filters ranges. It does not block an exact version you name.**
+Tested on 2026-09-01: `bun add dompurify@^3.4.0` installed 3.4.13 and skipped
+the 12-day-old 3.4.14, while `bun add dompurify@3.4.14` installed 3.4.14. That
+is the right behavior, because naming a version is an explicit override, but it
+is not what "filters out any version" suggests. So: run `bun add <package>`
+with no version and let the resolver pick. `exact = true` then writes the aged
+version as a hard pin. Name a version only when you mean to override the rule,
+and write down why, the way the `@types/bun` note below does.
 
 One package is exempt, through `minimumReleaseAgeExcludes`: `@types/bun` must
 track the runtime version. It ships only `.d.ts` files and runs no install
@@ -35,6 +44,10 @@ tree.
 | `typescript` | 7.0.2 | 54 days old, seven maintainers under Microsoft | on next minor |
 | `single-file-cli` | 2.1.3 | 2.6.4 and ten more shipped in one week; 2.1.3 predates the burst | on 2026-09-14, when 2.6.4 ages out |
 | `@types/bun` | 1.4.0 | matches the Bun 1.4.0 runtime; see the note below | with each Bun upgrade |
+| `jsdom` | 30.0.1 | 33 days old, six maintainers, and the only DOM the other two work against | on next major |
+| `dompurify` | 3.4.13 | 28 days old; 3.4.14 was 12 days old at audit | when 3.4.14 passes 14 days |
+| `@mozilla/readability` | 0.6.0 | zero dependencies, three maintainers, Mozilla's repository | on next release |
+| `@types/jsdom` | 30.0.0 | types only, no scripts, matches jsdom 30 | with each jsdom bump |
 
 ## Rejected
 
@@ -54,6 +67,27 @@ tree.
   native function `@kitajs/html` uses when it detects Bun. So we take the
   well-tested escaper and supply only the default-safe wiring, which is about
   forty lines and fully tested.
+
+- `linkedom` — rejected because **DOMPurify fails open against it**. The audit
+  recommended linkedom for its smaller tree, 16 packages against jsdom's 37,
+  and for not reading the filesystem at import. A spike overturned that.
+  Running DOMPurify against a linkedom window returns `isSupported: undefined`
+  and hands back the input unchanged, script tag and all. It does not throw and
+  does not warn, so every test downstream would report success while the
+  sanitizer did nothing.
+
+  Two parser differences rule it out on their own. linkedom uses `htmlparser2`,
+  which does not implement HTML tree construction. It does not insert the
+  implied `tbody` inside a `table`, and it does not drop the newline after a
+  `<pre>` start tag. Both make the walker's tree disagree with the browser's,
+  and `node_path` addresses the browser's tree.
+
+- `parse5` alone, with a sanitizer of our own — rejected. Its tree is correct
+  and its dependency count is the lowest of the set, but Readability needs a
+  DOM, so a DOM library is required anyway. Writing our own HTML sanitizer to
+  replace DOMPurify means owning the mutation-XSS bypass classes DOMPurify
+  already tracks, and that is not a fixed amount of work. `parse5` still
+  arrives in the tree, inside `jsdom`.
 
 ## Notes on the risky picks
 
@@ -78,8 +112,11 @@ happen automatically.
 
 These are not audited yet. Audit each one before it lands.
 
-`dompurify`, `jsdom`, `@mozilla/readability`, `playwright`,
-`single-file-cli`, and a JOSE library for OIDC token checks.
+`playwright` and a JOSE library for OIDC token checks.
+
+`dompurify`, `jsdom`, and `@mozilla/readability` were audited on 2026-09-01 and
+are pinned above. `linkedom` was audited at the same time and rejected. See
+`plan/audits/03-dom-stack.md`; the short version is in "Rejected" below.
 
 ## single-file-cli flags, confirmed from its source
 

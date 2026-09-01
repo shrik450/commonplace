@@ -1,0 +1,2 @@
+Inline elements with no separator: emphasisbold linkcode.
+Nested inline too: outer inner outer tail.

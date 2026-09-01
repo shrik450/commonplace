@@ -258,6 +258,57 @@ export function checkPurityGlobals(
   return violations;
 }
 
+// A run's offset range must tile the transcript exactly: no gaps, no
+// overlaps, no text outside the map.
+export type OffsetsViolation = {
+  rule: "offsets";
+  detail: string;
+};
+
+export function checkOffsets(
+  transcript: string,
+  runs: ReadonlyArray<{ start: number; end: number }>,
+): OffsetsViolation[] {
+  const violations: OffsetsViolation[] = [];
+  if (runs.length === 0) {
+    if (transcript.length > 0) {
+      violations.push({
+        rule: "offsets",
+        detail: "the map has no runs but the transcript is not empty",
+      });
+    }
+    return violations;
+  }
+
+  let cursor = 0;
+  for (let i = 0; i < runs.length; i += 1) {
+    const run = runs[i]!;
+    if (run.end <= run.start) {
+      violations.push({
+        rule: "offsets",
+        detail: `run ${i} spans ${run.start}..${run.end}; end must exceed start`,
+      });
+      continue;
+    }
+    if (run.start !== cursor) {
+      const kind = run.start < cursor ? "overlaps" : "leaves a gap before";
+      violations.push({
+        rule: "offsets",
+        detail: `run ${i} starts at ${run.start} but the text up to ${cursor} is tiled; it ${kind} this run`,
+      });
+    }
+    cursor = Math.max(cursor, run.end);
+  }
+
+  if (cursor !== transcript.length) {
+    violations.push({
+      rule: "offsets",
+      detail: `runs end at ${cursor} but the transcript length is ${transcript.length}`,
+    });
+  }
+  return violations;
+}
+
 // The module list from docs/architecture.md. A file under src/ that is not listed here
 // (exactly or through one of the explicit prefixes) has no layer and
 // therefore no rules, so its existence is itself a violation.

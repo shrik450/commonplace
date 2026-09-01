@@ -1,0 +1,2 @@
+Astral characters take two UTF-16 code units: 😀 🚀 𝒜.
+Math and music planes too: 𝕏 𝄞. Mixed with BMP text: a😀b🚀c.

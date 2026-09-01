@@ -1,0 +1,2 @@
+Ampersand & and less-than < here.
+Apostrophe ' and a named entity: ©   — end.

@@ -1,0 +1,5 @@
+Line one
+Line two
+Line three.
+An image emits nothing: and text resumes.
+A paragraph after a horizontal rule.
