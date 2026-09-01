@@ -14,6 +14,15 @@ export function newId(): string {
   return Bun.randomUUIDv7();
 }
 
+// The only place random bytes are made. Everything that needs unguessable
+// values -- the PKCE verifier, the OIDC state and nonce, and every API token
+// secret -- comes through here, so invariant 10 can see all of it in one file.
+export function newSecret(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return Buffer.from(bytes).toString("base64url");
+}
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 

@@ -46,4 +46,39 @@ describe("determinism invariant", () => {
     ]);
     expect(violations).toEqual([]);
   });
+
+  test("checkDeterminism flags the crypto randomness calls outside the contracts", () => {
+    const violations = checkDeterminism([
+      {
+        path: "src/services/auth.ts",
+        source: "const bytes = crypto.getRandomValues(new Uint8Array(16));\n",
+      },
+      {
+        path: "src/services/auth.ts",
+        source:
+          'const digest = await crypto.subtle.digest("SHA-256", bytes);\n',
+      },
+      {
+        path: "src/store/users.ts",
+        source: "const bytes = crypto.randomBytes(16);\n",
+      },
+    ]);
+    expect(violations).toHaveLength(3);
+    for (const violation of violations) {
+      expect(violation.rule).toBe("determinism");
+    }
+  });
+
+  test("checkDeterminism allows the crypto randomness calls in ids.ts", () => {
+    const violations = checkDeterminism([
+      {
+        path: "src/contracts/ids.ts",
+        source:
+          "crypto.getRandomValues(new Uint8Array(16));\n" +
+          'await crypto.subtle.digest("SHA-256", bytes);\n' +
+          "crypto.randomBytes(16);\n",
+      },
+    ]);
+    expect(violations).toEqual([]);
+  });
 });

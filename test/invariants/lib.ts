@@ -55,6 +55,9 @@ const NONDETERMINISTIC_CALLS = [
   "new Date(",
   "Bun.randomUUIDv7(",
   "Bun.nanoseconds(",
+  "crypto.getRandomValues(",
+  "crypto.subtle",
+  "crypto.randomBytes(",
 ];
 const NONDETERMINISTIC_ALLOWED = [
   "src/contracts/clock.ts",
@@ -539,4 +542,80 @@ export function checkNoPositionsInDb(tables: TableInfo[]): SchemaViolation[] {
     }
   }
   return violations;
+}
+
+
+// The public routes. This list is the decision record. It names five paths
+// where plan/briefs/04-auth-spec.md names four, because "/" was added after
+// that document was written and only this list is kept current:
+// - "/" — the landing page is public; the acceptance suite requires GET /
+//   to answer 200 with no credential.
+// - "/health" — the container health check has no credential.
+// - "/app.css" — a static stylesheet.
+// - "/login" — starts a login, so a signed-out reader must reach it.
+// - "/login/callback" — the issuer's redirect target arrives signed out.
+export const UNGUARDED_ROUTES = new Set([
+  "/",
+  "/health",
+  "/app.css",
+  "/login",
+  "/login/callback",
+]);
+
+// A route call's first argument, taken up to the first comma, parenthesis,
+// or whitespace. It is either a quoted literal or a token that is not a
+// literal at all, such as a variable; checkRouteGuard tells the two apart.
+const ROUTE_PATTERN = /\.(get|post|put|patch|delete|all)\(\s*([^,()\s]+)/g;
+
+const LITERAL_PATH_PATTERNS = [/^"([^"]*)"$/, /^'([^']*)'$/, /^`([^`]*)`$/];
+
+function literalPathOf(token: string): string | null {
+  for (const pattern of LITERAL_PATH_PATTERNS) {
+    const match = token.match(pattern);
+    if (match) return match[1]!;
+  }
+  return null;
+}
+
+// Limit, not solved: the handler slice for the last route in a file runs to
+// the end of the file, so an authenticate( in unrelated code below that route
+// would vouch for it. Closing that hole needs parsing, not text.
+export function checkRouteGuard(
+  files: { path: string; source: string }[],
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    const path = file.path.replaceAll("\\", "/");
+    if (!path.includes("src/web/")) continue;
+    for (const match of file.source.matchAll(ROUTE_PATTERN)) {
+      const line = file.source.slice(0, match.index).split("\n").length;
+      const route = literalPathOf(match[2]!);
+      if (route === null) {
+        violations.push({
+          file: file.path,
+          line,
+          rule: "route-guard",
+          detail: `route path "${match[2]}" is not a string literal the checker can read`,
+        });
+        continue;
+      }
+      if (UNGUARDED_ROUTES.has(route)) continue;
+      const body = file.source.slice(match.index);
+      const handler = body.slice(0, nextRouteIndex(body));
+      if (handler.includes("authenticate(")) continue;
+      violations.push({
+        file: file.path,
+        line,
+        rule: "route-guard",
+        detail: `route "${route}" neither calls authenticate nor is listed as unguarded`,
+      });
+    }
+  }
+  return violations;
+}
+
+function nextRouteIndex(body: string): number {
+  ROUTE_PATTERN.lastIndex = 0;
+  const matches = [...body.matchAll(ROUTE_PATTERN)];
+  return matches.length > 1 ? matches[1]!.index! : body.length;
 }

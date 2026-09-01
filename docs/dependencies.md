@@ -89,6 +89,18 @@ tree.
   already tracks, and that is not a fixed amount of work. `parse5` still
   arrives in the tree, inside `jsdom`.
 
+- a JOSE library — rejected because the ID token needs no signature check in
+  this milestone. The token arrives in the body of a direct HTTPS request the
+  server makes to the token endpoint. `discover` pins that endpoint's origin
+  to the configured `issuer_url` and requires the `https:` scheme. OpenID
+  Connect Core 3.1.3.7 item 6 says TLS server validation may stand in for the
+  signature check in exactly that case. So there is no JWKS fetch and no JWT
+  verification, and therefore no library.
+
+  That argument holds only for the authorization code flow. An ID token that
+  arrives from a redirect or a fragment has no TLS guarantee and would need a
+  real signature check, and therefore a library.
+
 ## Notes on the risky picks
 
 **`@types/bun` 1.4.0 is fresh, and I pinned it anyway.** The audit says hold.
@@ -112,7 +124,7 @@ happen automatically.
 
 These are not audited yet. Audit each one before it lands.
 
-`playwright` and a JOSE library for OIDC token checks.
+`playwright`.
 
 `dompurify`, `jsdom`, and `@mozilla/readability` were audited on 2026-09-01 and
 are pinned above. `linkedom` was audited at the same time and rejected. See

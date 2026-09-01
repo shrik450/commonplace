@@ -4,5 +4,6 @@
   "test/acceptance/02-store-queue.test.ts": "b5cc6117c9c55e0ff2bc8e5e5f50efeda5bf72ad79e8bb4460f2921b3744d8b6",
   "test/acceptance/02-store-rows.test.ts": "36c883be02ee4fe767dd6775f0e0223c06037687634ee78ed9e4b07951579926",
   "test/acceptance/02-store-schema.test.ts": "b7934e78fedf403f5c2870aaa97baa5cc5e690631748274aed5a67c19d6a8aa6",
-  "test/acceptance/03-walk.test.ts": "7fa83177e0d9d26e5d3f4bfe9d85f9317624557d8bb7749c0120936d6c13db34"
+  "test/acceptance/03-walk.test.ts": "7fa83177e0d9d26e5d3f4bfe9d85f9317624557d8bb7749c0120936d6c13db34",
+  "test/acceptance/04-auth.test.ts": "90c03873a46fe58999f1d84956349ae299b2d08c701e761728d70757e85e77ac"
 }
