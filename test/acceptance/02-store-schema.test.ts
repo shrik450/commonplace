@@ -43,11 +43,24 @@
 // - A migration that fails part way leaves nothing behind: no `migrations`
 //   row, and none of the tables that version created.
 // - `tableInfo` lists every `sqlite_master` row of type `table`. That includes
-//   the shadow tables SQLite creates for `items_fts`. The checkers, not
+//   the shadow tables SQLite creates for `blocks_fts`. The checkers, not
 //   `tableInfo`, are what exempt them.
 // - The `applied_at` value of a migration row is exactly `now.toISOString()`.
 //   The store never reads the clock.
 // - `openDatabase` migrates before it returns.
+//
+// What the 02f consolidation pass changed
+// ---------------------------------------
+// - `items_fts` is gone. `blocks_fts` replaces it, one row per block, and
+//   migration 1 is rewritten. There is no migration 2.
+// - `translate` and `write` live in `src/store/db.ts`. `translate` returns
+//   `AppError`, so `return error` no longer compiles, and a readonly database
+//   no longer leaks a raw `SQLiteError` out of L2.
+// - `checkNoPositionsInDb` fails a non-exempt table that `EXPECTED_COLUMNS`
+//   does not pin. The name pass then runs over every non-exempt table, pinned
+//   or not, so an unpinned table with a position-shaped column fails twice.
+// - `src/services/worker.ts` is on the module list, and `Date.parse(` and
+//   `Date.UTC(` are nondeterministic calls.
 //
 // Timestamps
 // ----------
@@ -69,22 +82,29 @@ import {
   migrate,
   openDatabase,
   tableInfo,
+  translate,
+  write,
 } from "../../src/store/db";
 import type { SchemaViolation } from "../invariants/lib";
 import {
   EXPECTED_COLUMNS,
+  checkDeterminism,
+  checkModuleList,
   checkNoPositionsInDb,
   checkTenancy,
+  listSources,
 } from "../invariants/lib";
+
+const repoRoot = join(import.meta.dir, "..", "..");
 
 const APPLIED_AT = new Date("2026-02-01T00:00:00.000Z");
 
 const SCHEMA_TABLES = [
   "annotations",
   "api_tokens",
+  "blocks_fts",
   "fetch_requests",
   "items",
-  "items_fts",
   "migrations",
   "users",
 ];
@@ -171,7 +191,7 @@ function fakeShadowTables(name: string): TableInfo[] {
 
 function schemaTables(): TableInfo[] {
   return Object.entries(EXPECTED_COLUMNS).map(([name, columns]) =>
-    name === "items_fts"
+    name === "blocks_fts"
       ? fakeFtsTable(name, [...columns])
       : fakeTable(name, [...columns]),
   );
@@ -445,10 +465,10 @@ describe("src/store/db tableInfo", () => {
     // SQLite backs an FTS5 table with five shadow tables. They are real rows
     // of sqlite_master, so tableInfo reports them.
     for (const suffix of FTS_SHADOW_SUFFIXES) {
-      expect(names).toContain(`items_fts${suffix}`);
+      expect(names).toContain(`blocks_fts${suffix}`);
     }
     expect(
-      tables.find((table) => table.name === "items_fts")!.sql,
+      tables.find((table) => table.name === "blocks_fts")!.sql,
     ).toContain("USING fts5");
     db.close();
   });
@@ -470,7 +490,7 @@ describe("src/store/db tableInfo", () => {
 
   test("holds exactly the seven tables outside the FTS shadow set", () => {
     const db = migratedMemoryDb();
-    const shadows = FTS_SHADOW_SUFFIXES.map((suffix) => `items_fts${suffix}`);
+    const shadows = FTS_SHADOW_SUFFIXES.map((suffix) => `blocks_fts${suffix}`);
     const names = tableInfo(db)
       .map((table) => table.name)
       .filter((name) => !shadows.includes(name))
@@ -536,11 +556,13 @@ describe("test/invariants/lib EXPECTED_COLUMNS", () => {
       "url",
       "user_id",
     ]);
-    expect([...EXPECTED_COLUMNS.items_fts!]).toEqual([
-      "author",
+    expect([...EXPECTED_COLUMNS.blocks_fts!]).toEqual([
+      "block_index",
+      "end_offset",
+      "is_content",
       "item_id",
-      "title",
-      "transcript",
+      "start_offset",
+      "text",
       "user_id",
     ]);
   });
@@ -597,37 +619,41 @@ describe("invariant 6: tenancy", () => {
 
   test("exempts the five shadow tables of an FTS5 virtual table", () => {
     const tables = [
-      fakeFtsTable("items_fts", [
-        "title",
-        "author",
-        "transcript",
+      fakeFtsTable("blocks_fts", [
+        "text",
         "item_id",
         "user_id",
+        "block_index",
+        "start_offset",
+        "end_offset",
+        "is_content",
       ]),
-      ...fakeShadowTables("items_fts"),
+      ...fakeShadowTables("blocks_fts"),
     ];
     expect(tables).toHaveLength(6);
     expect(checkTenancy(tables)).toEqual([]);
   });
 
-  test("flags items_fts_notes, which only looks like a shadow table", () => {
+  test("flags blocks_fts_notes, which only looks like a shadow table", () => {
     // A prefix match would wave this through. The exemption is an exact list
     // of five names, so a table someone adds later still has to carry
     // user_id.
     const tables = [
-      fakeFtsTable("items_fts", [
-        "title",
-        "author",
-        "transcript",
+      fakeFtsTable("blocks_fts", [
+        "text",
         "item_id",
         "user_id",
+        "block_index",
+        "start_offset",
+        "end_offset",
+        "is_content",
       ]),
-      ...fakeShadowTables("items_fts"),
-      fakeTable("items_fts_notes", ["id", "body"]),
+      ...fakeShadowTables("blocks_fts"),
+      fakeTable("blocks_fts_notes", ["id", "body"]),
     ];
     const violations = checkTenancy(tables);
     expect(violations).toHaveLength(1);
-    expect(violations[0]!.table).toBe("items_fts_notes");
+    expect(violations[0]!.table).toBe("blocks_fts_notes");
   });
 
   test("exempts a table SQLite owns, such as sqlite_stat1", () => {
@@ -635,7 +661,7 @@ describe("invariant 6: tenancy", () => {
     // and appears in sqlite_master as an ordinary table.
     const tables = [
       ...schemaTables(),
-      ...fakeShadowTables("items_fts"),
+      ...fakeShadowTables("blocks_fts"),
       fakeTable("sqlite_stat1", ["tbl", "idx", "stat"]),
       fakeTable("sqlite_sequence", ["name", "seq"]),
     ];
@@ -652,11 +678,18 @@ describe("invariant 6: tenancy", () => {
 
   test("does not exempt the FTS5 table itself", () => {
     const violations = checkTenancy([
-      fakeFtsTable("items_fts", ["title", "author", "transcript", "item_id"]),
-      ...fakeShadowTables("items_fts"),
+      fakeFtsTable("blocks_fts", [
+        "text",
+        "item_id",
+        "block_index",
+        "start_offset",
+        "end_offset",
+        "is_content",
+      ]),
+      ...fakeShadowTables("blocks_fts"),
     ]);
     expect(violations).toHaveLength(1);
-    expect(violations[0]!.table).toBe("items_fts");
+    expect(violations[0]!.table).toBe("blocks_fts");
   });
 
   test("does not exempt a shadow name with no FTS5 table behind it", () => {
@@ -684,9 +717,18 @@ describe("invariant 7: no positions in the database", () => {
   });
 
   test("accepts the schema built from EXPECTED_COLUMNS", () => {
-    const tables = [...schemaTables(), ...fakeShadowTables("items_fts")];
+    const tables = [...schemaTables(), ...fakeShadowTables("blocks_fts")];
     expect(tables.length).toBeGreaterThan(7);
     expect(checkNoPositionsInDb(tables)).toEqual([]);
+  });
+
+  test("allows source_path and the transcript offsets that the schema holds", () => {
+    // Both names sit in EXPECTED_COLUMNS, and the name pass must not flag
+    // either of them.
+    expect([...EXPECTED_COLUMNS.fetch_requests!]).toContain("source_path");
+    expect([...EXPECTED_COLUMNS.annotations!]).toContain("start_offset");
+    expect([...EXPECTED_COLUMNS.annotations!]).toContain("end_offset");
+    expect(checkNoPositionsInDb(schemaTables())).toEqual([]);
   });
 
   test("flags a column outside the allowlist, whatever it is named", () => {
@@ -718,43 +760,70 @@ describe("invariant 7: no positions in the database", () => {
     expect(violations[0]!.detail).toContain("author");
   });
 
-  test("allows source_path, the one name on the allowlist", () => {
-    // fetch_requests carries source_path in EXPECTED_COLUMNS, and the name
-    // pass must not flag it either.
-    expect(checkNoPositionsInDb(schemaTables())).toEqual([]);
-    expect(
-      checkNoPositionsInDb([fakeTable("later_table", ["user_id", "source_path"])]),
-    ).toEqual([]);
+  // A table EXPECTED_COLUMNS does not pin is a violation on its own. Milestone
+  // 4 adds `sessions`; without this rule it would ship unpinned and the
+  // allowlist would quietly stop meaning anything.
+  test("flags a table that EXPECTED_COLUMNS does not pin", () => {
+    const violations = checkNoPositionsInDb([
+      fakeTable("sessions", ["id", "user_id", "expires_at"]),
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]!.table).toBe("sessions");
+    expect(violations[0]!.rule).toBe("no-positions-in-db");
+    expect(violations[0]!.detail.length).toBeGreaterThan(0);
   });
 
-  test("allows transcript offsets", () => {
+  test("flags an unpinned table beside the real schema", () => {
+    const tables = [
+      ...schemaTables(),
+      ...fakeShadowTables("blocks_fts"),
+      fakeTable("sessions", ["id", "user_id", "expires_at"]),
+    ];
+    const violations = checkNoPositionsInDb(tables);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]!.table).toBe("sessions");
+  });
+
+  test("exempts the tables SQLite owns and the FTS shadow tables", () => {
+    // Neither is pinned in EXPECTED_COLUMNS, and neither is a violation.
     expect(
       checkNoPositionsInDb([
-        fakeTable("later_table", ["user_id", "start_offset", "end_offset"]),
+        fakeTable("sqlite_stat1", ["tbl", "idx", "stat"]),
+        fakeFtsTable("blocks_fts", [...EXPECTED_COLUMNS.blocks_fts!]),
+        ...fakeShadowTables("blocks_fts"),
       ]),
     ).toEqual([]);
   });
 
+  // The name pass runs over every non-exempt table, pinned or not. An
+  // unpinned table with a position-shaped column therefore fails twice: once
+  // for being unpinned, once for the column.
   test("the name pass flags a column whose name ends in _path", () => {
     const violations = checkNoPositionsInDb([
-      fakeTable("later_table", ["id", "user_id", "node_path"]),
+      fakeTable("sessions", ["id", "user_id", "node_path"]),
     ]);
-    expect(violations).toHaveLength(1);
-    expect(violations[0]!.table).toBe("later_table");
-    expect(violations[0]!.detail).toContain("node_path");
-    expect(violations[0]!.rule).toBe("no-positions-in-db");
+    expect(violations).toHaveLength(2);
+    expect(violations.every((violation) => violation.table === "sessions")).toBe(
+      true,
+    );
+    expect(
+      violations.some((violation) => violation.detail.includes("node_path")),
+    ).toBe(true);
+    for (const violation of violations) {
+      expect(violation.rule).toBe("no-positions-in-db");
+    }
   });
 
   test("the name pass flags xpath, selector, dom, node, and doc_index", () => {
     const violations = checkNoPositionsInDb([
-      fakeTable("a", ["xpath"]),
-      fakeTable("b", ["css_selector"]),
-      fakeTable("c", ["dom_ref"]),
-      fakeTable("d", ["node_id"]),
-      fakeTable("e", ["doc_index"]),
+      fakeTable("a", ["user_id", "xpath"]),
+      fakeTable("b", ["user_id", "css_selector"]),
+      fakeTable("c", ["user_id", "dom_ref"]),
+      fakeTable("d", ["user_id", "node_id"]),
+      fakeTable("e", ["user_id", "doc_index"]),
     ]);
-    expect(violations).toHaveLength(5);
-    const joined = detailOf(violations);
+    // Five unpinned tables, and one bad column in each.
+    expect(violations).toHaveLength(10);
     for (const column of [
       "xpath",
       "css_selector",
@@ -762,17 +831,216 @@ describe("invariant 7: no positions in the database", () => {
       "node_id",
       "doc_index",
     ]) {
-      expect(joined).toContain(column);
+      expect(
+        violations.some((violation) => violation.detail.includes(column)),
+      ).toBe(true);
     }
   });
 
   test("flags every offending column of one table", () => {
     const violations = checkNoPositionsInDb([
-      fakeTable("later_table", ["id", "node_path", "start_offset", "xpath"]),
+      fakeTable("sessions", ["id", "node_path", "start_offset", "xpath"]),
     ]);
-    expect(violations).toHaveLength(2);
+    // One violation for the unpinned table, and one for each bad column.
+    expect(violations).toHaveLength(3);
     const joined = detailOf(violations);
     expect(joined).toContain("node_path");
     expect(joined).toContain("xpath");
+  });
+});
+
+describe("invariant 3: the module list", () => {
+  // Milestone 5 creates the worker. AGENTS.md and docs/architecture.md both
+  // name it, so the gate must not reject it.
+  test("allows src/services/worker.ts", () => {
+    expect(checkModuleList([{ path: "src/services/worker.ts" }])).toEqual([]);
+  });
+
+  test("still rejects a module nobody listed", () => {
+    const violations = checkModuleList([
+      { path: "src/services/worker.ts" },
+      { path: "src/services/invented.ts" },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]!.file).toBe("src/services/invented.ts");
+    expect(violations[0]!.rule).toBe("module-list");
+  });
+});
+
+describe("invariant 10: determinism", () => {
+  // Every milestone ahead has to read an ISO string back, and Date.parse is
+  // the obvious way to do it outside the clock. Without these two entries the
+  // invariant has a silent bypass.
+  test("flags Date.parse and Date.UTC outside the clock", () => {
+    const violations = checkDeterminism([
+      { path: "src/store/items.ts", source: "const t = Date.parse(value);\n" },
+      { path: "src/services/ingest.ts", source: "const t = Date.UTC(2026, 0, 1);\n" },
+    ]);
+    expect(violations).toHaveLength(2);
+    for (const violation of violations) {
+      expect(violation.rule).toBe("determinism");
+    }
+    expect(violations[0]!.file).toBe("src/store/items.ts");
+    expect(violations[1]!.file).toBe("src/services/ingest.ts");
+  });
+
+  test("allows Date.parse inside the clock", () => {
+    expect(
+      checkDeterminism([
+        {
+          path: "src/contracts/clock.ts",
+          source: "const t = Date.parse(value);\n",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("the real source tree is clean", async () => {
+    const files = await listSources(repoRoot, join(repoRoot, "src"));
+    expect(files.length).toBeGreaterThan(0);
+    expect(checkDeterminism(files)).toEqual([]);
+  });
+});
+
+describe("src/store/db translate", () => {
+  // translate returns AppError, so `return error` no longer compiles. Four
+  // store modules ended that way, and a readonly database leaked a raw
+  // SQLiteError out of L2.
+  function sqliteFailure(run: (db: Database) => void): unknown {
+    const db = migratedMemoryDb();
+    try {
+      return caught(() => run(db));
+    } finally {
+      db.close();
+    }
+  }
+
+  test("maps a UNIQUE failure to STORE_CONFLICT", () => {
+    const error = translate(
+      sqliteFailure((db) => {
+        db.run(
+          "INSERT INTO users (id, subject, email, created_at) VALUES ('u', 's', NULL, 't')",
+        );
+        db.run(
+          "INSERT INTO users (id, subject, email, created_at) VALUES ('u2', 's', NULL, 't')",
+        );
+      }),
+      { table: "users" },
+    );
+    expect(isAppError(error)).toBe(true);
+    expect(error.code).toBe("STORE_CONFLICT");
+    expect(error.context.table).toBe("users");
+  });
+
+  test("maps a duplicate primary key to STORE_CONFLICT", () => {
+    const error = translate(
+      sqliteFailure((db) => {
+        db.run(
+          "INSERT INTO users (id, subject, email, created_at) VALUES ('u', 's1', NULL, 't')",
+        );
+        db.run(
+          "INSERT INTO users (id, subject, email, created_at) VALUES ('u', 's2', NULL, 't')",
+        );
+      }),
+      {},
+    );
+    expect(error.code).toBe("STORE_CONFLICT");
+  });
+
+  test("maps any other constraint failure to STORE_CONSTRAINT_FAILED", () => {
+    const error = translate(
+      sqliteFailure((db) => {
+        db.run(
+          "INSERT INTO users (id, subject, email, created_at) VALUES ('u', 's', NULL, 't')",
+        );
+        db.run(
+          "INSERT INTO items (id, user_id, kind, url, title, author, created_at, ingested_at) VALUES ('i', 'u', 'video', NULL, 'A title', NULL, 't', NULL)",
+        );
+      }),
+      {},
+    );
+    expect(error.code).toBe("STORE_CONSTRAINT_FAILED");
+  });
+
+  test("maps anything else to STORE_WRITE_FAILED and keeps the message", () => {
+    const plain = translate(new Error("disk gave up"), { where: "write" });
+    expect(isAppError(plain)).toBe(true);
+    expect(plain.code).toBe("STORE_WRITE_FAILED");
+    expect(plain.message).toContain("disk gave up");
+    expect(plain.context.where).toBe("write");
+
+    const notAnError = translate("a bare string", {});
+    expect(notAnError.code).toBe("STORE_WRITE_FAILED");
+    expect(notAnError.message).toContain("a bare string");
+  });
+});
+
+describe("src/store/db write", () => {
+  test("returns the number of rows the statement changed", async () => {
+    const path = await tempDbPath("write.db");
+    const db = openDatabase(path, APPLIED_AT);
+    const inserted = write(
+      db,
+      "INSERT INTO users (id, subject, email, created_at) VALUES (?, ?, NULL, ?)",
+      ["u1", "s1", "2026-02-01T00:00:00.000Z"],
+      { op: "insertUser" },
+    );
+    expect(inserted).toBe(1);
+
+    const updated = write(db, "UPDATE users SET email = ? WHERE id = ?", [
+      "a@example.com",
+      "u1",
+    ], { op: "updateUser" });
+    expect(updated).toBe(1);
+
+    const missed = write(db, "UPDATE users SET email = ? WHERE id = ?", [
+      "a@example.com",
+      "nobody",
+    ], { op: "updateUser" });
+    expect(missed).toBe(0);
+    db.close();
+  });
+
+  test("throws an AppError carrying the caller's context", async () => {
+    const path = await tempDbPath("write-conflict.db");
+    const db = openDatabase(path, APPLIED_AT);
+    write(
+      db,
+      "INSERT INTO users (id, subject, email, created_at) VALUES (?, ?, NULL, ?)",
+      ["u1", "s1", "2026-02-01T00:00:00.000Z"],
+      { op: "insertUser" },
+    );
+
+    const error = caught(() =>
+      write(
+        db,
+        "INSERT INTO users (id, subject, email, created_at) VALUES (?, ?, NULL, ?)",
+        ["u2", "s1", "2026-02-01T00:00:00.000Z"],
+        { op: "insertUser", user_id: "u2" },
+      ),
+    );
+    expect(isAppError(error)).toBe(true);
+    expect((error as AppError).code).toBe("STORE_CONFLICT");
+    expect((error as AppError).context.op).toBe("insertUser");
+    db.close();
+  });
+
+  test("wraps a readonly failure as STORE_WRITE_FAILED", async () => {
+    const path = await tempDbPath("write-readonly.db");
+    const seed = openDatabase(path, APPLIED_AT);
+    seed.close();
+
+    const readonly = new Database(path, { readonly: true });
+    const error = caught(() =>
+      write(
+        readonly,
+        "INSERT INTO users (id, subject, email, created_at) VALUES (?, ?, NULL, ?)",
+        ["u1", "s1", "2026-02-01T00:00:00.000Z"],
+        { op: "insertUser" },
+      ),
+    );
+    expect(isAppError(error)).toBe(true);
+    expect((error as AppError).code).toBe("STORE_WRITE_FAILED");
+    readonly.close();
   });
 });

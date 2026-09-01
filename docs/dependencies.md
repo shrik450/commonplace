@@ -78,7 +78,7 @@ happen automatically.
 
 These are not audited yet. Audit each one before it lands.
 
-`dompurify`, `jsdom`, `@mozilla/readability`, `@msgpack/msgpack`, `playwright`,
+`dompurify`, `jsdom`, `@mozilla/readability`, `playwright`,
 `single-file-cli`, and a JOSE library for OIDC token checks.
 
 ## single-file-cli flags, confirmed from its source

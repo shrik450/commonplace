@@ -1,9 +1,17 @@
+import type {
+  AnnotationId,
+  ItemId,
+  RequestId,
+  TokenId,
+  UserId,
+} from "./ids";
+
 export type ItemKind = "article" | "book";
 export type FetchState = "queued" | "claimed" | "done" | "failed";
 
 export type Item = {
-  id: string;
-  user_id: string;
+  id: ItemId;
+  user_id: UserId;
   kind: ItemKind;
   url: string | null;
   title: string;
@@ -13,9 +21,9 @@ export type Item = {
 };
 
 export type Annotation = {
-  id: string;
-  user_id: string;
-  item_id: string;
+  id: AnnotationId;
+  user_id: UserId;
+  item_id: ItemId;
   start_offset: number;
   end_offset: number;
   quote: string;
@@ -25,15 +33,15 @@ export type Annotation = {
 };
 
 export type User = {
-  id: string;
+  id: UserId;
   subject: string;
   email: string | null;
   created_at: string;
 };
 
 export type ApiToken = {
-  id: string;
-  user_id: string;
+  id: TokenId;
+  user_id: UserId;
   name: string;
   token_hash: string;
   created_at: string;
@@ -41,9 +49,9 @@ export type ApiToken = {
 };
 
 export type FetchRequest = {
-  id: string;
-  user_id: string;
-  item_id: string | null;
+  id: RequestId;
+  user_id: UserId;
+  item_id: ItemId | null;
   url: string | null;
   source_path: string | null;
   state: FetchState;

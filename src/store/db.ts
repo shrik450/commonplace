@@ -1,6 +1,48 @@
-import { Database } from "bun:sqlite";
+import {
+  Database,
+  SQLiteError,
+  type SQLQueryBindings,
+} from "bun:sqlite";
 
 import { AppError } from "../contracts/errors";
+
+// A UNIQUE violation of any kind, including a duplicate primary key, is a
+// conflict. Every other constraint failure keeps its own code, and any other
+// driver failure, such as a missing table or a readonly file, is a failed
+// write. Nothing raw leaves L2.
+export function translate(
+  error: unknown,
+  context: Record<string, unknown>,
+): AppError {
+  if (error instanceof SQLiteError) {
+    const code = error.code ?? "";
+    if (code.includes("CONSTRAINT_UNIQUE") || code.includes("CONSTRAINT_PRIMARYKEY")) {
+      return new AppError("STORE_CONFLICT", error.message, context);
+    }
+    if (code.includes("CONSTRAINT")) {
+      return new AppError("STORE_CONSTRAINT_FAILED", error.message, context);
+    }
+    if (code.startsWith("SQLITE_BUSY")) {
+      return new AppError("STORE_BUSY", error.message, context);
+    }
+    return new AppError("STORE_WRITE_FAILED", error.message, context);
+  }
+  return new AppError("STORE_WRITE_FAILED", String(error), context);
+}
+
+// Runs one write statement and translates any failure. Returns rows changed.
+export function write(
+  db: Database,
+  sql: string,
+  params: SQLQueryBindings[],
+  context: Record<string, unknown>,
+): number {
+  try {
+    return db.run(sql, params).changes;
+  } catch (error) {
+    throw translate(error, context);
+  }
+}
 
 export type Migration = { version: number; sql: string };
 
@@ -76,12 +118,14 @@ export const MIGRATIONS: readonly Migration[] = [
       );
       CREATE INDEX fetch_requests_claimable ON fetch_requests(state, created_at, id);
 
-      CREATE VIRTUAL TABLE items_fts USING fts5(
-        title,
-        author,
-        transcript,
+      CREATE VIRTUAL TABLE blocks_fts USING fts5(
+        text,
         item_id UNINDEXED,
         user_id UNINDEXED,
+        block_index UNINDEXED,
+        start_offset UNINDEXED,
+        end_offset UNINDEXED,
+        is_content UNINDEXED,
         tokenize = 'unicode61 remove_diacritics 2'
       );
     `,

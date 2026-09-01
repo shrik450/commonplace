@@ -15,8 +15,16 @@ function makeRun(
   isContent = true,
   docIndex = 0,
   nodePath = "1/0",
+  blockIndex = 0,
 ) {
-  return { start, end, doc_index: docIndex, node_path: nodePath, is_content: isContent };
+  return {
+    start,
+    end,
+    doc_index: docIndex,
+    node_path: nodePath,
+    block_index: blockIndex,
+    is_content: isContent,
+  };
 }
 
 function malformedIndex(map: TranscriptMap, textLength: number): unknown {

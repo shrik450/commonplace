@@ -32,6 +32,18 @@
 //   `<n>` is the 1-based number of the first differing line. It also names the
 //   golden path.
 //
+// What the 02f consolidation pass added
+// --------------------------------------
+// - `Run` carries `block_index`. It is a non-negative integer that never
+//   decreases from one run to the next, and `validateMap` checks that shape.
+// - `src/contracts/ids.ts` exports the five branded id types with their
+//   `new*` and `as*` constructors. Each `as*` throws `STORE_INVALID_PATH` for
+//   a value that is not a lowercase UUID.
+// - `src/contracts/clock.ts` is exactly `now`, `addMs`, `toIso`, `parseIso`,
+//   and `isBefore`. `parseIso` throws `CONFIG_INVALID_VALUE`.
+// - Every id field in `src/contracts/item.ts` carries its brand, so the
+//   record tests below build ids through the `as*` constructors.
+//
 // Fixture rules the tests depend on
 // ---------------------------------
 // Each of the eight fixtures must be a complete HTML document with an explicit
@@ -59,6 +71,27 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AppError, ERROR_CODES, isAppError } from "../../src/contracts/errors";
+import { addMs, isBefore, now, parseIso, toIso } from "../../src/contracts/clock";
+import type {
+  AnnotationId,
+  ItemId,
+  RequestId,
+  TokenId,
+  UserId,
+} from "../../src/contracts/ids";
+import {
+  asAnnotationId,
+  asItemId,
+  asRequestId,
+  asTokenId,
+  asUserId,
+  newAnnotationId,
+  newId,
+  newItemId,
+  newRequestId,
+  newTokenId,
+  newUserId,
+} from "../../src/contracts/ids";
 import type {
   Run,
   Transcript,
@@ -115,15 +148,24 @@ function makeRun(
   isContent = true,
   docIndex = 0,
   nodePath = "1/0",
+  blockIndex = 0,
 ): Run {
   return {
     start,
     end,
     doc_index: docIndex,
     node_path: nodePath,
+    block_index: blockIndex,
     is_content: isContent,
   };
 }
+
+const USER_ID = "11111111-1111-4111-8111-111111111111";
+const ITEM_ID = "aaaaaaaa-0000-4000-8000-000000000001";
+const ANNOTATION_ID = "bbbbbbbb-0000-4000-8000-000000000001";
+const TOKEN_ID = "dddddddd-0000-4000-8000-000000000001";
+const REQUEST_ID = "cccccccc-0000-4000-8000-000000000001";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 describe("src/contracts/errors ERROR_CODES", () => {
   test("holds the four codes this milestone adds", () => {
@@ -211,6 +253,56 @@ describe("src/contracts/transcript validateMap", () => {
     const error = caught(() => validateMap({ runs: [] }, 5));
     expect(isAppError(error)).toBe(true);
     expect((error as AppError).code).toBe("WALK_MAP_MALFORMED");
+  });
+
+  // block_index groups runs into paragraph-sized blocks. Search indexes
+  // blocks, so the walker must hand every run the block it belongs to, and
+  // the numbers must run forward in reading order.
+  test("accepts a map whose block_index rises across the runs", () => {
+    const map: TranscriptMap = {
+      runs: [
+        makeRun(0, 5, true, 0, "1/0", 0),
+        makeRun(5, 9, true, 0, "1/1", 0),
+        makeRun(9, 15, true, 0, "1/2", 1),
+        makeRun(15, 20, true, 0, "1/3", 7),
+      ],
+    };
+    expect(() => validateMap(map, 20)).not.toThrow();
+  });
+
+  test("throws when block_index goes backwards", () => {
+    const error = malformed(
+      {
+        runs: [
+          makeRun(0, 5, true, 0, "1/0", 0),
+          makeRun(5, 10, true, 0, "1/1", 2),
+          makeRun(10, 15, true, 0, "1/2", 1),
+        ],
+      },
+      15,
+    );
+    expect(error.context.index).toBe(2);
+  });
+
+  test("throws when block_index is negative", () => {
+    const error = malformed(
+      { runs: [makeRun(0, 5, true, 0, "1/0", -1)] },
+      5,
+    );
+    expect(error.context.index).toBe(0);
+  });
+
+  test("throws when block_index is not an integer", () => {
+    const error = malformed(
+      {
+        runs: [
+          makeRun(0, 5, true, 0, "1/0", 0),
+          makeRun(5, 10, true, 0, "1/1", 1.5),
+        ],
+      },
+      10,
+    );
+    expect(error.context.index).toBe(1);
   });
 });
 
@@ -420,8 +512,8 @@ describe("src/contracts/item", () => {
 
   test("Item accepts a full record", () => {
     const item = {
-      id: "itm_1",
-      user_id: "usr_1",
+      id: asItemId(ITEM_ID),
+      user_id: asUserId(USER_ID),
       kind: "article",
       url: "https://example.com/post",
       title: "A post",
@@ -434,9 +526,9 @@ describe("src/contracts/item", () => {
 
   test("Annotation accepts a full record", () => {
     const annotation = {
-      id: "ann_1",
-      user_id: "usr_1",
-      item_id: "itm_1",
+      id: asAnnotationId(ANNOTATION_ID),
+      user_id: asUserId(USER_ID),
+      item_id: asItemId(ITEM_ID),
       start_offset: 10,
       end_offset: 24,
       quote: "a quoted span",
@@ -449,7 +541,7 @@ describe("src/contracts/item", () => {
 
   test("User accepts a full record", () => {
     const user = {
-      id: "usr_1",
+      id: asUserId(USER_ID),
       subject: "oidc-subject",
       email: null,
       created_at: "2026-01-01T00:00:00.000Z",
@@ -459,8 +551,8 @@ describe("src/contracts/item", () => {
 
   test("ApiToken accepts a full record", () => {
     const token = {
-      id: "tok_1",
-      user_id: "usr_1",
+      id: asTokenId(TOKEN_ID),
+      user_id: asUserId(USER_ID),
       name: "laptop",
       token_hash: "0".repeat(64),
       created_at: "2026-01-01T00:00:00.000Z",
@@ -471,8 +563,8 @@ describe("src/contracts/item", () => {
 
   test("FetchRequest accepts a full record", () => {
     const request = {
-      id: "fr_1",
-      user_id: "usr_1",
+      id: asRequestId(REQUEST_ID),
+      user_id: asUserId(USER_ID),
       item_id: null,
       url: "https://example.com/post",
       source_path: null,
@@ -483,6 +575,139 @@ describe("src/contracts/item", () => {
       created_at: "2026-01-01T00:00:00.000Z",
     } satisfies FetchRequest;
     expect(request.state).toBe("queued");
+  });
+});
+
+describe("src/contracts/ids", () => {
+  // The brand exists only at compile time, so the runtime value is the
+  // string itself. The type stops one id being passed where another belongs,
+  // which the UUID check cannot do: both values are valid UUIDs.
+  test("each as* returns the value it was given", () => {
+    // String() strips the brand, which lives only in the type system, so the
+    // comparison is between two plain strings.
+    expect(String(asUserId(USER_ID))).toBe(USER_ID);
+    expect(String(asItemId(ITEM_ID))).toBe(ITEM_ID);
+    expect(String(asAnnotationId(ANNOTATION_ID))).toBe(ANNOTATION_ID);
+    expect(String(asTokenId(TOKEN_ID))).toBe(TOKEN_ID);
+    expect(String(asRequestId(REQUEST_ID))).toBe(REQUEST_ID);
+    expect(typeof asUserId(USER_ID)).toBe("string");
+  });
+
+  test("each as* throws STORE_INVALID_PATH for a value that is not a UUID", () => {
+    const bad = [
+      "",
+      "alice",
+      "..",
+      "../../etc/passwd",
+      "AAAAAAAA-0000-4000-8000-000000000001",
+      "aaaaaaaa-0000-4000-8000-00000000000g",
+      `${ITEM_ID}/`,
+      ITEM_ID.slice(0, 35),
+    ];
+    const constructors = [
+      asUserId,
+      asItemId,
+      asAnnotationId,
+      asTokenId,
+      asRequestId,
+    ];
+    for (const construct of constructors) {
+      for (const value of bad) {
+        const error = caught(() => construct(value));
+        expect(isAppError(error)).toBe(true);
+        expect((error as AppError).code).toBe("STORE_INVALID_PATH");
+      }
+    }
+  });
+
+  test("each new* mints a fresh lowercase UUID", () => {
+    const minted = [
+      newUserId(),
+      newItemId(),
+      newAnnotationId(),
+      newTokenId(),
+      newRequestId(),
+      newId(),
+    ];
+    for (const value of minted) {
+      expect(value).toMatch(UUID_PATTERN);
+    }
+    expect(new Set(minted).size).toBe(minted.length);
+    expect(newUserId()).not.toBe(newUserId());
+  });
+
+  test("a minted id passes its own as* unchanged", () => {
+    const minted = newItemId();
+    expect(String(asItemId(minted))).toBe(String(minted));
+  });
+
+  // This test fails to compile if the brands go away, which is the point of
+  // them. Removing the brand turns the suppressed error into an unused
+  // directive, and tsc reports that.
+  test("one brand is not another", () => {
+    // @ts-expect-error a UserId may not stand in for an ItemId.
+    const wrong: ItemId = asUserId(USER_ID);
+    expect(String(wrong)).toBe(USER_ID);
+
+    // @ts-expect-error a plain string may not stand in for a UserId.
+    const untrusted: UserId = String(USER_ID);
+    expect(String(untrusted)).toBe(USER_ID);
+
+    const annotation: AnnotationId = asAnnotationId(ANNOTATION_ID);
+    const token: TokenId = asTokenId(TOKEN_ID);
+    const request: RequestId = asRequestId(REQUEST_ID);
+    expect([annotation, token, request]).toHaveLength(3);
+  });
+});
+
+describe("src/contracts/clock", () => {
+  // The clock is the one place the system may read real time, so these five
+  // functions are the whole API. Everything else takes a Date.
+  test("now returns the current time as a Date", () => {
+    const before = Date.now();
+    const value = now();
+    const after = Date.now();
+    expect(value).toBeInstanceOf(Date);
+    expect(value.getTime()).toBeGreaterThanOrEqual(before);
+    expect(value.getTime()).toBeLessThanOrEqual(after);
+  });
+
+  test("addMs returns a new Date and leaves the base alone", () => {
+    const base = new Date("2026-02-01T00:00:00.000Z");
+    const later = addMs(base, 90_000);
+    expect(later.toISOString()).toBe("2026-02-01T00:01:30.000Z");
+    expect(base.toISOString()).toBe("2026-02-01T00:00:00.000Z");
+    expect(later).not.toBe(base);
+    expect(addMs(base, -1_000).toISOString()).toBe("2026-01-31T23:59:59.000Z");
+    expect(addMs(base, 0).getTime()).toBe(base.getTime());
+  });
+
+  test("toIso writes UTC with milliseconds", () => {
+    expect(toIso(new Date("2026-02-01T00:00:00.000Z"))).toBe(
+      "2026-02-01T00:00:00.000Z",
+    );
+    expect(toIso(new Date(0))).toBe("1970-01-01T00:00:00.000Z");
+  });
+
+  test("parseIso round-trips toIso", () => {
+    const value = new Date("2026-02-01T12:34:56.789Z");
+    expect(parseIso(toIso(value)).getTime()).toBe(value.getTime());
+  });
+
+  test("parseIso throws CONFIG_INVALID_VALUE for a string it cannot read", () => {
+    for (const value of ["", "yesterday", "2026-13-45T00:00:00.000Z"]) {
+      const error = caught(() => parseIso(value));
+      expect(isAppError(error)).toBe(true);
+      expect((error as AppError).code).toBe("CONFIG_INVALID_VALUE");
+    }
+  });
+
+  test("isBefore compares two Dates and is false at equality", () => {
+    const early = new Date("2026-02-01T00:00:00.000Z");
+    const late = new Date("2026-02-01T00:00:00.001Z");
+    expect(isBefore(early, late)).toBe(true);
+    expect(isBefore(late, early)).toBe(false);
+    expect(isBefore(early, new Date(early.getTime()))).toBe(false);
   });
 });
 

@@ -1,9 +1,10 @@
-import { Database, SQLiteError } from "bun:sqlite";
+import { Database } from "bun:sqlite";
 
 import { addMs } from "../contracts/clock";
-import { AppError } from "../contracts/errors";
 import type { ErrorCode } from "../contracts/errors";
+import type { ItemId, RequestId, UserId } from "../contracts/ids";
 import type { FetchRequest } from "../contracts/item";
+import { translate, write } from "./db";
 
 export const MAX_ATTEMPTS = 3;
 
@@ -12,45 +13,30 @@ const REQUEST_COLUMNS = `
   lease_expires_at, attempts, error_code, created_at
 `;
 
-function translate(error: unknown, context: Record<string, unknown>): unknown {
-  if (error instanceof SQLiteError) {
-    const code = error.code ?? "";
-    if (code.startsWith("SQLITE_BUSY")) {
-      return new AppError("STORE_BUSY", error.message, context);
-    }
-    if (code.includes("CONSTRAINT")) {
-      return new AppError("STORE_CONSTRAINT_FAILED", error.message, context);
-    }
-  }
-  return error;
-}
-
 export function enqueueFetch(
   db: Database,
   request: FetchRequest,
 ): FetchRequest {
-  try {
-    db.run(
-      `INSERT INTO fetch_requests (
-         id, user_id, item_id, url, source_path, state,
-         lease_expires_at, attempts, error_code, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        request.id,
-        request.user_id,
-        request.item_id,
-        request.url,
-        request.source_path,
-        request.state,
-        request.lease_expires_at,
-        request.attempts,
-        request.error_code,
-        request.created_at,
-      ],
-    );
-  } catch (error) {
-    throw translate(error, { id: request.id, user_id: request.user_id });
-  }
+  write(
+    db,
+    `INSERT INTO fetch_requests (
+       id, user_id, item_id, url, source_path, state,
+       lease_expires_at, attempts, error_code, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      request.id,
+      request.user_id,
+      request.item_id,
+      request.url,
+      request.source_path,
+      request.state,
+      request.lease_expires_at,
+      request.attempts,
+      request.error_code,
+      request.created_at,
+    ],
+    { id: request.id, user_id: request.user_id },
+  );
   return request;
 }
 
@@ -88,47 +74,43 @@ export function claimNext(
 // the caller still owns the lease.
 export function completeFetch(
   db: Database,
-  id: string,
+  id: RequestId,
   attempts: number,
-  itemId: string,
+  itemId: ItemId,
 ): boolean {
-  try {
-    return (
-      db.run(
-        `UPDATE fetch_requests
-         SET state = 'done', lease_expires_at = NULL, item_id = ?, error_code = NULL
-         WHERE id = ? AND state = 'claimed' AND attempts = ?`,
-        [itemId, id, attempts],
-      ).changes === 1
-    );
-  } catch (error) {
-    throw translate(error, { id, item_id: itemId });
-  }
+  return (
+    write(
+      db,
+      `UPDATE fetch_requests
+       SET state = 'done', lease_expires_at = NULL, item_id = ?, error_code = NULL
+       WHERE id = ? AND state = 'claimed' AND attempts = ?`,
+      [itemId, id, attempts],
+      { id, item_id: itemId },
+    ) === 1
+  );
 }
 
 export function failFetch(
   db: Database,
-  id: string,
+  id: RequestId,
   attempts: number,
   errorCode: ErrorCode,
 ): boolean {
-  try {
-    return (
-      db.run(
-        `UPDATE fetch_requests
-         SET state = 'failed', lease_expires_at = NULL, error_code = ?
-         WHERE id = ? AND state = 'claimed' AND attempts = ?`,
-        [errorCode, id, attempts],
-      ).changes === 1
-    );
-  } catch (error) {
-    throw translate(error, { id });
-  }
+  return (
+    write(
+      db,
+      `UPDATE fetch_requests
+       SET state = 'failed', lease_expires_at = NULL, error_code = ?
+       WHERE id = ? AND state = 'claimed' AND attempts = ?`,
+      [errorCode, id, attempts],
+      { id },
+    ) === 1
+  );
 }
 
 export function listFetchRequests(
   db: Database,
-  userId: string,
+  userId: UserId,
   limit: number,
 ): FetchRequest[] {
   return db
@@ -142,8 +124,8 @@ export function listFetchRequests(
 
 export function getFetchRequest(
   db: Database,
-  userId: string,
-  id: string,
+  userId: UserId,
+  id: RequestId,
 ): FetchRequest | null {
   return (
     db
@@ -165,7 +147,7 @@ export function sweepStaleLeases(
   // and have the second flip it to failed underneath itself.
   const sweep = db.transaction(() => {
     const requeued = db
-      .query<{ id: string }, [string, number]>(
+      .query<{ id: RequestId }, [string, number]>(
         `UPDATE fetch_requests
          SET state = 'queued', lease_expires_at = NULL
          WHERE state = 'claimed' AND lease_expires_at <= ? AND attempts < ?
@@ -174,7 +156,7 @@ export function sweepStaleLeases(
       .all(nowIso, MAX_ATTEMPTS)
       .map((row) => row.id);
     const failed = db
-      .query<{ id: string }, [string, number]>(
+      .query<{ id: RequestId }, [string, number]>(
         `UPDATE fetch_requests
          SET state = 'failed', lease_expires_at = NULL,
              error_code = 'INGEST_ATTEMPTS_EXHAUSTED'

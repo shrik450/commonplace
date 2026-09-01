@@ -10,14 +10,29 @@ import type {
   FetchRequest,
   User,
 } from "../../src/contracts/item";
+import { asAnnotationId, asItemId, asRequestId, asTokenId, asUserId } from "../../src/contracts/ids";
 import { migrate } from "../../src/store/db";
 import { insertItem } from "../../src/store/items";
 import { insertAnnotation } from "../../src/store/annotations";
 import { insertApiToken, insertUser } from "../../src/store/users";
 import { claimNext, completeFetch, enqueueFetch } from "../../src/store/queue";
-import { indexItem, searchItems } from "../../src/store/fts";
+import type { BlockRow } from "../../src/store/fts";
+import { indexBlocks, searchBlocks } from "../../src/store/fts";
 
 const NOW = new Date("2026-01-01T00:00:00.000Z");
+
+// Every id goes through its as* constructor, so a bare string no longer
+// compiles where the store asks for a brand.
+const USER_1 = asUserId("11111111-1111-4111-8111-111111111111");
+const USER_2 = asUserId("11111111-1111-4111-8111-111111111112");
+const ITEM_1 = asItemId("22222222-2222-4222-8222-222222222221");
+const ITEM_2 = asItemId("22222222-2222-4222-8222-222222222222");
+const ANN_1 = asAnnotationId("33333333-3333-4333-8333-333333333331");
+const TOKEN_1 = asTokenId("44444444-4444-4444-8444-444444444441");
+const FETCH_1 = asRequestId("55555555-5555-4555-8555-555555555551");
+// Lexically valid ids that name no row, so a foreign key still rejects them.
+const MISSING_ITEM = asItemId("99999999-9999-4999-8999-999999999991");
+const MISSING_USER = asUserId("99999999-9999-4999-8999-999999999992");
 
 function makeDb(): Database {
   const db = new Database(":memory:");
@@ -28,7 +43,7 @@ function makeDb(): Database {
 
 function seedUser(db: Database, over: Partial<User> = {}): User {
   const user: User = {
-    id: "user-1",
+    id: USER_1,
     subject: "subject-1",
     email: null,
     created_at: NOW.toISOString(),
@@ -39,8 +54,8 @@ function seedUser(db: Database, over: Partial<User> = {}): User {
 
 function makeItem(over: Partial<Item> = {}): Item {
   return {
-    id: "item-1",
-    user_id: "user-1",
+    id: ITEM_1,
+    user_id: USER_1,
     kind: "article",
     url: "https://example.test/a",
     title: "A title",
@@ -53,9 +68,9 @@ function makeItem(over: Partial<Item> = {}): Item {
 
 function makeAnnotation(over: Partial<Annotation> = {}): Annotation {
   return {
-    id: "ann-1",
-    user_id: "user-1",
-    item_id: "item-1",
+    id: ANN_1,
+    user_id: USER_1,
+    item_id: ITEM_1,
     start_offset: 0,
     end_offset: 1,
     quote: "q",
@@ -68,8 +83,8 @@ function makeAnnotation(over: Partial<Annotation> = {}): Annotation {
 
 function makeToken(over: Partial<ApiToken> = {}): ApiToken {
   return {
-    id: "token-1",
-    user_id: "user-1",
+    id: TOKEN_1,
+    user_id: USER_1,
     name: "cli",
     token_hash: "hash-1",
     created_at: NOW.toISOString(),
@@ -80,8 +95,8 @@ function makeToken(over: Partial<ApiToken> = {}): ApiToken {
 
 function makeFetch(over: Partial<FetchRequest> = {}): FetchRequest {
   return {
-    id: "fetch-1",
-    user_id: "user-1",
+    id: FETCH_1,
+    user_id: USER_1,
     item_id: null,
     url: "https://example.test/f",
     source_path: null,
@@ -90,6 +105,19 @@ function makeFetch(over: Partial<FetchRequest> = {}): FetchRequest {
     attempts: 0,
     error_code: null,
     created_at: NOW.toISOString(),
+    ...over,
+  };
+}
+
+function makeBlock(over: Partial<BlockRow> = {}): BlockRow {
+  return {
+    item_id: ITEM_1,
+    user_id: USER_1,
+    block_index: 0,
+    start_offset: 0,
+    end_offset: 5,
+    is_content: true,
+    text: "A short block.",
     ...over,
   };
 }
@@ -117,7 +145,7 @@ describe("store errors leave as AppError with a STORE_ code", () => {
     seedUser(db);
     insertItem(db, makeItem());
     expectStoreError(
-      () => insertItem(db, makeItem({ id: "item-2" })),
+      () => insertItem(db, makeItem({ id: ITEM_2 })),
       "STORE_CONFLICT",
     );
   });
@@ -135,7 +163,7 @@ describe("store errors leave as AppError with a STORE_ code", () => {
     const db = makeDb();
     seedUser(db);
     expectStoreError(() =>
-      insertAnnotation(db, makeAnnotation({ item_id: "no-item" })),
+      insertAnnotation(db, makeAnnotation({ item_id: MISSING_ITEM })),
     );
   });
 
@@ -143,7 +171,7 @@ describe("store errors leave as AppError with a STORE_ code", () => {
     const db = makeDb();
     seedUser(db);
     expectStoreError(
-      () => seedUser(db, { id: "user-2" }),
+      () => seedUser(db, { id: USER_2 }),
       "STORE_CONFLICT",
     );
   });
@@ -153,7 +181,7 @@ describe("store errors leave as AppError with a STORE_ code", () => {
     seedUser(db);
     insertApiToken(db, makeToken());
     expectStoreError(
-      () => insertApiToken(db, makeToken({ id: "token-2" })),
+      () => insertApiToken(db, makeToken({ id: asTokenId("44444444-4444-4444-8444-444444444442") })),
       "STORE_CONFLICT",
     );
   });
@@ -162,7 +190,7 @@ describe("store errors leave as AppError with a STORE_ code", () => {
     const db = makeDb();
     seedUser(db);
     expectStoreError(
-      () => enqueueFetch(db, makeFetch({ user_id: "no-user" })),
+      () => enqueueFetch(db, makeFetch({ user_id: MISSING_USER })),
       "STORE_CONSTRAINT_FAILED",
     );
   });
@@ -173,26 +201,18 @@ describe("store errors leave as AppError with a STORE_ code", () => {
     enqueueFetch(db, makeFetch());
     claimNext(db, NOW, 1_000);
     expectStoreError(
-      () => completeFetch(db, "fetch-1", 1, "no-item"),
+      () => completeFetch(db, FETCH_1, 1, MISSING_ITEM),
       "STORE_CONSTRAINT_FAILED",
     );
   });
 
-  test("indexItem against a database with no schema fails with a STORE_ code", () => {
+  test("indexBlocks against a database with no schema fails with a STORE_ code", () => {
     const db = new Database(":memory:");
-    expectStoreError(() =>
-      indexItem(db, {
-        item_id: "item-1",
-        user_id: "user-1",
-        title: "A title",
-        author: null,
-        transcript: "text",
-      }),
-    );
+    expectStoreError(() => indexBlocks(db, ITEM_1, [makeBlock()]));
   });
 
-  test("searchItems against a database with no schema fails with a STORE_ code", () => {
+  test("searchBlocks against a database with no schema fails with a STORE_ code", () => {
     const db = new Database(":memory:");
-    expectStoreError(() => searchItems(db, "user-1", "query", 10));
+    expectStoreError(() => searchBlocks(db, USER_1, "query", 10));
   });
 });

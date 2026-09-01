@@ -10,12 +10,14 @@ import {
 import { join } from "node:path";
 
 import { AppError } from "../contracts/errors";
+import type { ItemId, UserId } from "../contracts/ids";
 
 export const ITEM_FILES = [
   "original.html",
   "sanitized.html",
   "transcript.txt",
   "map.json",
+  "source.epub",
 ] as const;
 
 export type ItemFile = (typeof ITEM_FILES)[number];
@@ -25,20 +27,20 @@ const UUID_PATTERN =
 
 let tempCounter = 0;
 
-function checkId(id: string, label: string): void {
-  if (!UUID_PATTERN.test(id)) {
+function checkId(value: string, label: string): void {
+  if (!UUID_PATTERN.test(value)) {
     throw new AppError(
       "STORE_INVALID_PATH",
       `${label} is not a lowercase UUID`,
-      { [label]: id },
+      { [label]: value },
     );
   }
 }
 
 export function itemDir(
   itemsRoot: string,
-  userId: string,
-  itemId: string,
+  userId: UserId,
+  itemId: ItemId,
 ): string {
   // The UUID check is the only defence against `..` escaping the root.
   checkId(userId, "user_id");
@@ -48,8 +50,8 @@ export function itemDir(
 
 export async function writeItemFile(
   itemsRoot: string,
-  userId: string,
-  itemId: string,
+  userId: UserId,
+  itemId: ItemId,
   file: ItemFile,
   data: string | Uint8Array,
 ): Promise<void> {
@@ -75,8 +77,8 @@ export async function writeItemFile(
 
 export async function readItemFile(
   itemsRoot: string,
-  userId: string,
-  itemId: string,
+  userId: UserId,
+  itemId: ItemId,
   file: ItemFile,
 ): Promise<string> {
   const path = join(itemDir(itemsRoot, userId, itemId), file);
@@ -92,10 +94,31 @@ export async function readItemFile(
   }
 }
 
+// An EPUB is a zip archive, so the bytes come back untouched. A UTF-8 decode
+// would replace sequences no decoder can read and corrupt the book.
+export async function readItemFileBytes(
+  itemsRoot: string,
+  userId: UserId,
+  itemId: ItemId,
+  file: ItemFile,
+): Promise<Uint8Array> {
+  const path = join(itemDir(itemsRoot, userId, itemId), file);
+  try {
+    return new Uint8Array(await readFile(path));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new AppError("STORE_NOT_FOUND", `no such file: ${path}`, {
+        path,
+      });
+    }
+    throw error;
+  }
+}
+
 export async function itemFilesPresent(
   itemsRoot: string,
-  userId: string,
-  itemId: string,
+  userId: UserId,
+  itemId: ItemId,
 ): Promise<ItemFile[]> {
   const dir = itemDir(itemsRoot, userId, itemId);
   let entries: string[];
@@ -111,8 +134,8 @@ export async function itemFilesPresent(
 
 export async function deleteItemDir(
   itemsRoot: string,
-  userId: string,
-  itemId: string,
+  userId: UserId,
+  itemId: ItemId,
 ): Promise<void> {
   const dir = itemDir(itemsRoot, userId, itemId);
   await rm(dir, { recursive: true, force: true });

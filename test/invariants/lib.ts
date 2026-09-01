@@ -48,6 +48,8 @@ const IMPURE_LAYERS: Layer[] = ["store", "services", "web", "cli"];
 const THROW_PATTERN = /throw\s+new\s+Error\s*\(/g;
 const NONDETERMINISTIC_CALLS = [
   "Date.now(",
+  "Date.parse(",
+  "Date.UTC(",
   "Math.random(",
   "crypto.randomUUID(",
   "new Date(",
@@ -188,6 +190,35 @@ export function checkDeterminism(
   return violations;
 }
 
+// An id-shaped parameter or field must carry its brand. A branded id is a
+// string, so the compiler only catches mistakes in one direction; the naming
+// convention is what keeps the other direction closed. A raw string is fine
+// exactly where a value is validated into a brand: src/contracts/ids.ts, and
+// any parameter named `value`.
+const BRANDED_ID_PATTERN =
+  /\b(id|userId|itemId|tokenId|annotationId|requestId|user_id|item_id|annotation_id)\??:\s*(string(?:\s*\|\s*null)?|null\s*\|\s*string)\b/g;
+const BRANDED_IDS_EXEMPT = new Set(["src/contracts/ids.ts"]);
+
+export function checkBrandedIds(
+  files: { path: string; source: string }[],
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    const path = file.path.replaceAll("\\", "/");
+    if (BRANDED_IDS_EXEMPT.has(path)) continue;
+    for (const match of file.source.matchAll(BRANDED_ID_PATTERN)) {
+      const line = file.source.slice(0, match.index).split("\n").length;
+      violations.push({
+        file: path,
+        line,
+        rule: "branded-ids",
+        detail: `"${match[1]}" is typed "${match[2].replaceAll(/\s+/g, "")}"; use a branded id`,
+      });
+    }
+  }
+  return violations;
+}
+
 // Bun's I/O sits on globals and needs no import, so imports alone do not
 // prove that src/core/ stays pure.
 const IMPURE_GLOBAL_CALLS = [
@@ -257,6 +288,7 @@ const ALLOWED_MODULES = [
   "src/services/annotate.ts",
   "src/services/export.ts",
   "src/services/auth.ts",
+  "src/services/worker.ts",
   "src/web/server.ts",
   "src/cli/main.ts",
 ];
@@ -354,7 +386,15 @@ export const EXPECTED_COLUMNS: Record<string, readonly string[]> = {
     "url",
     "user_id",
   ],
-  items_fts: ["author", "item_id", "title", "transcript", "user_id"],
+  blocks_fts: [
+    "block_index",
+    "end_offset",
+    "is_content",
+    "item_id",
+    "start_offset",
+    "text",
+    "user_id",
+  ],
 };
 
 const SQLITE_PREFIX = "sqlite_";
@@ -408,7 +448,16 @@ export function checkNoPositionsInDb(tables: TableInfo[]): SchemaViolation[] {
   for (const table of tables) {
     if (table.name.startsWith(SQLITE_PREFIX) || exempt.has(table.name)) continue;
     const expected = EXPECTED_COLUMNS[table.name];
-    if (expected !== undefined) {
+    if (expected === undefined) {
+      // A table nobody pinned has no column rule at all, so the allowlist
+      // would quietly stop meaning anything. The name pass below still runs,
+      // so an unpinned table with a position-shaped column fails twice.
+      violations.push({
+        table: table.name,
+        rule: "no-positions-in-db",
+        detail: `"${table.name}" is not pinned in EXPECTED_COLUMNS`,
+      });
+    } else {
       const actual = [...table.columns].toSorted();
       const extra = actual.filter((column) => !expected.includes(column));
       const missing = expected.filter((column) => !actual.includes(column));
@@ -426,7 +475,6 @@ export function checkNoPositionsInDb(tables: TableInfo[]): SchemaViolation[] {
           detail: `"${table.name}" ${parts.join(" and ")}`,
         });
       }
-      continue;
     }
     for (const column of table.columns) {
       if (POSITION_NAME_ALLOWED.has(column)) continue;

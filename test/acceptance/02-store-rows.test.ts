@@ -25,6 +25,17 @@
 //   cross-tenant delete is one of those cases: it removes nothing and throws
 //   nothing.
 //
+// What the 02f consolidation pass changed
+// ---------------------------------------
+// - Every id is branded. `UserId`, `ItemId`, `AnnotationId`, and `TokenId`
+//   come from `src/contracts/ids.ts`, and the `as*` constructors are the only
+//   way to build one from a string. Passing an `ItemId` where a `UserId`
+//   belongs no longer compiles, which is what the UUID check could never
+//   catch.
+// - Every write goes through `write` from `src/store/db.ts`, which translates
+//   any SQLite failure. A readonly database therefore raises
+//   `STORE_WRITE_FAILED`, not a raw `SQLiteError`.
+//
 // Tenancy
 // -------
 // Every tenant-scoped function is tested with two users who each own a row.
@@ -41,8 +52,11 @@
 // Every timestamp is a literal the test controls. A store that reads the
 // clock fails these tests.
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type {
   Annotation,
@@ -51,8 +65,20 @@ import type {
   ItemKind,
   User,
 } from "../../src/contracts/item";
+import type {
+  AnnotationId,
+  ItemId,
+  TokenId,
+  UserId,
+} from "../../src/contracts/ids";
+import {
+  asAnnotationId,
+  asItemId,
+  asTokenId,
+  asUserId,
+} from "../../src/contracts/ids";
 import { AppError, isAppError } from "../../src/contracts/errors";
-import { migrate } from "../../src/store/db";
+import { migrate, openDatabase } from "../../src/store/db";
 import {
   deleteItem,
   getItem,
@@ -84,20 +110,37 @@ const T0 = new Date("2026-02-01T00:00:00.000Z");
 const T1 = new Date("2026-02-02T00:00:00.000Z");
 const T2 = new Date("2026-02-03T00:00:00.000Z");
 
-const ALICE = "11111111-1111-4111-8111-111111111111";
-const BOB = "22222222-2222-4222-8222-222222222222";
+const ALICE = asUserId("11111111-1111-4111-8111-111111111111");
+const BOB = asUserId("22222222-2222-4222-8222-222222222222");
 
-function itemId(n: number): string {
-  return `aaaaaaaa-0000-4000-8000-${String(n).padStart(12, "0")}`;
+// Every id goes through its as* constructor, which is the only way to turn a
+// string into a branded id. A test that passed a bare string would not
+// compile, and that is the point of the brands.
+function itemId(n: number): ItemId {
+  return asItemId(`aaaaaaaa-0000-4000-8000-${String(n).padStart(12, "0")}`);
 }
 
-function annotationId(n: number): string {
-  return `bbbbbbbb-0000-4000-8000-${String(n).padStart(12, "0")}`;
+function annotationId(n: number): AnnotationId {
+  return asAnnotationId(`bbbbbbbb-0000-4000-8000-${String(n).padStart(12, "0")}`);
 }
 
-function tokenId(n: number): string {
-  return `dddddddd-0000-4000-8000-${String(n).padStart(12, "0")}`;
+function tokenId(n: number): TokenId {
+  return asTokenId(`dddddddd-0000-4000-8000-${String(n).padStart(12, "0")}`);
 }
+
+const tempRoots: string[] = [];
+
+async function tempDbPath(name: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "commonplace-store-rows-"));
+  tempRoots.push(root);
+  return join(root, name);
+}
+
+afterAll(async () => {
+  for (const root of tempRoots) {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 function freshDb(): Database {
   const db = new Database(":memory:");
@@ -120,7 +163,7 @@ function appErrorCode(error: unknown): string {
   return (error as AppError).code;
 }
 
-function makeUser(id: string, subject: string): User {
+function makeUser(id: UserId, subject: string): User {
   return {
     id,
     subject,
@@ -129,7 +172,7 @@ function makeUser(id: string, subject: string): User {
   };
 }
 
-function makeItem(overrides: Partial<Item> & { id: string; user_id: string }): Item {
+function makeItem(overrides: Partial<Item> & { id: ItemId; user_id: UserId }): Item {
   return {
     kind: "article",
     url: `https://example.com/${overrides.id}`,
@@ -142,7 +185,11 @@ function makeItem(overrides: Partial<Item> & { id: string; user_id: string }): I
 }
 
 function makeAnnotation(
-  overrides: Partial<Annotation> & { id: string; user_id: string; item_id: string },
+  overrides: Partial<Annotation> & {
+    id: AnnotationId;
+    user_id: UserId;
+    item_id: ItemId;
+  },
 ): Annotation {
   return {
     start_offset: 0,
@@ -155,7 +202,7 @@ function makeAnnotation(
   };
 }
 
-function makeToken(overrides: Partial<ApiToken> & { id: string; user_id: string }): ApiToken {
+function makeToken(overrides: Partial<ApiToken> & { id: TokenId; user_id: UserId }): ApiToken {
   return {
     name: "laptop",
     token_hash: `hash-${overrides.id}`,
@@ -1071,6 +1118,85 @@ describe("src/store/annotations", () => {
     const db = freshDb();
     seed(db);
     expect(() => deleteAnnotation(db, ALICE, annotationId(9))).not.toThrow();
+    db.close();
+  });
+});
+
+describe("store writes on a readonly database", () => {
+  // Four store modules used to end their translate with `return error`, so a
+  // failure that was not a constraint left L2 as a raw SQLiteError. Every
+  // write below must arrive as an AppError with a store code.
+  const SEED_ITEM = itemId(1);
+  const SEED_ANNOTATION = annotationId(1);
+  const SEED_TOKEN = tokenId(1);
+
+  async function readonlyDb(name: string): Promise<Database> {
+    const path = await tempDbPath(name);
+    const seed = openDatabase(path, T0);
+    insertUser(seed, makeUser(ALICE, "alice"));
+    insertItem(seed, makeItem({ id: SEED_ITEM, user_id: ALICE }));
+    insertAnnotation(
+      seed,
+      makeAnnotation({
+        id: SEED_ANNOTATION,
+        user_id: ALICE,
+        item_id: SEED_ITEM,
+      }),
+    );
+    insertApiToken(seed, makeToken({ id: SEED_TOKEN, user_id: ALICE }));
+    seed.close();
+    return new Database(path, { readonly: true });
+  }
+
+  function expectWriteFailed(run: () => unknown): void {
+    const error = caught(run);
+    expect(isAppError(error)).toBe(true);
+    expect((error as AppError).code).toBe("STORE_WRITE_FAILED");
+  }
+
+  test("items.ts wraps the failure", async () => {
+    const db = await readonlyDb("items.db");
+    // The reads still work, so each failure below comes from the write.
+    expect(getItem(db, ALICE, SEED_ITEM)).not.toBeNull();
+
+    expectWriteFailed(() => insertItem(db, makeItem({ id: itemId(2), user_id: ALICE })));
+    expectWriteFailed(() => updateItem(db, ALICE, SEED_ITEM, { title: "New" }));
+    expectWriteFailed(() => markIngested(db, ALICE, SEED_ITEM, T2));
+    expectWriteFailed(() => deleteItem(db, ALICE, SEED_ITEM));
+    db.close();
+  });
+
+  test("users.ts wraps the failure", async () => {
+    const db = await readonlyDb("users.db");
+    expect(getUser(db, ALICE)).not.toBeNull();
+
+    expectWriteFailed(() => insertUser(db, makeUser(BOB, "bob")));
+    expectWriteFailed(() =>
+      insertApiToken(db, makeToken({ id: tokenId(2), user_id: ALICE })),
+    );
+    expectWriteFailed(() => touchApiToken(db, ALICE, SEED_TOKEN, T2));
+    expectWriteFailed(() => deleteApiToken(db, ALICE, SEED_TOKEN));
+    db.close();
+  });
+
+  test("annotations.ts wraps the failure", async () => {
+    const db = await readonlyDb("annotations.db");
+    expect(getAnnotation(db, ALICE, SEED_ANNOTATION)).not.toBeNull();
+
+    expectWriteFailed(() =>
+      insertAnnotation(
+        db,
+        makeAnnotation({
+          id: annotationId(2),
+          user_id: ALICE,
+          item_id: SEED_ITEM,
+        }),
+      ),
+    );
+    expectWriteFailed(() =>
+      updateAnnotation(db, ALICE, SEED_ANNOTATION, { note: "a note" }, T2),
+    );
+    expectWriteFailed(() => deleteAnnotation(db, ALICE, SEED_ANNOTATION));
     db.close();
   });
 });

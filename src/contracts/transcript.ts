@@ -5,6 +5,7 @@ export type Run = {
   end: number; // exclusive
   doc_index: number; // 0 for an article; the spine index for a book
   node_path: string; // slash-separated child indices, such as "1/0/3"
+  block_index: number; // groups runs into paragraph-sized blocks
   is_content: boolean;
 };
 
@@ -29,6 +30,7 @@ export function validateMap(map: TranscriptMap, textLength: number): void {
   }
 
   let cursor = 0;
+  let blockIndex = 0;
   for (let i = 0; i < map.runs.length; i += 1) {
     const run = map.runs[i]!;
     if (!Number.isInteger(run.doc_index) || run.doc_index < 0) {
@@ -37,6 +39,19 @@ export function validateMap(map: TranscriptMap, textLength: number): void {
         i,
       );
     }
+    if (!Number.isInteger(run.block_index) || run.block_index < 0) {
+      throw malformed(
+        `run ${i} has block_index ${String(run.block_index)}; expected a non-negative integer`,
+        i,
+      );
+    }
+    if (run.block_index < blockIndex) {
+      throw malformed(
+        `run ${i} has block_index ${run.block_index} after ${blockIndex}; it must never decrease`,
+        i,
+      );
+    }
+    blockIndex = run.block_index;
     if (typeof run.node_path !== "string") {
       throw malformed(
         `run ${i} has a ${typeof run.node_path} node_path; expected a string`,

@@ -1,38 +1,35 @@
-import { Database, SQLiteError } from "bun:sqlite";
+import { Database } from "bun:sqlite";
 
 import { AppError } from "../contracts/errors";
-import type { Item } from "../contracts/item";
+import type { Item, ItemKind } from "../contracts/item";
+import type { ItemId, UserId } from "../contracts/ids";
+import { write } from "./db";
 
-export type Cursor = { created_at: string; id: string };
+export type Cursor = { created_at: string; id: ItemId };
 
 const ITEM_COLUMNS = `
   id, user_id, kind, url, title, author, created_at, ingested_at
 `;
 
-// A UNIQUE violation of any kind, including a duplicate primary key, is a
-// conflict. Every other constraint failure keeps its own code. Nothing raw
-// leaves L2.
-function translate(error: unknown, context: Record<string, unknown>): unknown {
-  if (error instanceof SQLiteError) {
-    const code = error.code ?? "";
-    if (code.includes("CONSTRAINT_UNIQUE") || code.includes("CONSTRAINT_PRIMARYKEY")) {
-      return new AppError("STORE_CONFLICT", error.message, context);
-    }
-    if (code.includes("CONSTRAINT")) {
-      return new AppError("STORE_CONSTRAINT_FAILED", error.message, context);
-    }
-    if (code === "SQLITE_BUSY") {
-      return new AppError("STORE_BUSY", error.message, context);
-    }
-  }
-  return error;
+// Rows read from SQLite arrive as plain strings. The brand is compile-time
+// only, so the cast at the read is the whole conversion; the database is the
+// authority on its own ids.
+type ItemRow = {
+  id: ItemId;
+  user_id: UserId;
+  kind: ItemKind;
+  url: string | null;
+  title: string;
+  author: string | null;
+  created_at: string;
+  ingested_at: string | null;
+};
+
+function itemOf(row: ItemRow): Item {
+  return row as Item;
 }
 
-function requireRow(
-  changes: number,
-  userId: string,
-  id: string,
-): void {
+function requireRow(changes: number, userId: UserId, id: ItemId): void {
   if (changes === 0) {
     throw new AppError("STORE_NOT_FOUND", "no matching item row", {
       user_id: userId,
@@ -42,80 +39,78 @@ function requireRow(
 }
 
 export function insertItem(db: Database, item: Item): Item {
-  try {
-    db.run(
-      `INSERT INTO items (id, user_id, kind, url, title, author, created_at, ingested_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        item.id,
-        item.user_id,
-        item.kind,
-        item.url,
-        item.title,
-        item.author,
-        item.created_at,
-        item.ingested_at,
-      ],
-    );
-  } catch (error) {
-    throw translate(error, { user_id: item.user_id, id: item.id });
-  }
+  write(
+    db,
+    `INSERT INTO items (id, user_id, kind, url, title, author, created_at, ingested_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      item.id,
+      item.user_id,
+      item.kind,
+      item.url,
+      item.title,
+      item.author,
+      item.created_at,
+      item.ingested_at,
+    ],
+    { user_id: item.user_id, id: item.id },
+  );
   return item;
 }
 
-export function getItem(db: Database, userId: string, id: string): Item | null {
-  return (
-    db
-      .query<Item, [string, string]>(
-        `SELECT ${ITEM_COLUMNS} FROM items WHERE user_id = ? AND id = ?`,
-      )
-      .get(userId, id) ?? null
-  );
+export function getItem(db: Database, userId: UserId, id: ItemId): Item | null {
+  const row = db
+    .query<ItemRow, [string, string]>(
+      `SELECT ${ITEM_COLUMNS} FROM items WHERE user_id = ? AND id = ?`,
+    )
+    .get(userId, id);
+  return row === null ? null : itemOf(row);
 }
 
 export function getItemByUrl(
   db: Database,
-  userId: string,
+  userId: UserId,
   url: string,
 ): Item | null {
-  return (
-    db
-      .query<Item, [string, string]>(
-        `SELECT ${ITEM_COLUMNS} FROM items WHERE user_id = ? AND url = ?`,
-      )
-      .get(userId, url) ?? null
-  );
+  const row = db
+    .query<ItemRow, [string, string]>(
+      `SELECT ${ITEM_COLUMNS} FROM items WHERE user_id = ? AND url = ?`,
+    )
+    .get(userId, url);
+  return row === null ? null : itemOf(row);
 }
 
 export function listItems(
   db: Database,
-  userId: string,
+  userId: UserId,
   limit: number,
   before?: Cursor,
 ): Item[] {
   if (before === undefined) {
     return db
-      .query<Item, [string, number]>(
+      .query<ItemRow, [string, number]>(
         `SELECT ${ITEM_COLUMNS} FROM items WHERE user_id = ?
          ORDER BY created_at DESC, id DESC LIMIT ?`,
       )
-      .all(userId, limit);
+      .all(userId, limit)
+      .map(itemOf);
   }
   // The cursor is the whole sort key. A created_at alone repeats a row or
   // drops one when two items share a timestamp.
   return db
-    .query<Item, [string, string, string, number]>(
+    .query<ItemRow, [string, string, string, number]>(
       `SELECT ${ITEM_COLUMNS} FROM items
        WHERE user_id = ? AND (created_at, id) < (?, ?)
        ORDER BY created_at DESC, id DESC LIMIT ?`,
     )
-    .all(userId, before.created_at, before.id, limit);
+    .all(userId, before.created_at, before.id, limit)
+    .map(itemOf);
 }
 
 export function updateItem(
   db: Database,
-  userId: string,
-  id: string,
+  userId: UserId,
+  id: ItemId,
   fields: { title?: string; author?: string | null },
 ): Item {
   const sets: string[] = [];
@@ -129,16 +124,12 @@ export function updateItem(
     values.push(fields.author!);
   }
   if (sets.length > 0) {
-    let changes: number;
-    try {
-      const result = db.run(
-        `UPDATE items SET ${sets.join(", ")} WHERE user_id = ? AND id = ?`,
-        [...values, userId, id],
-      );
-      changes = result.changes;
-    } catch (error) {
-      throw translate(error, { user_id: userId, id });
-    }
+    const changes = write(
+      db,
+      `UPDATE items SET ${sets.join(", ")} WHERE user_id = ? AND id = ?`,
+      [...values, userId, id],
+      { user_id: userId, id },
+    );
     requireRow(changes, userId, id);
   }
   const row = getItem(db, userId, id);
@@ -150,24 +141,25 @@ export function updateItem(
 
 export function markIngested(
   db: Database,
-  userId: string,
-  id: string,
+  userId: UserId,
+  id: ItemId,
   now: Date,
 ): Item {
-  let changes: number;
-  try {
-    const result = db.run(
-      "UPDATE items SET ingested_at = ? WHERE user_id = ? AND id = ?",
-      [now.toISOString(), userId, id],
-    );
-    changes = result.changes;
-  } catch (error) {
-    throw translate(error, { user_id: userId, id });
-  }
+  const changes = write(
+    db,
+    "UPDATE items SET ingested_at = ? WHERE user_id = ? AND id = ?",
+    [now.toISOString(), userId, id],
+    { user_id: userId, id },
+  );
   requireRow(changes, userId, id);
   return getItem(db, userId, id)!;
 }
 
-export function deleteItem(db: Database, userId: string, id: string): void {
-  db.run("DELETE FROM items WHERE user_id = ? AND id = ?", [userId, id]);
+export function deleteItem(db: Database, userId: UserId, id: ItemId): void {
+  write(
+    db,
+    "DELETE FROM items WHERE user_id = ? AND id = ?",
+    [userId, id],
+    { user_id: userId, id },
+  );
 }

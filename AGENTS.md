@@ -14,7 +14,9 @@ positions. Nothing else does.
 
 ## Layers
 
-Code sits in five layers. A module imports only from strictly lower layers.
+Code sits in five layers. A module imports from lower layers and from its own
+layer, never from a higher one. `web` and `cli` are siblings, and neither may
+import the other.
 
 | Layer | Directory | May import from | I/O allowed |
 | ----- | --------- | --------------- | ----------- |
@@ -76,7 +78,8 @@ code or by defaulting a count to zero.
 Each rule below has a test in `test/invariants/`. Never weaken a test to make
 your change pass.
 
-1. `layers` — no module imports from a higher or sibling layer.
+1. `layers` — no module imports from a higher layer, and `web` and `cli` do
+   not import each other. A module may import from its own layer.
 2. `purity` — nothing in `src/core/` imports `node:fs`, `bun:sqlite`, or the
    layers above it, and nothing there reaches I/O through a Bun global such as
    `Bun.file` or `fetch`.
@@ -96,9 +99,11 @@ your change pass.
 8. `capture-csp` — the capture route sends `script-src 'none'` and its body
    contains no `<script`.
 9. `error-codes` — no `throw new Error(`. Throw `AppError` with a code.
-10. `determinism` — no direct `Date.now()`, `new Date()`, `Math.random()`,
-    `crypto.randomUUID()`, or `Bun.randomUUIDv7()` outside
-    `src/contracts/clock.ts` and `src/contracts/ids.ts`.
+10. `determinism` — no direct `Date.now()`, `new Date()`, `Date.parse()`,
+    `Date.UTC()`, `Math.random()`, `crypto.randomUUID()`, or
+    `Bun.randomUUIDv7()` outside `src/contracts/clock.ts` and
+    `src/contracts/ids.ts`. Build and read times through `clock.ts`, which
+    exports `now`, `addMs`, `toIso`, `parseIso`, and `isBefore`.
 11. `seals` — the acceptance tests match their recorded hash.
 
 Invariants 1, 2, 3, 9, 10, and 11 exist today. The rest arrive with the
@@ -125,6 +130,22 @@ Throw `AppError` from `src/contracts/errors.ts`. Every error carries a stable
 code, namespaced by module: `CONFIG_*`, `STORE_*`, `WALK_*`, `INGEST_*`,
 `AUTH_*`, `VIEW_*`, `EXPORT_*`. Logs are one JSON object per line. A code makes
 a failure greppable, so never throw a bare string.
+
+## Ids
+
+Ids are branded types, not strings. `src/contracts/ids.ts` exports `UserId`,
+`ItemId`, `AnnotationId`, `TokenId`, and `RequestId`, each with a `new*`
+constructor and an `as*` validator. The brand exists only at compile time, so
+it costs nothing at runtime.
+
+Use them everywhere an id appears, including function parameters. Every id is a
+UUID, so a swapped user id and item id is a valid UUID in the wrong position:
+without the brands the type checker cannot see the mistake, and the tenancy
+guarantee is only as good as the argument order.
+
+`as*` is the only way to turn an untrusted string into an id. Call it once, at
+the boundary where a request parameter or a database row arrives, and pass the
+branded value inward from there.
 
 ## Rules for changes
 

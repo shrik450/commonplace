@@ -66,11 +66,15 @@ describe("no-positions-in-db invariant", () => {
   });
 
   test("the name pass flags a position-shaped column on a later table", () => {
+    // "later_table" is unpinned, so the call fails it twice: once for being
+    // unpinned, once for the column.
     const violations = checkNoPositionsInDb([
       fakeTable("later_table", ["id", "user_id", "node_path"]),
     ]);
-    expect(violations).toHaveLength(1);
-    expect(violations[0]!.detail).toContain("node_path");
+    expect(violations).toHaveLength(2);
+    expect(
+      violations.some((violation) => violation.detail.includes("node_path")),
+    ).toBe(true);
   });
 
   test("every non-exempt table in the live schema has an allowlist entry", () => {
@@ -93,11 +97,22 @@ describe("no-positions-in-db invariant", () => {
     expect(unlisted).toEqual([]);
   });
 
-  test("the name pass admits source_path and transcript offsets", () => {
-    expect(
-      checkNoPositionsInDb([
-        fakeTable("later_table", ["user_id", "source_path", "start_offset", "end_offset"]),
-      ]),
-    ).toEqual([]);
+  test("checkNoPositionsInDb flags a table the allowlist does not pin", () => {
+    // Without this rule a later milestone's table ships unpinned and the
+    // allowlist quietly stops meaning anything. A column set the checker
+    // does not know is itself a violation, whatever the names are.
+    const violations = checkNoPositionsInDb([
+      fakeTable("sessions", ["id", "user_id", "expires_at"]),
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]!.rule).toBe("no-positions-in-db");
+    expect(violations[0]!.detail).toContain("sessions");
+  });
+
+  test("the name pass admits source_path and transcript offsets on a pinned table", () => {
+    expect([...EXPECTED_COLUMNS.fetch_requests!]).toContain("source_path");
+    expect([...EXPECTED_COLUMNS.annotations!]).toContain("start_offset");
+    expect([...EXPECTED_COLUMNS.annotations!]).toContain("end_offset");
+    expect(checkNoPositionsInDb(schemaTables())).toEqual([]);
   });
 });

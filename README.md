@@ -128,12 +128,15 @@ One process, one SQLite database with the FTS5 extension.
   globs, and the output path is a positional argument, not a flag. The sanitizer strips every embedded script.
   In one pass, the walker emits the transcript, the Map, and content flags.
 - **Store** — SQLite on one root: `users`, `items`, `annotations`, `api_tokens`,
-  plus an FTS5 table. Each FTS row is one run from the Map, carrying its
+  plus an FTS5 table. Each FTS row is one block from the Map, carrying its
   `(start, end)` and its `is_content` flag as a filter column, so a search hit
   returns the snippet and the transcript range in one query and deep-links
-  straight to the passage. Every run is indexed — search never silently misses
-  text that the reader view hides. Item files live on the other root:
-  `items/<id>/capture.html`, `source.epub`, `transcript.txt`, `map.msgpack`.
+  straight to the passage. A block, not a run: a run is one text node, so a
+  phrase broken by `<em>` would span three of them and never match. Every
+  block is indexed — search never silently misses text that the reader view
+  hides. Item files live on the other root, under
+  `items/<user_id>/<item_id>/`: `original.html`, `sanitized.html`,
+  `source.epub`, `transcript.txt`, and `map.json`.
 - **Viewer** — three routes per item. The reader view is the annotation surface:
   it renders only readability-classified runs, projected from the original DOM
   rather than readability's cleaned HTML, and its elements carry transcript
