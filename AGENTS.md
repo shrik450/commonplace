@@ -85,8 +85,14 @@ your change pass.
    and the last run's `end` equals `transcript.length`.
 5. `round-trip` — projecting any content range and reading the highlighted text
    returns exactly `transcript.slice(start, end)`.
-6. `tenancy` — every table except the migration table has a `user_id` column.
-7. `no-positions-in-db` — no table has a column holding a DOM path.
+6. `tenancy` — every table has a `user_id` column, except `migrations`,
+   `users` (which is the tenant table, so `users.id` is the tenant id), the
+   tables SQLite owns under the `sqlite_` prefix, and the five shadow tables
+   of an FTS5 virtual table.
+7. `no-positions-in-db` — no column holds a position inside a document. The
+   checker holds the exact expected column set of every table, so any column
+   it does not know about fails, whatever the column is named. Transcript
+   offsets are not document positions; DOM paths belong only in the Map.
 8. `capture-csp` — the capture route sends `script-src 'none'` and its body
    contains no `<script`.
 9. `error-codes` — no `throw new Error(`. Throw `AppError` with a code.

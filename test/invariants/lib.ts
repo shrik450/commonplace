@@ -1,6 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, normalize, relative } from "node:path";
 
+import type { TableInfo } from "../../src/store/db";
+
 export type ImportEdge = { from: string; to: string; line: number };
 
 export type Violation = {
@@ -313,4 +315,129 @@ export async function listSources(
   }
   await walk(dir);
   return files.toSorted((a, b) => a.path.localeCompare(b.path));
+}
+
+export type SchemaViolation = {
+  table: string;
+  rule: string;
+  detail: string;
+};
+
+// The exact column set of every non-exempt table, taken from the version 1
+// schema in src/store/db.ts. Each value is sorted. Adding or dropping a
+// column is a schema change and must land here in the same change.
+export const EXPECTED_COLUMNS: Record<string, readonly string[]> = {
+  migrations: ["applied_at", "version"],
+  users: ["created_at", "email", "id", "subject"],
+  api_tokens: ["created_at", "id", "last_used_at", "name", "token_hash", "user_id"],
+  items: ["author", "created_at", "id", "ingested_at", "kind", "title", "url", "user_id"],
+  annotations: [
+    "created_at",
+    "end_offset",
+    "id",
+    "item_id",
+    "note",
+    "quote",
+    "start_offset",
+    "updated_at",
+    "user_id",
+  ],
+  fetch_requests: [
+    "attempts",
+    "created_at",
+    "error_code",
+    "id",
+    "item_id",
+    "lease_expires_at",
+    "source_path",
+    "state",
+    "url",
+    "user_id",
+  ],
+  items_fts: ["author", "item_id", "title", "transcript", "user_id"],
+};
+
+const SQLITE_PREFIX = "sqlite_";
+const FTS_SHADOW_SUFFIXES = ["_data", "_idx", "_content", "_docsize", "_config"];
+const TENANCY_EXEMPT = new Set(["migrations", "users"]);
+
+// An FTS5 virtual table's shadow tables are found from its `sql`, and the
+// exemption is the exact five names, not a prefix, so a later plain table
+// such as items_fts_notes still has to carry user_id.
+function ftsShadowNames(tables: TableInfo[]): Set<string> {
+  const shadows = new Set<string>();
+  for (const table of tables) {
+    if (!/using\s+fts5/i.test(table.sql)) continue;
+    for (const suffix of FTS_SHADOW_SUFFIXES) shadows.add(`${table.name}${suffix}`);
+  }
+  return shadows;
+}
+
+export function checkTenancy(tables: TableInfo[]): SchemaViolation[] {
+  const exempt = ftsShadowNames(tables);
+  const violations: SchemaViolation[] = [];
+  for (const table of tables) {
+    if (
+      table.name.startsWith(SQLITE_PREFIX) ||
+      TENANCY_EXEMPT.has(table.name) ||
+      exempt.has(table.name)
+    ) {
+      continue;
+    }
+    if (!table.columns.includes("user_id")) {
+      violations.push({
+        table: table.name,
+        rule: "tenancy",
+        detail: `"${table.name}" has no user_id column`,
+      });
+    }
+  }
+  return violations;
+}
+
+// A name break is a weak backstop for a table a later milestone adds. The
+// allowlist is the real rule, because a DOM path can hide behind any name.
+const POSITION_NAME_PATTERNS = [/_path$/, /xpath/, /selector/, /_dom/, /dom_/, /node/, /doc_index/];
+// The one name the allowlist admits: a filesystem path of a user-imported
+// file, never a position inside a document.
+const POSITION_NAME_ALLOWED = new Set(["source_path"]);
+
+export function checkNoPositionsInDb(tables: TableInfo[]): SchemaViolation[] {
+  const exempt = ftsShadowNames(tables);
+  const violations: SchemaViolation[] = [];
+  for (const table of tables) {
+    if (table.name.startsWith(SQLITE_PREFIX) || exempt.has(table.name)) continue;
+    const expected = EXPECTED_COLUMNS[table.name];
+    if (expected !== undefined) {
+      const actual = [...table.columns].toSorted();
+      const extra = actual.filter((column) => !expected.includes(column));
+      const missing = expected.filter((column) => !actual.includes(column));
+      if (extra.length > 0 || missing.length > 0) {
+        const parts: string[] = [];
+        if (extra.length > 0) {
+          parts.push(`has unexpected column(s) ${extra.join(", ")}`);
+        }
+        if (missing.length > 0) {
+          parts.push(`is missing column(s) ${missing.join(", ")}`);
+        }
+        violations.push({
+          table: table.name,
+          rule: "no-positions-in-db",
+          detail: `"${table.name}" ${parts.join(" and ")}`,
+        });
+      }
+      continue;
+    }
+    for (const column of table.columns) {
+      if (POSITION_NAME_ALLOWED.has(column)) continue;
+      if (POSITION_NAME_PATTERNS.some((pattern) => pattern.test(column))) {
+        violations.push({
+          table: table.name,
+          rule: "no-positions-in-db",
+          detail: `"${table.name}.${column}" looks like a position inside a document`,
+        });
+      }
+    }
+  }
+  return violations;
 }
