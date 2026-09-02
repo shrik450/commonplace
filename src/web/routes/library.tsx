@@ -5,7 +5,7 @@ import { listLibrary, searchLibrary } from "../../services/library";
 import { LibraryPage } from "../views/library";
 import { page } from "../views/layout";
 import { SearchPage } from "../views/search";
-import { authDeps, libraryDeps, toLogin, type WebDeps } from "./deps";
+import { authDeps, libraryDeps, preferredLocale, toLogin, type WebDeps } from "./deps";
 
 const PAGE_SIZE = 50;
 const SEARCH_LIMIT = 30;
@@ -23,7 +23,9 @@ export function libraryRoutes(deps: WebDeps) {
         principal.user.id,
         PAGE_SIZE,
       );
-      return page(<LibraryPage items={items} />);
+      return page(
+        <LibraryPage items={items} locale={preferredLocale(request)} />,
+      );
     })
     .get("/search", async ({ request }) => {
       const principal = await authenticate(request, authDeps(deps)).catch(

@@ -9,6 +9,7 @@ import {
   discover,
   startLogin,
 } from "../../services/auth";
+import { ErrorPage, page } from "../views/layout";
 import type { WebDeps } from "./deps";
 
 const CLEAR_SESSION_COOKIE = `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
@@ -40,7 +41,17 @@ export function authRoutes(deps: WebDeps) {
         return seeOther(redirectUrl, [setCookie]);
       } catch (error) {
         const code = error instanceof AppError ? error.code : "AUTH_REQUIRED";
-        return new Response(`login is unavailable: ${code}`, { status: 503 });
+        return page(
+          ErrorPage({
+            title: "Signing in is not available",
+            message:
+              "Commonplace could not reach the service that signs you in. Wait a minute, then try again. If it keeps failing, check the login settings.",
+            code,
+            href: "/login",
+            linkLabel: "Try signing in again",
+          }),
+          503,
+        );
       }
     })
     .get("/login/callback", async ({ request }) => {
@@ -56,10 +67,25 @@ export function authRoutes(deps: WebDeps) {
         return seeOther("/library", [setCookie, clearCookie]);
       } catch (error) {
         const code = error instanceof AppError ? error.code : "AUTH_REQUIRED";
-        return new Response(`the login failed: ${code}`, {
-          status: 401,
-          headers: { "set-cookie": CLEAR_LOGIN_COOKIE },
-        });
+        return new Response(
+          `<!DOCTYPE html>${String(
+            ErrorPage({
+              title: "That sign-in did not finish",
+              message:
+                "The sign-in took too long, or it started in another browser. Start again from the beginning.",
+              code,
+              href: "/login",
+              linkLabel: "Sign in again",
+            }),
+          )}`,
+          {
+            status: 401,
+            headers: {
+              "content-type": "text/html; charset=utf-8",
+              "set-cookie": CLEAR_LOGIN_COOKIE,
+            },
+          },
+        );
       }
     });
 }

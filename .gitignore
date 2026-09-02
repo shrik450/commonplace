@@ -12,3 +12,10 @@ plan/
 test/fixtures/real/
 
 public/app.css
+
+# The project skills are part of the repo, whatever a global ignore says.
+!.claude/
+!.claude/**
+
+# Rendered pages for a visual review. Rebuild them, do not commit them.
+preview/

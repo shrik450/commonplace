@@ -5,9 +5,9 @@ import { asItemId } from "../../contracts/ids";
 import type { ItemId } from "../../contracts/ids";
 import { authenticate } from "../../services/auth";
 import { captureFile, loadTranscript, readerPage } from "../../services/library";
-import { page } from "../views/layout";
+import { ErrorPage, page } from "../views/layout";
 import { ReaderPageView } from "../views/reader";
-import { authDeps, libraryDeps, toLogin, type WebDeps } from "./deps";
+import { authDeps, libraryDeps, preferredLocale, toLogin, type WebDeps } from "./deps";
 
 function readItemId(raw: string): ItemId | null {
   try {
@@ -18,11 +18,23 @@ function readItemId(raw: string): ItemId | null {
 }
 
 function notFound(): Response {
-  return new Response("no such item", { status: 404 });
+  return page(
+    <ErrorPage
+      title="We cannot find that page"
+      message="Nothing in your library has that address. Someone may have deleted it, or the link may be out of date."
+    />,
+    404,
+  );
 }
 
 function badRequest(): Response {
-  return new Response("that is not an item id", { status: 400 });
+  return page(
+    <ErrorPage
+      title="That address is not an item"
+      message="An item address ends in an identifier, and this one does not. Open your library and pick the page again."
+    />,
+    400,
+  );
 }
 
 function missing(error: unknown): boolean {
@@ -51,6 +63,7 @@ export function itemRoutes(deps: WebDeps) {
             item={view.item}
             html={view.html}
             annotations={view.annotations}
+            locale={preferredLocale(request)}
           />,
         );
       } catch (error) {

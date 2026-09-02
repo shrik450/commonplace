@@ -418,6 +418,46 @@ describe("the settings page mints the token", () => {
     }
   });
 
+  test("revoking asks first and changes nothing on its own", async () => {
+    const env = await freshEnv("token-revoke-confirm");
+    const app = buildApp({ db: env.db, config: env.config, now });
+    const { token } = createApiToken(env.db, ALICE, "old phone", now());
+
+    const asked = await app.handle(
+      new Request(`http://localhost/settings/tokens/${token.id}/revoke`, {
+        headers: { cookie: sessionCookie(ALICE) },
+      }),
+    );
+
+    expect(asked.status).toBe(200);
+    const question = await asked.text();
+    expect(question).toContain("old phone");
+    expect(question).toContain(`/settings/tokens/${token.id}/delete`);
+
+    // Asking is a GET, so it must leave the token alone.
+    const listed = await app.handle(
+      new Request("http://localhost/settings", {
+        headers: { cookie: sessionCookie(ALICE) },
+      }),
+    );
+    expect(await listed.text()).toContain("old phone");
+  });
+
+  test("one reader cannot be asked about another reader's token", async () => {
+    const env = await freshEnv("token-revoke-tenant");
+    const app = buildApp({ db: env.db, config: env.config, now });
+    const { token } = createApiToken(env.db, BOB, "bob token", now());
+
+    const asked = await app.handle(
+      new Request(`http://localhost/settings/tokens/${token.id}/revoke`, {
+        headers: { cookie: sessionCookie(ALICE) },
+      }),
+    );
+
+    expect(asked.status).toBe(400);
+    expect(await asked.text()).not.toContain("bob token");
+  });
+
   test("a token is revoked from the settings page", async () => {
     const env = await freshEnv("token-revoke");
     const app = buildApp({ db: env.db, config: env.config, now });

@@ -108,8 +108,17 @@ your change pass.
     `Bun.randomUUIDv7()` outside `src/contracts/clock.ts` and
     `src/contracts/ids.ts`. Build and read times through `clock.ts`, which
     exports `now`, `addMs`, `toIso`, `parseIso`, and `isBefore`.
+11. `ui-guidelines` — every rendered page passes the machine-checkable web
+    interface rules: one `h1` with no skipped levels, an accessible name on
+    every control, a visible `focus-visible` style and a `hover` style on
+    every link and button, `autocomplete` and a name on every field, an
+    ellipsis at the end of every placeholder, `aria-hidden` or a name on
+    every icon, `alt` and a size on every image, a `theme-color`, a viewport
+    that allows zoom, and curly quotes instead of straight ones. The checker
+    skips the subtree marked `data-cp-projected`, because a captured page's
+    markup is not ours to fix.
 
-All ten exist today, and two more ride alongside them: `route-guard`, which
+All eleven exist today, and two more ride alongside them: `route-guard`, which
 makes every route call `authenticate` or appear on the unguarded list, and
 `branded-ids`, which makes every id parameter and field carry its brand. Never
 write an invariant test that passes because it checks nothing.
@@ -156,6 +165,24 @@ guarantee is only as good as the argument order.
 `as*` is the only way to turn an untrusted string into an id. Call it once, at
 the boundary where a request parameter or a database row arrives, and pass the
 branded value inward from there.
+
+## Changes to the UI
+
+Read `.claude/skills/web-design-guidelines/SKILL.md` before you touch anything
+under `src/web/`. It is the gate for user interface work, and it has two
+halves.
+
+The machine half is the `ui-guidelines` invariant, which `bun run verify`
+runs. Interactive state lives in the `class` attribute as Tailwind utilities,
+never in a CSS component class, because that is what the checker reads. Use
+the shared `LINK`, `ACTION`, `SUBMIT`, and `FIELD` constants from
+`src/web/views/layout.tsx` rather than writing a new class string.
+
+The human half is a read against
+`.claude/skills/web-design-guidelines/references/web-interface-guidelines.md`,
+the vendored copy of the Vercel Web Interface Guidelines. A machine
+cannot see layout, contrast, or whether a sentence makes sense. Where those
+rules disagree with `docs/design.md`, `docs/design.md` wins.
 
 ## Rules for changes
 

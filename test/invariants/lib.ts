@@ -710,3 +710,193 @@ export function checkCaptureCsp(
   }
   return violations;
 }
+
+// Invariant 11: the UI rules a machine can check. The checker reads rendered
+// pages, not source, because the question is what a browser receives. The
+// full rules live in `.claude/skills/web-design-guidelines/`; this covers the
+// part that does not need a human eye.
+export type UiViolation = {
+  page: string;
+  rule: string;
+  detail: string;
+};
+
+// A captured page's own markup is not ours to fix, so the checker skips the
+// subtree the projection writes into. Everything outside it is app chrome.
+export const PROJECTED_ATTRIBUTE = "data-cp-projected";
+
+const INTERACTIVE = "a[href], button, input, select, textarea";
+const FOCUS_CLASS = /(^|[\s:])focus-visible:/;
+const HOVER_CLASS = /(^|[\s:])hover:/;
+
+function isProjected(node: Element): boolean {
+  return node.closest(`[${PROJECTED_ATTRIBUTE}]`) !== null;
+}
+
+function accessibleName(el: Element, doc: Document): string {
+  const aria = el.getAttribute("aria-label") ?? "";
+  if (aria.trim() !== "") return aria.trim();
+  const labelledBy = el.getAttribute("aria-labelledby");
+  if (labelledBy !== null) {
+    const target = doc.getElementById(labelledBy);
+    if (target !== null && target.textContent!.trim() !== "") {
+      return target.textContent!.trim();
+    }
+  }
+  const title = el.getAttribute("title") ?? "";
+  if (title.trim() !== "") return title.trim();
+  const id = el.getAttribute("id");
+  if (id !== null) {
+    const label = doc.querySelector(`label[for="${id}"]`);
+    if (label !== null && label.textContent!.trim() !== "") {
+      return label.textContent!.trim();
+    }
+  }
+  if (el.closest("label") !== null) {
+    const text = el.closest("label")!.textContent ?? "";
+    if (text.trim() !== "") return text.trim();
+  }
+  const value = el.getAttribute("value") ?? "";
+  if (el.tagName === "INPUT" && value.trim() !== "") return value.trim();
+  return (el.textContent ?? "").trim();
+}
+
+function checkHead(doc: Document, page: string): UiViolation[] {
+  const out: UiViolation[] = [];
+  const push = (rule: string, detail: string) => out.push({ page, rule, detail });
+
+  const lang = doc.documentElement.getAttribute("lang") ?? "";
+  if (lang.trim() === "") push("html-lang", "<html> has no lang attribute");
+
+  const viewport = doc.querySelector('meta[name="viewport"]');
+  if (viewport === null) {
+    push("viewport", "no <meta name=\"viewport\">");
+  } else {
+    const content = viewport.getAttribute("content") ?? "";
+    if (/user-scalable\s*=\s*no|maximum-scale\s*=\s*1\b/.test(content)) {
+      push("viewport", `the viewport disables zoom: ${content}`);
+    }
+  }
+
+  if (doc.querySelector('meta[name="theme-color"]') === null) {
+    push("theme-color", "no <meta name=\"theme-color\"> for the browser chrome");
+  }
+
+  const levels = [...doc.querySelectorAll("h1, h2, h3, h4, h5, h6")]
+    .filter((h) => !isProjected(h))
+    .map((h) => Number(h.tagName.slice(1)));
+  const firstLevels = levels.filter((level) => level === 1);
+  if (firstLevels.length !== 1) {
+    push("headings", `expected exactly one <h1>, found ${firstLevels.length}`);
+  }
+  for (let i = 1; i < levels.length; i += 1) {
+    if (levels[i]! > levels[i - 1]! + 1) {
+      push("headings", `heading level jumps from h${levels[i - 1]} to h${levels[i]}`);
+    }
+  }
+  return out;
+}
+
+function checkControls(doc: Document, page: string): UiViolation[] {
+  const out: UiViolation[] = [];
+  const push = (rule: string, detail: string) => out.push({ page, rule, detail });
+
+  for (const el of doc.querySelectorAll(INTERACTIVE)) {
+    if (isProjected(el)) continue;
+    const tag = el.tagName.toLowerCase();
+    const type = (el.getAttribute("type") ?? "").toLowerCase();
+    if (tag === "input" && type === "hidden") continue;
+
+    const where = `<${tag}${type === "" ? "" : ` type=${type}`}>`;
+    if (accessibleName(el, doc) === "") {
+      push("control-name", `${where} has no accessible name`);
+    }
+
+    const classes = el.getAttribute("class") ?? "";
+    if (/(^|\s)outline-none(\s|$)/.test(classes) && !FOCUS_CLASS.test(classes)) {
+      push("focus-state", `${where} removes the outline and puts nothing back`);
+    }
+    if (!FOCUS_CLASS.test(classes)) {
+      push("focus-state", `${where} has no focus-visible style`);
+    }
+    if ((tag === "a" || tag === "button") && !HOVER_CLASS.test(classes)) {
+      push("hover-state", `${where} has no hover style`);
+    }
+    if (/(^|\s)transition-all(\s|$)/.test(classes)) {
+      push("transition", `${where} uses transition-all; name the properties`);
+    }
+
+    if (tag === "input" || tag === "select" || tag === "textarea") {
+      if ((el.getAttribute("name") ?? "").trim() === "") {
+        push("form-name", `${where} has no name`);
+      }
+      if (el.getAttribute("autocomplete") === null) {
+        push("autocomplete", `${where} has no autocomplete`);
+      }
+      const placeholder = el.getAttribute("placeholder");
+      if (placeholder !== null && !placeholder.endsWith("…")) {
+        push("placeholder", `the placeholder "${placeholder}" does not end with an ellipsis`);
+      }
+    }
+  }
+  return out;
+}
+
+function checkMedia(doc: Document, page: string): UiViolation[] {
+  const out: UiViolation[] = [];
+  const push = (rule: string, detail: string) => out.push({ page, rule, detail });
+
+  for (const svg of doc.querySelectorAll("svg")) {
+    if (isProjected(svg)) continue;
+    const hidden = svg.getAttribute("aria-hidden") === "true";
+    const named = accessibleName(svg, doc) !== "" || svg.querySelector("title") !== null;
+    if (!hidden && !named) {
+      push("svg-role", "an <svg> is neither aria-hidden nor named");
+    }
+  }
+  for (const img of doc.querySelectorAll("img")) {
+    if (isProjected(img)) continue;
+    const src = img.getAttribute("src") ?? "";
+    if (img.getAttribute("alt") === null) {
+      push("img-alt", `<img src="${src}"> has no alt`);
+    }
+    if (img.getAttribute("width") === null || img.getAttribute("height") === null) {
+      push("img-size", `<img src="${src}"> has no explicit width and height`);
+    }
+  }
+  return out;
+}
+
+function checkTypography(doc: Document, page: string): UiViolation[] {
+  const out: UiViolation[] = [];
+  const walker = doc.createTreeWalker(doc.body, 4 /* NodeFilter.SHOW_TEXT */);
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    const parent = node.parentElement;
+    if (parent === null || isProjected(parent)) continue;
+    if (parent.closest("script, style, pre, code") !== null) continue;
+    const text = node.nodeValue ?? "";
+    if (text.includes("...")) {
+      out.push({ page, rule: "typography", detail: `"..." should be an ellipsis in: ${text.trim()}` });
+    }
+    if (text.includes('"')) {
+      out.push({ page, rule: "typography", detail: `straight quotes should be curly in: ${text.trim()}` });
+    }
+  }
+  return out;
+}
+
+export function checkUiGuidelines(
+  pages: { page: string; html: string }[],
+): UiViolation[] {
+  const violations: UiViolation[] = [];
+  for (const { page, html } of pages) {
+    const doc = new JSDOM(html).window.document;
+    violations.push(
+      ...checkHead(doc, page),
+      ...checkControls(doc, page),
+      ...checkMedia(doc, page),
+      ...checkTypography(doc, page),
+    );
+  }
+  return violations;
+}

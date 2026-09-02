@@ -5,6 +5,7 @@ import { AppError } from "../../contracts/errors";
 import { newRequestId } from "../../contracts/ids";
 import { authenticate } from "../../services/auth";
 import { enqueueFetch } from "../../store/queue";
+import { ErrorPage, page } from "../views/layout";
 import { authDeps, toLogin, type WebDeps } from "./deps";
 
 // Two callers reach this route: the library form and an iOS Shortcut. The
@@ -61,10 +62,23 @@ export function itemSaveRoutes(deps: WebDeps) {
         `"${url ?? ""}" is not an http or https URL`,
         { url: url ?? "" },
       );
-      return new Response(JSON.stringify({ error: error.code }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
+      // A Shortcut reads JSON. A reader who mistyped a link deserves a page
+      // that says what to type instead.
+      if (principal.via === "token") {
+        return new Response(JSON.stringify({ error: error.code }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return page(
+        ErrorPage({
+          title: "That is not a link Commonplace can save",
+          message:
+            "Paste a whole web address that starts with http:// or https://, such as https://example.com/an-essay.",
+          code: error.code,
+        }),
+        400,
+      );
     }
 
     // Enqueue and return. A capture takes tens of seconds, and the worker

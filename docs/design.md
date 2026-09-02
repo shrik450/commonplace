@@ -57,8 +57,10 @@ Rules for colour:
   annotation marks, so a mark never pushes the text sideways.
 - The library is a dense list, one row per item: title, then host and date in
   muted text. No cards, no thumbnails, no grid.
-- The top bar is slim and sticky. It holds the app name, the search field, and
-  the theme toggle, and nothing else.
+- The top bar is slim and sticky. It holds the app name, the search field, the
+  links to settings and to sign out, and the theme toggle. Nothing else goes
+  there.
+- A skip link sits before the top bar. It is invisible until it takes focus.
 - Separate sections with one hairline rule. Do not box them.
 
 ## Components
@@ -70,6 +72,36 @@ Rules for colour:
   colour, and link straight to the transcript range in the reader.
 - Icons are inline lucide SVGs at 16 or 20 pixels, and they always sit beside
   a label. An icon alone is never a control.
+- A destructive action asks first, on its own page. The link that leads there
+  ends in an ellipsis, the way a menu item that opens a dialog does. The
+  question page names the thing, says what breaks and what survives, and puts
+  the way out beside the way through.
+- Every control shows three states beyond rest: hover, active, and focus.
+  Hover and active change colour only. Focus draws a 2 pixel accent outline,
+  offset by 2 pixels, and only for the keyboard, through `:focus-visible`.
+  Never remove an outline without drawing one back.
+- `src/web/views/layout.tsx` exports the four class strings that carry these
+  states: `LINK` for a quiet link, `ACTION` for a normal action, `SUBMIT` for
+  the one primary action on a page, and `FIELD` for a text input. Use them.
+  They stay in the `class` attribute so the `ui-guidelines` invariant can read
+  them.
+
+## Words
+
+- Write to one reader, in the second person. "Your library", not "the user's
+  library".
+- Say what went wrong and what to do next. An error that names only the
+  problem is unfinished.
+- Name the action in the button: "Save page", not "Save"; "Create token", not
+  "Create".
+- Use sentence case for every heading and every button. This is the one place
+  the Web Interface Guidelines lose; they ask for Title Case.
+- Use an ellipsis character, curly quotes, and a real middle dot. Never `...`
+  or a straight quote.
+- Format every date with `Intl`, in the reader's own locale. `preferredLocale`
+  in `src/web/routes/deps.ts` reads it from the `Accept-Language` header, and
+  the route passes it to the view. Wrap the result in `<time datetime>`.
+- End every placeholder with an ellipsis, and show the shape of the answer.
 
 ## What to avoid
 

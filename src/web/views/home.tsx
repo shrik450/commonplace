@@ -1,17 +1,20 @@
-import { Layout } from "./layout";
+import { ACTION, Layout } from "./layout";
 
 export function HomePage() {
   return (
     <Layout title="Commonplace">
-      <h1 class="font-reading text-4xl leading-tight">Commonplace</h1>
-      <p class="text-secondary mt-4 max-w-prose text-sm">
-        One transcript per item, many views. Every page you save becomes an
-        ordered stream of characters, and search, highlights, and the reader
-        view are all projections through it.
+      <h1 class="font-reading text-4xl leading-tight text-pretty">
+        Keep what you read.
+      </h1>
+      <p class="mt-5 max-w-prose text-base leading-relaxed">
+        Save a page and Commonplace keeps the whole article, not just the link.
+        Read it in a clean column, search every word of it, and highlight the
+        parts you want back later. It stays yours after the original moves or
+        disappears.
       </p>
-      <p class="mt-8">
-        <a class="text-primary text-sm underline underline-offset-4" href="/library">
-          Open the library
+      <p class="mt-10">
+        <a class={`text-sm ${ACTION}`} href="/library">
+          Go to your library
         </a>
       </p>
     </Layout>

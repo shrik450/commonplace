@@ -1,6 +1,6 @@
 import { parseIso } from "../../contracts/clock";
 import type { Item } from "../../contracts/item";
-import { Layout } from "./layout";
+import { FIELD, Layout, PageHeading, SUBMIT } from "./layout";
 
 export function hostOf(url: string | null): string | null {
   if (url === null) return null;
@@ -11,36 +11,47 @@ export function hostOf(url: string | null): string | null {
   }
 }
 
-export function readableDate(iso: string): string {
-  return parseIso(iso).toLocaleDateString("en-GB", {
+export function readableDate(iso: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
     day: "numeric",
     month: "short",
     year: "numeric",
-  });
+  }).format(parseIso(iso));
 }
 
-function Row({ item }: { item: Item }) {
+function Row({ item, locale }: { item: Item; locale: string }) {
   const host = hostOf(item.url);
   return (
-    <li class="cp-rule py-4">
-      <a href={`/items/${item.id}`} class="block hover:text-primary">
-        <span class="font-reading text-lg">{item.title}</span>
+    <li class="cp-rule py-5">
+      <a
+        href={`/items/${item.id}`}
+        class="hover:text-primary focus-visible:outline-primary block rounded-xs transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2"
+      >
+        <span class="font-reading block text-lg text-pretty break-words">
+          {item.title}
+        </span>
+        <span class="text-secondary mt-1.5 block text-xs break-words">
+          {[host, item.author].filter((part) => part !== null && part !== "").join(" · ")}
+          {host === null && item.author === null ? "" : " · "}
+          <time datetime={item.created_at}>
+            {readableDate(item.created_at, locale)}
+          </time>
+        </span>
       </a>
-      <p class="text-secondary mt-1 text-xs">
-        {[host, item.author, readableDate(item.created_at)]
-          .filter((part) => part !== null && part !== "")
-          .join(" · ")}
-      </p>
     </li>
   );
 }
 
-export function LibraryPage({ items }: { items: Item[] }) {
+export function LibraryPage({
+  items,
+  locale,
+}: {
+  items: Item[];
+  locale: string;
+}) {
   return (
     <Layout title="Library">
-      <h1 class="text-secondary mb-2 text-xs tracking-widest uppercase">
-        Library
-      </h1>
+      <PageHeading>Your library</PageHeading>
       <form
         action="/items"
         method="post"
@@ -50,20 +61,24 @@ export function LibraryPage({ items }: { items: Item[] }) {
           type="url"
           name="url"
           required
-          placeholder="Paste a link to save"
-          class="flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-secondary"
+          aria-label="Address of the page to save"
+          autocomplete="url"
+          spellcheck="false"
+          placeholder="Paste a link, like https://example.com/an-essay…"
+          class={`min-w-0 flex-1 ${FIELD}`}
         />
-        <button type="submit" class="text-primary text-sm">
-          Save
+        <button type="submit" class={SUBMIT}>
+          Save page
         </button>
       </form>
       {items.length === 0 ? (
-        <p class="text-secondary py-8 text-sm">
-          Nothing saved yet. Paste a link above to save your first page.
+        <p class="text-secondary max-w-prose py-8 text-sm">
+          Your library is empty. Paste a link above and Commonplace saves the
+          whole page, ready to read and search.
         </p>
       ) : (
-        <ul class="cp-rule border-t-0">{items.map((item) => (
-          <Row item={item} />
+        <ul>{items.map((item) => (
+          <Row item={item} locale={locale} />
         ))}</ul>
       )}
     </Layout>

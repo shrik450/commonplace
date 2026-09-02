@@ -145,3 +145,26 @@ body {
   color: var(--color-primary);
   font-weight: 600;
 }
+
+/* A tap never waits for a second tap that would zoom. */
+body {
+  touch-action: manipulation;
+}
+
+/* A search hit links to a block. The sticky top bar must not land on top of
+   the block it just scrolled to. */
+.cp-block {
+  scroll-margin-top: 5rem;
+}
+
+/* A colour change is the only motion here, and even that stops for a reader
+   who asked for less. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

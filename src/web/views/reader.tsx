@@ -1,46 +1,65 @@
 import type { Annotation, Item } from "../../contracts/item";
 import { raw } from "./jsx-runtime";
 import { hostOf, readableDate } from "./library";
-import { Layout } from "./layout";
+import { LINK, Layout } from "./layout";
 
 export type ReaderProps = {
   item: Item;
   html: string;
   annotations: Annotation[];
+  locale: string;
 };
 
-export function ReaderPageView({ item, html, annotations }: ReaderProps) {
+function noteCount(total: number): string {
+  if (total === 0) return "No highlights yet";
+  if (total === 1) return "1 highlight";
+  return `${total} highlights`;
+}
+
+export function ReaderPageView({
+  item,
+  html,
+  annotations,
+  locale,
+}: ReaderProps) {
   const host = hostOf(item.url);
   return (
     <Layout title={item.title}>
       <article class="mx-auto max-w-[72ch] pl-6">
         <header class="cp-rule pb-6">
-          <h1 class="font-reading text-3xl leading-tight">{item.title}</h1>
-          <p class="text-secondary mt-2 text-xs">
-            {[item.author, host, readableDate(item.created_at)]
-              .filter((part) => part !== null && part !== "")
-              .join(" · ")}
+          <h1 class="font-reading text-3xl leading-tight text-pretty">
+            {item.title}
+          </h1>
+          <p class="text-secondary mt-3 text-xs break-words">
+            {[item.author, host].filter((part) => part !== null && part !== "").join(" · ")}
+            {item.author === null && host === null ? "" : " · "}
+            <time datetime={item.created_at}>
+              {readableDate(item.created_at, locale)}
+            </time>
           </p>
-          <nav class="text-secondary mt-4 flex gap-4 text-xs">
-            <a class="hover:text-primary" href={`/items/${item.id}/raw`}>
-              Transcript
+          <nav
+            aria-label="Other views of this page"
+            class="text-secondary mt-4 flex flex-wrap gap-4 text-xs"
+          >
+            <a class={LINK} href={`/items/${item.id}/raw`}>
+              Plain text
             </a>
-            <a class="hover:text-primary" href={`/items/${item.id}/capture`}>
-              Capture
+            <a class={LINK} href={`/items/${item.id}/capture`}>
+              Saved copy
             </a>
             {item.url === null ? null : (
-              <a class="hover:text-primary" href={item.url} rel="noreferrer">
-                Original
+              <a class={LINK} href={item.url} rel="noreferrer">
+                Original page
               </a>
             )}
-            <span>
-              {annotations.length === 1
-                ? "1 note"
-                : `${annotations.length} notes`}
-            </span>
+            <span>{noteCount(annotations.length)}</span>
           </nav>
         </header>
-        <div class="mt-8">{raw(html)}</div>
+        {/* Someone else's markup. The UI gate skips this subtree, because we
+            cannot fix a link or an image inside a page we only archived. */}
+        <div class="mt-8" data-cp-projected>
+          {raw(html)}
+        </div>
       </article>
     </Layout>
   );

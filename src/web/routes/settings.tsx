@@ -3,13 +3,28 @@ import { Elysia } from "elysia";
 import { AppError } from "../../contracts/errors";
 import { asTokenId } from "../../contracts/ids";
 import { authenticate, createApiToken, revokeApiToken } from "../../services/auth";
+import type { ApiToken } from "../../contracts/item";
 import { listApiTokens } from "../../store/users";
-import { page } from "../views/layout";
-import { NewTokenPage, SettingsPage } from "../views/settings";
-import { authDeps, toLogin, type WebDeps } from "./deps";
+import { ErrorPage, page } from "../views/layout";
+import { NewTokenPage, RevokeTokenPage, SettingsPage } from "../views/settings";
+import { authDeps, preferredLocale, toLogin, type WebDeps } from "./deps";
+
+const MESSAGES: Record<string, string> = {
+  VIEW_MISSING_FIELD: "Give the token a name first, so you can tell it apart from the others later.",
+  STORE_NOT_FOUND: "That token is already gone. Nothing else changed.",
+};
 
 function badRequest(error: AppError): Response {
-  return new Response(error.code, { status: 400 });
+  return page(
+    <ErrorPage
+      title="That did not work"
+      message={MESSAGES[error.code] ?? "Commonplace could not do that. Go back to settings and try again."}
+      code={error.code}
+      href="/settings"
+      linkLabel="Back to settings"
+    />,
+    400,
+  );
 }
 
 export function settingsRoutes(deps: WebDeps) {
@@ -21,7 +36,36 @@ export function settingsRoutes(deps: WebDeps) {
       if (principal === null) return toLogin();
 
       const tokens = listApiTokens(deps.db, principal.user.id);
-      return page(<SettingsPage tokens={tokens} />);
+      return page(
+        <SettingsPage tokens={tokens} locale={preferredLocale(request)} />,
+      );
+    })
+    // Revoking cannot be undone, so the button on the settings page links
+    // here and the POST below only runs after this page asks.
+    .get("/settings/tokens/:id/revoke", async ({ request, params }) => {
+      const principal = await authenticate(request, authDeps(deps)).catch(
+        () => null,
+      );
+      if (principal === null) return toLogin();
+
+      let token: ApiToken | undefined;
+      try {
+        const tokenId = asTokenId(params.id);
+        token = listApiTokens(deps.db, principal.user.id).find(
+          (candidate) => candidate.id === tokenId,
+        );
+      } catch (error) {
+        if (error instanceof AppError) return badRequest(error);
+        throw error;
+      }
+      if (token === undefined) {
+        return badRequest(
+          new AppError("STORE_NOT_FOUND", "no such token", { id: params.id }),
+        );
+      }
+      return page(
+        <RevokeTokenPage token={token} locale={preferredLocale(request)} />,
+      );
     })
     .post("/settings/tokens", async ({ request }) => {
       const principal = await authenticate(request, authDeps(deps)).catch(
