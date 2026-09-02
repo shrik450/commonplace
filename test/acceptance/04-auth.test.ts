@@ -79,6 +79,7 @@ const CONFIG: Config = parseConfig(
   [
     'db_root = "/tmp/commonplace-auth/db"',
     'items_root = "/tmp/commonplace-auth/items"',
+    'base_url = "https://reader.example.com"',
     `issuer_url = "${ISSUER}"`,
     'client_id = "commonplace-test"',
     'client_secret = "test-client-secret"',

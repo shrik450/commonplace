@@ -41,9 +41,25 @@ export function LibraryPage({ items }: { items: Item[] }) {
       <h1 class="text-secondary mb-2 text-xs tracking-widest uppercase">
         Library
       </h1>
+      <form
+        action="/items"
+        method="post"
+        class="cp-rule flex items-center gap-3 py-3"
+      >
+        <input
+          type="url"
+          name="url"
+          required
+          placeholder="Paste a link to save"
+          class="flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-secondary"
+        />
+        <button type="submit" class="text-primary text-sm">
+          Save
+        </button>
+      </form>
       {items.length === 0 ? (
         <p class="text-secondary py-8 text-sm">
-          Nothing saved yet. Queue a page with <code>bun run cp ingest</code>.
+          Nothing saved yet. Paste a link above to save your first page.
         </p>
       ) : (
         <ul class="cp-rule border-t-0">{items.map((item) => (

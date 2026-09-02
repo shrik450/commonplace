@@ -1,5 +1,6 @@
 import { Elysia } from "elysia";
 
+import type { Config } from "../../contracts/config";
 import { AppError } from "../../contracts/errors";
 import {
   CLEAR_LOGIN_COOKIE,
@@ -12,8 +13,11 @@ import type { WebDeps } from "./deps";
 
 const CLEAR_SESSION_COOKIE = `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 
-function redirectUriFor(request: Request): string {
-  return new URL("/login/callback", request.url).toString();
+// The callback URL comes from the config, never from the Host header. An OIDC
+// redirect_uri must match the value registered with the issuer byte for byte,
+// and a header a caller controls cannot be trusted to produce it.
+export function loginRedirectUri(config: Config): string {
+  return `${config.base_url}/login/callback`;
 }
 
 function seeOther(location: string, cookies: string[] = []): Response {
@@ -24,13 +28,13 @@ function seeOther(location: string, cookies: string[] = []): Response {
 
 export function authRoutes(deps: WebDeps) {
   return new Elysia()
-    .get("/login", async ({ request }) => {
+    .get("/login", async () => {
       try {
         const endpoints = await discover(deps.config);
         const { redirectUrl, setCookie } = startLogin(
           deps.config,
           endpoints,
-          redirectUriFor(request),
+          loginRedirectUri(deps.config),
           deps.now(),
         );
         return seeOther(redirectUrl, [setCookie]);
@@ -46,7 +50,7 @@ export function authRoutes(deps: WebDeps) {
           db: deps.db,
           url: new URL(request.url),
           cookieHeader: request.headers.get("cookie"),
-          redirectUri: redirectUriFor(request),
+          redirectUri: loginRedirectUri(deps.config),
           now: deps.now(),
         });
         return seeOther("/library", [setCookie, clearCookie]);

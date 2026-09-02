@@ -74,6 +74,9 @@ export function Layout({ title, query, children }: LayoutProps) {
                 class="w-full bg-transparent py-1 text-sm outline-none placeholder:text-secondary"
               />
             </form>
+            <a href="/settings" class="text-secondary hover:text-primary text-sm">
+              Settings
+            </a>
             <button
               type="button"
               data-cp-theme-toggle

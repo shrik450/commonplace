@@ -23,7 +23,7 @@ async function configFor(root: string): Promise<string> {
   const path = join(root, "config.toml");
   await writeFile(
     path,
-    `db_root = "${dbRoot}"\nitems_root = "${itemsRoot}"\nissuer_url = "https://accounts.example.com"\nclient_id = "cli"\nclient_secret = "secret"\nsession_secret = "${"x".repeat(32)}"\n`,
+    `db_root = "${dbRoot}"\nitems_root = "${itemsRoot}"\nbase_url = "https://reader.example.com"\nissuer_url = "https://accounts.example.com"\nclient_id = "cli"\nclient_secret = "secret"\nsession_secret = "${"x".repeat(32)}"\n`,
   );
   return path;
 }

@@ -118,13 +118,52 @@ export async function runWorker(deps: WorkerDeps, stop: AbortSignal): Promise<vo
       // Sweep again every fiftieth idle turn, so a long-running process
       // still collects orphans left by a crashed sibling.
       if (idleTurns % 50 === 0) await sweep(deps);
-      await sleep(IDLE_POLL_MS);
+      await sleep(IDLE_POLL_MS, stop);
     }
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// Sleeps, but wakes early when the stop signal fires, so a shutdown never
+// waits out a full idle poll.
+function sleep(ms: number, stop: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(finish, ms);
+    function finish(): void {
+      clearTimeout(timer);
+      stop.removeEventListener("abort", finish);
+      resolve();
+    }
+    stop.addEventListener("abort", finish, { once: true });
+  });
+}
+
+export type Worker = {
+  stop: () => Promise<void>;
+  running: () => boolean;
+};
+
+// Runs the loop inside the caller's process and hands back the two controls a
+// host needs: ask it to leave, and read whether it has. `stop` resolves only
+// after the loop returns, so a shutdown never cuts a capture in half.
+export function startWorker(deps: WorkerDeps): Worker {
+  const controller = new AbortController();
+  let alive = true;
+
+  const finished = runWorker(deps, controller.signal)
+    .catch((error: unknown) => {
+      console.error(toLogLine("error", error));
+    })
+    .finally(() => {
+      alive = false;
+    });
+
+  return {
+    stop: async () => {
+      controller.abort();
+      await finished;
+    },
+    running: () => alive,
+  };
 }
 
 if (import.meta.main) {

@@ -211,7 +211,9 @@ vault frontmatter) get baked at implementation.
   tests. The app never guesses where it lives: config carries `browser_path`,
   and development falls back to `chromium.executablePath()`.
 - **Config** — TOML at `~/.config/commonplace`: `db_root`, `items_root`,
-  `issuer_url`, `client_id`, `client_secret`, `session_secret`.
+  `base_url`, `issuer_url`, `client_id`, `client_secret`, `session_secret`.
+  `base_url` is the public origin, with no trailing slash. The login redirect
+  comes from it, never from the `Host` header a caller controls.
 - **Backups** — `VACUUM INTO` snapshot plus the item dirs. Nothing else.
 - **Layering** — five layers, imports pointing one way only: contracts, core,
   store, services, then web and cli. The whole domain lives in `core` as pure

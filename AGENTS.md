@@ -64,6 +64,8 @@ raise it rather than inventing one.
 | `bun run cp doctor` | Check config, roots, browser path, and database health. |
 | `bun run serve` | Run the web app. Reads the config; `PORT` overrides 3000. |
 | `bun run css` | Build `public/app.css`. Add `:watch` for development. |
+| `docker build -t commonplace .` | Build the image. Pins Bun and installs Chromium. |
+| `docker run` | Run it. Mount the config at `/home/bun/.config/commonplace/config.toml`, mount `/data/db` and `/data/items`, publish 3000. |
 
 `bun run verify` is the definition of done. Nothing else counts.
 

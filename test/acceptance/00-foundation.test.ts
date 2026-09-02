@@ -9,6 +9,7 @@
 //
 //      db_root = "/tmp/commonplace-test/db"
 //      items_root = "/tmp/commonplace-test/items"
+//      base_url = "https://reader.example.com"
 //      issuer_url = "https://issuer.example.com"
 //      client_id = "commonplace-test"
 //      client_secret = "test-client-secret"
@@ -52,6 +53,7 @@ const validConfigPath = join(fixtureDir, "valid.toml");
 const validConfigText = `
 db_root = "/tmp/commonplace-test/db"
 items_root = "/tmp/commonplace-test/items"
+base_url = "https://reader.example.com"
 issuer_url = "https://issuer.example.com"
 client_id = "commonplace-test"
 client_secret = "test-client-secret"
@@ -349,6 +351,7 @@ describe("src/contracts/config parseConfig", () => {
     expect(parseConfig(validConfigText)).toEqual({
       db_root: "/tmp/commonplace-test/db",
       items_root: "/tmp/commonplace-test/items",
+      base_url: "https://reader.example.com",
       issuer_url: "https://issuer.example.com",
       client_id: "commonplace-test",
       client_secret: "test-client-secret",
@@ -372,6 +375,7 @@ describe("src/contracts/config parseConfig", () => {
   const requiredKeys = [
     "db_root",
     "items_root",
+    "base_url",
     "issuer_url",
     "client_id",
     "client_secret",

@@ -108,6 +108,7 @@ function makeUser(id: UserId, subject: string): User {
 const CONFIG: Config = {
   db_root: "/unused",
   items_root: "/unused",
+  base_url: "https://reader.example.com",
   issuer_url: "https://id.example.com",
   client_id: "commonplace",
   client_secret: "secret",

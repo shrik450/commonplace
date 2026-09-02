@@ -1,5 +1,6 @@
 db_root = "/tmp/commonplace-test/db"
 items_root = "/tmp/commonplace-test/items"
+base_url = "https://reader.example.com"
 issuer_url = "https://issuer.example.com"
 client_id = "commonplace-test"
 client_secret = "test-client-secret"

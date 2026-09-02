@@ -3,6 +3,7 @@ import { AppError } from "./errors";
 export type Config = {
   db_root: string;
   items_root: string;
+  base_url: string;
   issuer_url: string;
   client_id: string;
   client_secret: string;
@@ -13,6 +14,7 @@ export type Config = {
 const REQUIRED_KEYS = [
   "db_root",
   "items_root",
+  "base_url",
   "issuer_url",
   "client_id",
   "client_secret",
@@ -57,6 +59,34 @@ export function parseConfig(text: string): Config {
         { key },
       );
     }
+  }
+
+  const baseUrl = config.base_url as string;
+  let base: URL;
+  try {
+    base = new URL(baseUrl);
+  } catch {
+    throw new AppError(
+      "CONFIG_INVALID_VALUE",
+      `"base_url" is not an absolute URL, got "${baseUrl}"`,
+      { key: "base_url" },
+    );
+  }
+  if (base.protocol !== "http:" && base.protocol !== "https:") {
+    throw new AppError(
+      "CONFIG_INVALID_VALUE",
+      `"base_url" must use the http: or https: scheme, got "${baseUrl}"`,
+      { key: "base_url" },
+    );
+  }
+  // A trailing slash turns every joined path into a double slash, and an
+  // OIDC redirect_uri must match the registered value byte for byte.
+  if (baseUrl.endsWith("/")) {
+    throw new AppError(
+      "CONFIG_INVALID_VALUE",
+      `"base_url" must not end with a slash, got "${baseUrl}"`,
+      { key: "base_url" },
+    );
   }
 
   const issuerUrl = config.issuer_url as string;
