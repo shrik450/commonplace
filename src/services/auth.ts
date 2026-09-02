@@ -33,12 +33,11 @@ function attributes(maxAgeSeconds: number): string {
   return `Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}`;
 }
 
-// Max-Age=0 is the browser's "delete this cookie" instruction.
+// A zero `Max-Age` instructs the browser to delete the cookie.
 const CLEAR_COOKIE_MAX_AGE_SECONDS = 0;
 
-// The callback route must send this cookie on both paths, success and
-// failure, so a failed login never leaves cp_login alive for a second
-// state try.
+// Clear the login cookie after every callback so an expired attempt can't be
+// reused.
 export const CLEAR_LOGIN_COOKIE = `${LOGIN_COOKIE}=; ${attributes(CLEAR_COOKIE_MAX_AGE_SECONDS)}`;
 
 function requiredDiscoveryField(
@@ -80,7 +79,7 @@ export function verifyPayload(
 
   const expected = createHmac("sha256", secret).update(body).digest();
   const given = Buffer.from(signature, "base64url");
-  // timingSafeEqual throws on a length mismatch, so check that first.
+  // `timingSafeEqual` throws when the buffers have different lengths.
   if (given.length !== expected.length) return null;
   if (!timingSafeEqual(given, expected)) return null;
 
@@ -114,12 +113,18 @@ export async function discover(
   try {
     const response = await fetchImpl(url);
     if (!response.ok) {
-      throw new AppError("AUTH_DISCOVERY_FAILED", "the issuer did not answer");
+      throw new AppError(
+        "AUTH_DISCOVERY_FAILED",
+        "the identity provider returned an error",
+      );
     }
     document = await response.json();
   } catch (error) {
     if (error instanceof AppError) throw error;
-    throw new AppError("AUTH_DISCOVERY_FAILED", "the issuer did not answer");
+    throw new AppError(
+      "AUTH_DISCOVERY_FAILED",
+      "the identity provider request failed",
+    );
   }
 
   const record = (document ?? {}) as Record<string, unknown>;
@@ -132,21 +137,29 @@ export async function discover(
     token_endpoint: requiredDiscoveryField(record, "token_endpoint"),
   };
 
-  // The pin. Step three posts the client secret to token_endpoint, so a
-  // document naming another host would hand it over.
+  // Require same-origin HTTPS endpoints before sending the client secret.
   const expected = new URL(config.issuer_url).origin;
   if (endpoints.issuer !== config.issuer_url) {
-    throw new AppError("AUTH_ISSUER_MISMATCH", "the issuer does not match config");
+    throw new AppError(
+      "AUTH_ISSUER_MISMATCH",
+      "the discovery issuer doesn't match issuer_url",
+    );
   }
   for (const value of [endpoints.authorization_endpoint, endpoints.token_endpoint]) {
     let parsed: URL;
     try {
       parsed = new URL(value);
     } catch {
-      throw new AppError("AUTH_ISSUER_MISMATCH", "an endpoint is not a URL");
+      throw new AppError(
+        "AUTH_ISSUER_MISMATCH",
+        "the discovery document contains an invalid endpoint URL",
+      );
     }
     if (parsed.protocol !== "https:" || parsed.origin !== expected) {
-      throw new AppError("AUTH_ISSUER_MISMATCH", "an endpoint is off-origin");
+      throw new AppError(
+        "AUTH_ISSUER_MISMATCH",
+        "a discovery endpoint isn't same-origin HTTPS",
+      );
     }
   }
   return endpoints;
@@ -197,11 +210,10 @@ function readCookie(header: string | null, name: string): string | null {
 }
 
 function claimsOf(idToken: string): Record<string, unknown> {
-  // The signature is deliberately not checked. The token arrived in the body
-  // of a direct HTTPS request to token_endpoint, whose origin discover()
-  // pinned to the configured issuer, so OIDC Core 3.1.3.7 item 6 lets TLS
-  // server validation stand in for the signature. This argument holds only
-  // for the code flow; an ID token from a redirect must be verified.
+  // Don't verify the signature for this authorization code flow. OpenID
+  // Connect Core 3.1.3.7, item 6, permits TLS server validation when the ID
+  // token comes directly from the pinned token endpoint. Tokens received from
+  // another channel require signature verification.
   const parts = idToken.split(".");
   if (parts.length !== 3) {
     throw new AppError("AUTH_TOKEN_INVALID", "the identity token is malformed");
@@ -242,7 +254,10 @@ export async function completeLogin(params: {
   }
   const code = url.searchParams.get("code");
   if (!code) {
-    throw new AppError("AUTH_EXCHANGE_FAILED", "the issuer returned no code");
+    throw new AppError(
+      "AUTH_EXCHANGE_FAILED",
+      "the callback contains no authorization code",
+    );
   }
 
   const endpoints = await discover(config, fetchImpl);
@@ -263,22 +278,24 @@ export async function completeLogin(params: {
       body: body.toString(),
     });
     if (!response.ok) {
-      throw new AppError("AUTH_EXCHANGE_FAILED", "the code was not accepted");
+      throw new AppError(
+        "AUTH_EXCHANGE_FAILED",
+        "the identity provider rejected the authorization code",
+      );
     }
     payload = (await response.json()) as Record<string, unknown>;
   } catch (error) {
     if (error instanceof AppError) throw error;
-    throw new AppError("AUTH_EXCHANGE_FAILED", "the code was not accepted");
+    throw new AppError("AUTH_EXCHANGE_FAILED", "the token request failed");
   }
 
   const idToken = payload.id_token;
   if (typeof idToken !== "string") {
-    throw new AppError("AUTH_TOKEN_INVALID", "the response carried no identity");
+    throw new AppError("AUTH_TOKEN_INVALID", "the token response contains no ID token");
   }
   const claims = claimsOf(idToken);
 
-  // The five claim checks, in the order of the spec table. Each row names the
-  // claim, the rule it must satisfy, and the error a violation carries.
+  // Validate the required OpenID Connect claims in specification order.
   const claimRules: {
     claim: string;
     holds: (value: unknown) => boolean;
@@ -289,7 +306,7 @@ export async function completeLogin(params: {
       claim: "iss",
       holds: (value) => value === config.issuer_url,
       error: "AUTH_ISSUER_MISMATCH",
-      because: "the identity names another issuer",
+      because: "the ID token names a different issuer",
     },
     {
       claim: "aud",
@@ -297,26 +314,26 @@ export async function completeLogin(params: {
         value === config.client_id ||
         (Array.isArray(value) && value.includes(config.client_id)),
       error: "AUTH_TOKEN_INVALID",
-      because: "the identity is for another client",
+      because: "the ID token has a different audience",
     },
     {
       claim: "exp",
       holds: (value) =>
         typeof value === "number" && value * 1000 > now.getTime(),
       error: "AUTH_TOKEN_EXPIRED",
-      because: "the identity has expired",
+      because: "the ID token has expired",
     },
     {
       claim: "nonce",
       holds: (value) => value === attempt.nonce,
       error: "AUTH_TOKEN_INVALID",
-      because: "the identity replays another login",
+      because: "the ID token nonce doesn't match the login request",
     },
     {
       claim: "sub",
       holds: (value) => typeof value === "string" && value !== "",
       error: "AUTH_TOKEN_INVALID",
-      because: "the identity names no subject",
+      because: "the ID token has no subject",
     },
   ];
   for (const rule of claimRules) {

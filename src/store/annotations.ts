@@ -20,9 +20,8 @@ export function insertAnnotation(
   db: Database,
   annotation: Annotation,
 ): Annotation {
-  // One statement carries the ownership check: the insert runs only when the
-  // named item exists and belongs to the caller. Zero inserted rows means
-  // the item is unknown or another user's.
+  // Check ownership in the insert statement so another tenant's item can't be
+  // referenced between a separate check and write.
   const changes = write(
     db,
     `INSERT INTO annotations
@@ -47,7 +46,7 @@ export function insertAnnotation(
     { user_id: annotation.user_id, id: annotation.id },
   );
   if (changes === 0) {
-    throw new AppError("STORE_NOT_FOUND", "no owned item with that item_id", {
+    throw new AppError("STORE_NOT_FOUND", "the item doesn't exist for this user", {
       user_id: annotation.user_id,
       item_id: annotation.item_id,
     });
@@ -118,7 +117,7 @@ export function updateAnnotation(
     { user_id: userId, id },
   );
   if (changes === 0) {
-    throw new AppError("STORE_NOT_FOUND", "no matching annotation row", {
+    throw new AppError("STORE_NOT_FOUND", "the annotation doesn't exist for this user", {
       user_id: userId,
       id,
     });

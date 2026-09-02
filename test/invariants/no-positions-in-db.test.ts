@@ -78,9 +78,8 @@ describe("no-positions-in-db invariant", () => {
   });
 
   test("every non-exempt table in the live schema has an allowlist entry", () => {
-    // Without this the allowlist is not total: a later milestone adds a
-    // table, EXPECTED_COLUMNS never hears about it, and only the weak name
-    // pass guards it.
+    // Require every table in `EXPECTED_COLUMNS`; otherwise, only the column
+    // name check would validate a newly added table.
     const tables = migratedTables();
     const exempt = new Set<string>();
     for (const table of tables) {

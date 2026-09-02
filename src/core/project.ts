@@ -15,9 +15,8 @@ export type ProjectInput = {
 
 const BLOCK_SET = new Set(BLOCK_ELEMENTS);
 
-// The tags the reader renders as themselves. Everything else becomes a
-// paragraph and keeps its original tag in data-cp-tag, which is what the
-// stylesheet reads to mark a list item or a table cell.
+// Preserve tags with useful reader semantics. Render other blocks as
+// paragraphs, and retain their source tag in `data-cp-tag` for styling.
 const KEPT_TAGS = new Set([
   "h1",
   "h2",
@@ -50,8 +49,7 @@ function nodeAt(root: Element, path: string): Node | null {
   return current;
 }
 
-// The block element that owns a run. The run's path names a text node, so the
-// owner is the nearest ancestor the walker counts as a block.
+// Finds the nearest block ancestor of the node that produced a run.
 function ownerTag(root: Element, path: string): string {
   let node = nodeAt(root, path);
   while (node) {
@@ -86,8 +84,7 @@ function usable(highlights: Highlight[], length: number): Highlight[] {
   );
 }
 
-// Splits a run at every highlight edge inside it, so a piece is either wholly
-// inside a highlight or wholly outside one.
+// Splits a run at each highlight boundary.
 function cutsIn(run: Run, highlights: Highlight[]): number[] {
   const cuts = new Set<number>([run.start, run.end]);
   for (const highlight of highlights) {
@@ -117,10 +114,8 @@ function piece(
   return html;
 }
 
-// Renders the reader view: content runs only, their characters taken from the
-// transcript and their tags from the sanitized tree. Nothing here reads the
-// sanitized document's text, so the text inside a highlight is always exactly
-// the transcript slice it stands for.
+// Renders content runs with text from the transcript and block tags from the
+// sanitized DOM. Using transcript text preserves exact highlight ranges.
 export function project(input: ProjectInput): string {
   const { sanitizedHtml, transcript, map } = input;
   const highlights = usable(input.highlights ?? [], transcript.length);

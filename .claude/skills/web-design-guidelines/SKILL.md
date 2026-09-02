@@ -8,8 +8,8 @@ metadata:
 
 # Web design guidelines
 
-Every change under `src/web/` passes this review before it is done. The review
-has two parts: a machine gate and a read.
+Review every change under `src/web/` with an automated check and a manual
+check.
 
 ## Read these first, in this order
 
@@ -19,8 +19,8 @@ has two parts: a machine gate and a read.
    focus, forms, motion, and copy. It wins on every behaviour choice.
 3. `AGENTS.md` fixes the layers, the invariants, and the writing style.
 
-When the two guideline files disagree, `docs/design.md` wins and you say so in
-the review. One example: the guidelines ask for Title Case on headings and
+When the two guideline files disagree, follow `docs/design.md` and note the
+conflict in the review. One example: the guidelines ask for Title Case on headings and
 buttons, and this app uses sentence case throughout.
 
 ## Run the machine gate
@@ -31,10 +31,10 @@ bun run verify
 
 The `ui-guidelines` invariant renders every page and checks the rules a
 machine can check. Read `test/invariants/ui-guidelines.test.ts` for the list.
-The gate is the floor, not the ceiling. It cannot see layout, contrast, or
-whether a sentence makes sense.
+The automated check can't assess layout, contrast, or copy clarity. Complete
+the manual review after the command passes.
 
-## Then read the code
+## Review the code
 
 Read every file the change touches under `src/web/`. Check each rule in
 `references/web-interface-guidelines.md`. Skip the React rules; this app
@@ -65,9 +65,8 @@ End with `✓ pass` for a file with nothing to report.
 
 ## Refresh the vendored rules
 
-The upstream skill fetches the rules over the network on every run. This copy
-does not, so the gate works offline and the same commit reviews the same way
-twice. Refresh it on purpose:
+This repository vendors the rules so reviews work offline and use a stable
+version. Refresh it on purpose:
 
 ```
 curl -sSfL https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md

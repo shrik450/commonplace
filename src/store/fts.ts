@@ -31,9 +31,8 @@ export function indexBlocks(
 ): void {
   for (const block of blocks) {
     if (block.item_id !== itemId) {
-      // The call deletes every row for `itemId` and inserts this list, so a
-      // block that names another item would cross items and, with two users,
-      // cross tenants.
+      // Reject mismatched blocks before replacing the item's index. Otherwise,
+      // one call could move indexed text across items or tenants.
       throw new AppError(
         "STORE_CONSTRAINT_FAILED",
         "a block names an item other than the one being indexed",
@@ -41,9 +40,8 @@ export function indexBlocks(
       );
     }
   }
-  // FTS5 has no upsert, and INSERT OR REPLACE appends a second row rather
-  // than replacing the first, so the old rows go first. The delete and the
-  // inserts share one transaction.
+  // FTS5 doesn't support this operation as an upsert. Delete the old rows and
+  // insert the replacement rows in one transaction.
   try {
     db.transaction(() => {
       db.run("DELETE FROM blocks_fts WHERE item_id = ?", [itemId]);
@@ -94,8 +92,8 @@ export function searchBlocks(
   query: string,
   limit: number,
 ): FtsHit[] {
-  // The snippet is block text byte for byte. The two control characters mark
-  // the hit; src/web/ escapes the text and swaps them for markup.
+  // Return plain-text snippets with control characters around each match. The
+  // web layer escapes the text before it renders match markup.
   try {
     return db
       .query<HitRow, [string, string, number]>(

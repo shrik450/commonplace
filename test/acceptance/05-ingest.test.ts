@@ -85,7 +85,7 @@ const PAGE = `<!DOCTYPE html><html><head>
 <body><article><h1>A Heading</h1>
 <p>First paragraph with <em>emphasis</em> inside it.</p>
 <p>Second paragraph about looms and engines and analytical machines.</p>
-<p>Third paragraph so readability has something to chew on, with enough words to look like real prose rather than a stub.</p>
+<p>Third paragraph gives Readability enough prose to classify the article content.</p>
 </article><nav><a href="/x">Nav link</a></nav></body></html>`;
 
 const SECOND_PAGE = PAGE.replace(
@@ -299,7 +299,8 @@ describe("metadata comes from the original, not the sanitized copy", () => {
 
 // The crash tests share one setup. A child Bun process claims a request,
 // reserves an item id, writes the four files, and exits before committing.
-// Killing a real process is the only honest way to test a crash-safe order.
+// Terminate a child process to verify the write order after an actual process
+// failure.
 async function crashedIngest(
   env: Env,
   reserved: { itemId?: ItemId } = {},

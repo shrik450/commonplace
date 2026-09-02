@@ -738,8 +738,8 @@ describe("src/store/queue sweepStaleLeases", () => {
 
   test("returns both lists in one sweep", () => {
     const db = freshDb();
-    // requestId(1) burns every attempt, requestId(2) has one, and
-    // requestId(3) holds a long lease.
+    // `requestId(1)` exhausts its attempts, `requestId(2)` has one attempt,
+    // and `requestId(3)` has an active lease.
     enqueueFetch(
       db,
       makeRequest({
@@ -1051,9 +1051,8 @@ describe("src/store/fts", () => {
 });
 
 describe("store writes on a readonly database", () => {
-  // translate now returns AppError, so a failure that is not a constraint can
-  // no longer leave L2 raw. A readonly connection is the cheapest way to
-  // raise one.
+  // `translate` returns `AppError`, so non-constraint failures can't leave L2
+  // as raw driver errors. A read-only connection triggers this failure.
   async function readonlyDb(name: string): Promise<Database> {
     const path = await tempRoot().then((root) => join(root, name));
     const seed = openDatabase(path, T0);
@@ -1267,11 +1266,9 @@ describe("src/store/files layout", () => {
 });
 
 describe("src/store/files path checking", () => {
-  // The brands mean as* is the only honest way to build an id, and as* has
-  // already rejected everything below. These tests cast, because a cast is
-  // how an unchecked value could still arrive: every row read from SQLite is
-  // cast once at the read. files.ts checks again before it touches the disk,
-  // and that second check is what stops `..` escaping the root.
+  // The `as*` functions reject each value below. Cast them here to represent
+  // unchecked values from a storage boundary. `files.ts` validates IDs again
+  // before it accesses the file system, which prevents directory traversal.
   function untrustedUserId(value: string): UserId {
     return value as UserId;
   }

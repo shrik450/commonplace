@@ -196,11 +196,9 @@ export function checkDeterminism(
   return violations;
 }
 
-// An id-shaped parameter or field must carry its brand. A branded id is a
-// string, so the compiler only catches mistakes in one direction; the naming
-// convention is what keeps the other direction closed. A raw string is fine
-// exactly where a value is validated into a brand: src/contracts/ids.ts, and
-// any parameter named `value`.
+// ID parameters and fields must use branded types. A raw string is valid only
+// at the validation boundary in `src/contracts/ids.ts` or in a parameter named
+// `value`.
 const BRANDED_ID_PATTERN =
   /\b(id|userId|itemId|tokenId|annotationId|requestId|user_id|item_id|annotation_id)\??:\s*(string(?:\s*\|\s*null)?|null\s*\|\s*string)\b/g;
 const BRANDED_IDS_EXEMPT = new Set(["src/contracts/ids.ts"]);
@@ -264,8 +262,7 @@ export function checkPurityGlobals(
   return violations;
 }
 
-// A run's offset range must tile the transcript exactly: no gaps, no
-// overlaps, no text outside the map.
+// Run ranges must cover the full transcript without gaps or overlaps.
 export type OffsetsViolation = {
   rule: "offsets";
   detail: string;
@@ -506,9 +503,8 @@ export function checkNoPositionsInDb(tables: TableInfo[]): SchemaViolation[] {
     if (table.name.startsWith(SQLITE_PREFIX) || exempt.has(table.name)) continue;
     const expected = EXPECTED_COLUMNS[table.name];
     if (expected === undefined) {
-      // A table nobody pinned has no column rule at all, so the allowlist
-      // would quietly stop meaning anything. The name pass below still runs,
-      // so an unpinned table with a position-shaped column fails twice.
+      // Report unlisted tables because they have no expected column set. The
+      // name check still reports any position-shaped columns separately.
       violations.push({
         table: table.name,
         rule: "no-positions-in-db",
@@ -604,9 +600,8 @@ export function checkRouteGuard(
         });
         continue;
       }
-      // `.get("q")` on a URLSearchParams is not a route. A route path is
-      // always rooted, so a literal that does not start with "/" is some
-      // other method that happens to share the name.
+      // `.get("q")` on `URLSearchParams` isn't a route. Route paths start with
+      // `/`, so ignore other literal values passed to methods named `get`.
       if (!route.startsWith("/")) continue;
       if (UNGUARDED_ROUTES.has(route)) continue;
       const body = file.source.slice(match.index);
@@ -876,10 +871,10 @@ function checkTypography(doc: Document, page: string): UiViolation[] {
     if (parent.closest("script, style, pre, code") !== null) continue;
     const text = node.nodeValue ?? "";
     if (text.includes("...")) {
-      out.push({ page, rule: "typography", detail: `"..." should be an ellipsis in: ${text.trim()}` });
+      out.push({ page, rule: "typography", detail: `replace "..." with an ellipsis in: ${text.trim()}` });
     }
     if (text.includes('"')) {
-      out.push({ page, rule: "typography", detail: `straight quotes should be curly in: ${text.trim()}` });
+      out.push({ page, rule: "typography", detail: `replace straight quotes with curly quotes in: ${text.trim()}` });
     }
   }
   return out;

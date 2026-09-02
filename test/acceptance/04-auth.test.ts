@@ -117,8 +117,8 @@ function makeIdToken(claims: Record<string, unknown>): string {
   ].join(".");
 }
 
-// The fake issuer. It must be able to lie on demand: a fake that can only tell
-// the truth tests one path out of seven.
+// Configure the fake issuer to return invalid values so each validation path
+// can be tested.
 type IssuerOptions = {
   discoveryIssuer?: string;
   authorizationEndpoint?: string;
@@ -128,9 +128,9 @@ type IssuerOptions = {
   tokenStatus?: number;
   claims?: Record<string, unknown>;
   onTokenRequest?: (body: URLSearchParams) => void;
-  // A real issuer stores the nonce from the authorization request and puts it
-  // back in the ID token. The fake never sees that request, so the login
-  // helper fills this in after startLogin.
+  // A real issuer copies the authorization request nonce into the ID token.
+  // Because the fake doesn't receive that request, the login helper supplies
+  // the nonce after `startLogin`.
   nonceHolder?: { value: string };
 };
 

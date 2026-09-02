@@ -1,21 +1,18 @@
-# The visual design
+# Visual design
 
-Read this before you touch anything under `src/web/`. It fixes the look of the
-app so every page reads as one system. The README fixes the stack: Tailwind CSS
-4, daisyUI, Newsreader for reading, Inter for chrome, lucide icons as inline
-SVGs, dark mode from the start. This document fixes the choices the stack
-leaves open.
+Read this document before you change `src/web/`. It defines a consistent visual
+system for every page. The stack uses Tailwind CSS 4, daisyUI, Newsreader for
+reading, Inter for interface text, inline Lucide SVG icons, and dark mode.
 
-## The idea in one paragraph
+## Design direction
 
-Commonplace is a reading archive, so it should feel like paper and ink, not
-like a dashboard. Light mode is warm parchment. Dark mode is a blue-black ink
-with a faint violet cast, never neutral grey. One accent, a muted terracotta,
-carries links, the active state, and the highlight wash. Structure comes from
-hairline rules and whitespace, never from cards, borders on four sides, or
-shadows.
+Commonplace uses a reading-focused layout instead of a dashboard layout. Light
+mode uses warm neutral colors. Dark mode uses blue-black colors with a subtle
+violet tone. A muted terracotta accent identifies links, active states, and
+highlights. Use thin rules and whitespace for structure. Don't use cards,
+boxed sections, or shadows.
 
-## Colour
+## Color
 
 Define both themes as daisyUI themes in `src/web/styles.css`. Use these values.
 Do not add a second accent hue.
@@ -30,26 +27,25 @@ Do not add a second accent hue.
 | Accent | `#B4522F` | `#D97A4E` |
 | Highlight wash | `rgba(214, 148, 61, 0.28)` | `rgba(217, 155, 78, 0.24)` |
 
-Rules for colour:
+Follow these color rules:
 
 - The highlight is a translucent wash, so overlapping highlights deepen and
   the text under them stays readable. Never use a solid yellow block.
 - Muted text is for metadata only: dates, hosts, counts, authors.
-- The accent marks one thing at a time on a page. When two elements both want
-  it, one of them is wrong.
+- Use the accent for one primary element at a time. Use neutral styles for
+  competing elements.
 
 ## Type
 
-- Transcript text uses Newsreader. Chrome uses Inter.
+- Use Newsreader for transcript text and Inter for interface text.
 - Fontsource is not installed yet, so declare both families with fallbacks:
   `Newsreader, "Iowan Old Style", Palatino, Georgia, serif` and
   `Inter, system-ui, sans-serif`. Add the packages later as a deliberate
   decision, not as a side effect of a styling change.
 - The reading column holds about 68 characters. Set it with `max-width`, in
   `ch`, not with a pixel width.
-- Transcript body text is 1.125rem with a line height of 1.7. Headings inside
-  a transcript step down gently; a captured `h1` must not shout louder than
-  the page title.
+- Set transcript body text to `1.125rem` with a `1.7` line height. Make captured
+  headings smaller than the page title.
 
 ## Layout
 
@@ -57,25 +53,22 @@ Rules for colour:
   annotation marks, so a mark never pushes the text sideways.
 - The library is a dense list, one row per item: title, then host and date in
   muted text. No cards, no thumbnails, no grid.
-- The top bar is slim and sticky. It holds the app name, the search field, the
-  links to settings and to sign out, and the theme toggle. Nothing else goes
-  there.
+- Keep the top bar compact and sticky. Include only the app name, search field,
+  settings link, sign-out link, and theme toggle.
 - A skip link sits before the top bar. It is invisible until it takes focus.
 - Separate sections with one hairline rule. Do not box them.
 
 ## Components
 
-- Buttons are quiet. Use a text button with an accent underline for a normal
-  action, and reserve a filled accent button for the one primary action on a
-  page.
+- Use an underlined text button for a secondary action. Reserve the filled
+  accent button for the primary action on a page.
 - Search hits show the block snippet with the matched words in the accent
   colour, and link straight to the transcript range in the reader.
 - Icons are inline lucide SVGs at 16 or 20 pixels, and they always sit beside
   a label. An icon alone is never a control.
-- A destructive action asks first, on its own page. The link that leads there
-  ends in an ellipsis, the way a menu item that opens a dialog does. The
-  question page names the thing, says what breaks and what survives, and puts
-  the way out beside the way through.
+- Confirm destructive actions on a separate page. End the link to that page
+  with an ellipsis. Name the affected item, explain the result, and place the
+  confirm and cancel actions together.
 - Every control shows three states beyond rest: hover, active, and focus.
   Hover and active change colour only. Focus draws a 2 pixel accent outline,
   offset by 2 pixels, and only for the keyboard, through `:focus-visible`.
@@ -94,8 +87,8 @@ Rules for colour:
   problem is unfinished.
 - Name the action in the button: "Save page", not "Save"; "Create token", not
   "Create".
-- Use sentence case for every heading and every button. This is the one place
-  the Web Interface Guidelines lose; they ask for Title Case.
+- Use sentence case for every heading and button. This project rule overrides
+  the Web Interface Guidelines rule for title case.
 - Use an ellipsis character, curly quotes, and a real middle dot. Never `...`
   or a straight quote.
 - Format every date with `Intl`, in the reader's own locale. `preferredLocale`
@@ -106,7 +99,7 @@ Rules for colour:
 ## What to avoid
 
 - Card grids, drop shadows, and rounded boxes stacked inside each other.
-- A second accent hue, a gradient, or a colour that carries meaning on its own.
+- A second accent hue, a gradient, or color as the only way to convey meaning.
 - Animation beyond a 150ms colour or opacity change.
 - Any layout that makes the transcript share horizontal space with a panel.
   Notes and search sit above or below the text, never beside it.

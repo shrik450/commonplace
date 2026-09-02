@@ -20,8 +20,8 @@ function readItemId(raw: string): ItemId | null {
 function notFound(): Response {
   return page(
     <ErrorPage
-      title="We cannot find that page"
-      message="Nothing in your library has that address. Someone may have deleted it, or the link may be out of date."
+      title="Commonplace cannot find that page"
+      message="Your library has no item at this address. The item may have been deleted, or the link may be outdated."
     />,
     404,
   );
@@ -30,8 +30,8 @@ function notFound(): Response {
 function badRequest(): Response {
   return page(
     <ErrorPage
-      title="That address is not an item"
-      message="An item address ends in an identifier, and this one does not. Open your library and pick the page again."
+      title="That item address is invalid"
+      message="A valid item address ends with an item ID. Open your library, and select the page again."
     />,
     400,
   );
@@ -112,10 +112,8 @@ export function itemRoutes(deps: WebDeps) {
         return new Response(html, {
           headers: {
             "content-type": "text/html; charset=utf-8",
-            // The capture view is a static archive of someone else's
-            // page, so it runs with no script at all. Invariant 8 reads
-            // this handler, so the policy stays here rather than in a
-            // constant a second route could borrow.
+            // Disable scripts in archived pages. The `capture-csp` invariant
+            // reads this handler directly, so keep the policy here.
             "content-security-policy":
               "default-src 'none'; img-src data: https: http:;" +
               " style-src 'unsafe-inline'; script-src 'none'",

@@ -6,10 +6,8 @@ import {
 
 import { AppError } from "../contracts/errors";
 
-// A UNIQUE violation of any kind, including a duplicate primary key, is a
-// conflict. Every other constraint failure keeps its own code, and any other
-// driver failure, such as a missing table or a readonly file, is a failed
-// write. Nothing raw leaves L2.
+// Translate SQLite failures at the store boundary. Unique and primary-key
+// violations are conflicts, while other constraints retain a separate code.
 export function translate(
   error: unknown,
   context: Record<string, unknown>,
@@ -30,7 +28,7 @@ export function translate(
   return new AppError("STORE_WRITE_FAILED", String(error), context);
 }
 
-// Runs one write statement and translates any failure. Returns rows changed.
+// Runs one write statement and returns the number of changed rows.
 export function write(
   db: Database,
   sql: string,
@@ -107,10 +105,9 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE TABLE fetch_requests (
         id               TEXT PRIMARY KEY,
         user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        -- No foreign key. A worker reserves the item id here before it
-        -- writes any file, and the item row does not exist until the ingest
-        -- commits. That forward reference is the crash-safe order, and a
-        -- foreign key cannot express "this will point at a row soon".
+        -- A worker reserves the item ID before writing files. The item row
+        -- doesn't exist until ingest commits, so this column can't use a
+        -- foreign key.
         item_id          TEXT,
         url              TEXT,
         source_path      TEXT,
@@ -168,7 +165,8 @@ export function migrate(db: Database, now: Date): number {
       try {
         db.exec("ROLLBACK");
       } catch {
-        // The transaction was never open or already rolled back.
+        // No rollback is needed if the transaction didn't open or SQLite
+        // already rolled it back.
       }
       const reason = error instanceof Error ? error.message : String(error);
       throw new AppError("STORE_MIGRATION_FAILED", `migration ${migration.version} failed`, {

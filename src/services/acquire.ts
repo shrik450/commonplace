@@ -1,9 +1,8 @@
 import { stat } from "node:fs/promises";
 import { AppError } from "../contracts/errors";
 
-// Regular expressions for hosts that serve ads or consent modals. The values
-// are regexes, not globs. Keep this list small and obvious; grow it from real
-// captures.
+// Regular expressions for hosts that serve ads or consent dialogs. Add a
+// pattern only when a captured page shows that the host adds unwanted content.
 export const BLOCKED_URL_PATTERNS: readonly string[] = [
   // Google Analytics and Google Ads.
   "google-analytics\\.com",
@@ -25,7 +24,7 @@ export type CaptureRequest = {
   outputPath: string;
   binaryPath?: string;
   browserPath?: string;
-  timeoutMs?: number; // default 120000
+  timeoutMs?: number; // Defaults to `DEFAULT_TIMEOUT_MS`.
 };
 
 export type CaptureResult = { path: string; bytes: number };
@@ -33,8 +32,7 @@ export type CaptureResult = { path: string; bytes: number };
 export const DEFAULT_TIMEOUT_MS = 120_000;
 const MIN_CAPTURE_BYTES = 512;
 
-// The npm package is "single-file-cli"; the binary it puts on PATH is
-// "single-file". Both lookup sites use this one constant.
+// The `single-file-cli` package installs the `single-file` executable.
 export const SINGLE_FILE_BINARY = "single-file";
 
 export function buildArgs(request: CaptureRequest): string[] {
@@ -59,50 +57,47 @@ async function outputBytes(path: string): Promise<number> {
 }
 
 function killProcessTree(pid: number): void {
-  // A negative pid signals the whole process group, which is how a browser
-  // child dies with its parent instead of surviving it.
+  // A negative process ID targets the process group, including browser child
+  // processes.
   try {
     process.kill(-pid, "SIGKILL");
     return;
   } catch {
-    // fall through to the single-process kill
+    // Fall back to terminating only the parent process.
   }
   try {
     process.kill(pid, "SIGKILL");
   } catch {
-    // the process already exited
+    // The process has already exited.
   }
 }
 
 export async function capture(request: CaptureRequest): Promise<CaptureResult> {
-  // Bun.which caches the PATH it first saw, so a test that changes PATH after
-  // any earlier which() call would resolve a stale binary here. Pass the
-  // current PATH so the lookup is always fresh.
+  // Pass the current `PATH` because `Bun.which` otherwise reuses the value from
+  // its first call. Tests replace `PATH` to provide a fake executable.
   const binaryPath =
     request.binaryPath ??
     Bun.which(SINGLE_FILE_BINARY, { PATH: process.env.PATH });
   if (!binaryPath) {
     throw new AppError(
       "ACQUIRE_TOOL_MISSING",
-      `the ${SINGLE_FILE_BINARY} binary is not on PATH`,
+      `install ${SINGLE_FILE_BINARY} or add it to PATH`,
     );
   }
 
   const timeoutMs = request.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const args = buildArgs(request);
 
-  // detached puts the child in its own process group, so the timeout can kill
-  // the whole tree. stdout is discarded so a chatty tool cannot fill the pipe
-  // and block itself.
+  // Use a separate process group so a timeout can terminate the CLI and its
+  // browser processes. Ignore stdout to prevent an unread pipe from filling.
   const proc = Bun.spawn([binaryPath, ...args], {
     stdout: "ignore",
     stderr: "pipe",
     detached: true,
   });
 
-  // The timer must never fire after the process has exited, or it would kill
-  // whatever process id the OS hands out next. Clear it on exit and again in
-  // finally, so no path leaves it pending.
+  // Clear the timer after exit so it can't terminate a later process that
+  // reuses this process ID. The `finally` block covers every other exit path.
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOutPromise = new Promise<null>((resolve) => {
     timer = setTimeout(() => {
@@ -143,8 +138,8 @@ export async function capture(request: CaptureRequest): Promise<CaptureResult> {
 
   const bytes = await outputBytes(request.outputPath);
   if (bytes <= MIN_CAPTURE_BYTES) {
-    // The tool exits 0 even on a failed capture, so the file itself is the
-    // verdict. Keep this check after we upgrade the tool.
+    // `single-file` can exit successfully without producing a valid capture,
+    // so validate the output file independently.
     throw new AppError(
       "ACQUIRE_FAILED",
       `capture wrote ${bytes} bytes to ${request.outputPath}; expected more than ${MIN_CAPTURE_BYTES}`,

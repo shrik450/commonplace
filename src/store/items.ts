@@ -11,9 +11,8 @@ const ITEM_COLUMNS = `
   id, user_id, kind, url, title, author, created_at, ingested_at
 `;
 
-// Rows read from SQLite arrive as plain strings. The brand is compile-time
-// only, so the cast at the read is the whole conversion; the database is the
-// authority on its own ids.
+// SQLite returns IDs as strings. Apply their compile-time brands at this
+// storage boundary.
 type ItemRow = {
   id: ItemId;
   user_id: UserId;
@@ -95,8 +94,8 @@ export function listItems(
       .all(userId, limit)
       .map(itemOf);
   }
-  // The cursor is the whole sort key. A created_at alone repeats a row or
-  // drops one when two items share a timestamp.
+  // Include the ID in the cursor so pagination remains stable when items share
+  // a creation timestamp.
   return db
     .query<ItemRow, [string, string, string, number]>(
       `SELECT ${ITEM_COLUMNS} FROM items
@@ -107,9 +106,8 @@ export function listItems(
     .map(itemOf);
 }
 
-// One of two cross-tenant reads in the store. It exists only for the orphan
-// sweep, which runs across all tenants; do not copy this pattern into a
-// request path.
+// Returns item paths across all tenants for the orphan sweep. Don't use this
+// unscoped query in request handling.
 export function itemPaths(db: Database): string[] {
   return db
     .query<{ user_id: UserId; id: ItemId }, []>(

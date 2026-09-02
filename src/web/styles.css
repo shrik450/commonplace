@@ -4,7 +4,7 @@
   themes: parchment --default, ink --prefersdark;
 }
 
-/* Warm paper. See docs/design.md; do not add a second accent hue. */
+/* Light theme colors from `docs/design.md`. */
 @plugin "daisyui/theme" {
   name: "parchment";
   default: true;
@@ -28,7 +28,7 @@
   --noise: 0;
 }
 
-/* Blue-black ink with a faint violet cast, never neutral grey. */
+/* Dark theme colors from `docs/design.md`. */
 @plugin "daisyui/theme" {
   name: "ink";
   prefersdark: true;
@@ -66,8 +66,8 @@ body {
   font-family: var(--font-chrome);
 }
 
-/* The reading column. One measure, set in characters, so the line length
-   holds whatever the reader's font size is. */
+/* Limit the transcript width by character count to preserve readable lines
+   across font sizes. */
 .cp-transcript {
   font-family: var(--font-reading);
   font-size: 1.125rem;
@@ -115,7 +115,7 @@ body {
   padding: 0.75rem 1rem;
 }
 
-/* A list item keeps its marker without the transcript owning a real list. */
+/* Restore a marker for list items projected as paragraphs. */
 .cp-block[data-cp-tag="li"] {
   padding-inline-start: 1.25rem;
   position: relative;
@@ -128,8 +128,7 @@ body {
   color: var(--color-secondary);
 }
 
-/* A wash, not a block: two highlights over the same words deepen, and the
-   text under them stays readable. */
+/* Use a translucent highlight so overlapping annotations remain visible. */
 .cp-mark {
   background: var(--color-wash);
   color: inherit;
@@ -146,19 +145,17 @@ body {
   font-weight: 600;
 }
 
-/* A tap never waits for a second tap that would zoom. */
+/* Remove the delayed second-tap gesture without disabling page zoom. */
 body {
   touch-action: manipulation;
 }
 
-/* A search hit links to a block. The sticky top bar must not land on top of
-   the block it just scrolled to. */
+/* Keep linked transcript blocks visible below the sticky header. */
 .cp-block {
   scroll-margin-top: 5rem;
 }
 
-/* A colour change is the only motion here, and even that stops for a reader
-   who asked for less. */
+/* Minimize transitions and animations when the reader prefers reduced motion. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

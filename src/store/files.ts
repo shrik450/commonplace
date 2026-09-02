@@ -42,14 +42,13 @@ export function itemDir(
   userId: UserId,
   itemId: ItemId,
 ): string {
-  // The UUID check is the only defence against `..` escaping the root.
+  // Validate both path segments to prevent directory traversal.
   checkId(userId, "user_id");
   checkId(itemId, "item_id");
   return join(itemsRoot, userId, itemId);
 }
 
-// files.ts owns the item directory layout, so nothing above it calls mkdir
-// on an item path directly.
+// Creates an item directory using the store's canonical layout.
 export async function ensureItemDir(
   itemsRoot: string,
   userId: UserId,
@@ -70,9 +69,9 @@ export async function writeItemFile(
   const dir = itemDir(itemsRoot, userId, itemId);
   await mkdir(dir, { recursive: true });
   const target = join(dir, file);
-  // A rename inside one directory is atomic; a direct write is not. The
-  // counter, not the clock and not randomness, keeps the name unique per
-  // process, and the pid separates processes.
+  // Write and rename within one directory for an atomic replacement. The
+  // process ID and counter make temporary names unique without time or random
+  // values.
   const temp = join(dir, `.tmp-${process.pid}-${(tempCounter += 1)}`);
   try {
     await writeFile(temp, data);
@@ -106,8 +105,8 @@ export async function readItemFile(
   }
 }
 
-// An EPUB is a zip archive, so the bytes come back untouched. A UTF-8 decode
-// would replace sequences no decoder can read and corrupt the book.
+// Read binary item files without UTF-8 decoding, which would corrupt EPUB ZIP
+// data.
 export async function readItemFileBytes(
   itemsRoot: string,
   userId: UserId,

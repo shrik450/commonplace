@@ -1,7 +1,6 @@
 import { AppError } from "./errors";
 
-// The clock is the one place the system may read real time. Everything else
-// takes a Date and goes through these five functions.
+// Centralize clock access so callers can supply deterministic times in tests.
 export function now(): Date {
   return new Date();
 }
@@ -15,8 +14,7 @@ export function toIso(value: Date): string {
 }
 
 export function parseIso(value: string): Date {
-  // new Date() does not throw on a string it cannot read; the NaN check is
-  // the verdict.
+  // `new Date(value)` returns an invalid date instead of throwing.
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     throw new AppError(

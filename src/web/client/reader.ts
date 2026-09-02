@@ -1,6 +1,5 @@
-// The reader's only script. It turns a browser selection into transcript
-// offsets by reading the attributes the server emitted, and it carries no
-// auth logic of its own: it rides the same-origin session cookie.
+// Converts reader selections to transcript offsets from server-rendered data
+// attributes. Requests use the browser's same-origin session cookie.
 
 const RUN_ATTRIBUTE = "data-cp-path";
 const START_ATTRIBUTE = "data-cp-start";
@@ -19,10 +18,8 @@ function runSpanOf(node: Node): Element | null {
   return null;
 }
 
-// Counts the characters before a point inside its run. A run span holds text
-// and highlight marks, so the count walks the subtree rather than trusting a
-// single text node. Returns null for a point that sits outside every run,
-// which is what the chrome around the transcript is.
+// Counts text before a DOM point within its run. The traversal includes nested
+// highlight elements. Returns `null` when the point isn't inside a run.
 export function offsetOfPoint(node: Node, offset: number): number | null {
   const span = runSpanOf(node);
   if (span === null) return null;

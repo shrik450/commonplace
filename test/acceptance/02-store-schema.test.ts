@@ -305,9 +305,8 @@ describe("src/store/db migrate", () => {
   });
 
   test("a failing migration throws STORE_MIGRATION_FAILED and rolls back", () => {
-    // A hand-made `items` table collides with the one version 1 creates, so
-    // version 1 fails part way through. Everything it created before the
-    // collision must disappear with it.
+    // A preexisting `items` table makes version 1 fail partway through. The
+    // rollback must remove everything that the migration created first.
     const db = new Database(":memory:");
     db.exec("CREATE TABLE items (id TEXT PRIMARY KEY, mine TEXT)");
 
@@ -320,8 +319,8 @@ describe("src/store/db migrate", () => {
     expect(names).not.toContain("annotations");
     expect(names).not.toContain("fetch_requests");
 
-    // The hand-made table is untouched: the rollback dropped only what the
-    // migration created.
+    // The rollback preserves the preexisting table and removes only objects
+    // that the migration created.
     const columns = db
       .query<{ name: string }, []>("PRAGMA table_info(items)")
       .all()
@@ -636,9 +635,8 @@ describe("invariant 6: tenancy", () => {
   });
 
   test("flags blocks_fts_notes, which only looks like a shadow table", () => {
-    // A prefix match would wave this through. The exemption is an exact list
-    // of five names, so a table someone adds later still has to carry
-    // user_id.
+    // Require exact shadow-table names. A prefix match could exempt an
+    // unrelated table that lacks `user_id`.
     const tables = [
       fakeFtsTable("blocks_fts", [
         "text",
@@ -869,9 +867,8 @@ describe("invariant 3: the module list", () => {
 });
 
 describe("invariant 10: determinism", () => {
-  // Every milestone ahead has to read an ISO string back, and Date.parse is
-  // the obvious way to do it outside the clock. Without these two entries the
-  // invariant has a silent bypass.
+  // Include both ISO date parsing forms so code can't bypass the clock
+  // invariant.
   test("flags Date.parse and Date.UTC outside the clock", () => {
     const violations = checkDeterminism([
       { path: "src/store/items.ts", source: "const t = Date.parse(value);\n" },
@@ -904,9 +901,8 @@ describe("invariant 10: determinism", () => {
 });
 
 describe("src/store/db translate", () => {
-  // translate returns AppError, so `return error` no longer compiles. Four
-  // store modules ended that way, and a readonly database leaked a raw
-  // SQLiteError out of L2.
+  // `translate` returns `AppError`, so `return error` doesn't compile. Verify
+  // that a read-only database can't expose a raw `SQLiteError` from L2.
   function sqliteFailure(run: (db: Database) => void): unknown {
     const db = migratedMemoryDb();
     try {

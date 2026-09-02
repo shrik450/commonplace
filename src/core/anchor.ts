@@ -1,10 +1,8 @@
 export type StoredAnchor = { start: number; end: number; quote: string };
 export type Anchored = { start: number; end: number; moved: boolean };
 
-// Places a quote in a transcript. An annotation stores both its offsets and
-// its text, so a transcript that changed under it can still be placed by the
-// text alone. A highlight arriving from an ereader carries only text, and it
-// enters the system through the same door.
+// Finds the quote occurrence nearest `near`. This supports stored annotations
+// with stale offsets and imported highlights that contain only quoted text.
 export function anchorQuote(
   transcript: string,
   quote: string,
@@ -29,9 +27,8 @@ export function anchorQuote(
   return { start: best, end: best + quote.length, moved: true };
 }
 
-// Checks a stored range against its quote and moves it when the two disagree.
-// A quote the transcript no longer holds returns null rather than a guess: a
-// highlight in the wrong place is worse than a highlight the reader cannot see.
+// Keeps a matching stored range or finds the nearest matching quote. Returns
+// `null` when the transcript no longer contains the quote.
 export function reanchor(
   transcript: string,
   anchor: StoredAnchor,

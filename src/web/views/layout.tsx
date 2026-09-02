@@ -1,28 +1,27 @@
 import { raw } from "./jsx-runtime";
 
-// Runs before the first paint so a saved theme never flashes the other one.
+// Apply the saved theme before the first paint to prevent a theme flash.
 const THEME_BOOTSTRAP = `try{var t=localStorage.getItem("cp-theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}`;
 
-// Interactive state lives in the class attribute, not in a CSS component
-// class, so `test/invariants/ui-guidelines.test.ts` can read it off the
-// rendered page. See `.claude/skills/web-design-guidelines/`.
+// Keep interactive state in these class strings so the UI invariant can check
+// the rendered markup.
 const FOCUS =
   "rounded-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
-// A quiet navigation link: muted until you point at it.
+// Styles secondary navigation links.
 export const LINK = `text-secondary hover:text-primary transition-colors duration-150 ${FOCUS}`;
 
-// A normal action: accent text with an underline that thickens on hover.
+// Styles non-primary actions.
 export const ACTION = `text-primary underline decoration-1 underline-offset-4 hover:decoration-2 hover:text-primary/80 transition-colors duration-150 ${FOCUS}`;
 
-// The one primary action on a page. Filled, per docs/design.md.
+// Styles the primary action on a page.
 export const SUBMIT = `bg-primary text-primary-content hover:bg-primary/85 active:bg-primary/70 px-3 py-1 text-sm transition-colors duration-150 ${FOCUS}`;
 
-// A text field on a hairline rule. The rule darkens to the accent on focus.
+// Styles text fields and their focus state.
 export const FIELD = `bg-transparent py-1 text-sm outline-none placeholder:text-secondary ${FOCUS}`;
 
-// One heading for every page of chrome. The reader and the home page set
-// their own size, because on those pages the heading is the loudest thing.
+// Renders the standard page heading. The home and reader views use larger
+// headings.
 export function PageHeading({ children }: { children?: unknown }) {
   return (
     <h1 class="font-reading mb-6 text-2xl leading-tight text-pretty">
@@ -99,7 +98,7 @@ export function Layout({ title, query, children }: LayoutProps) {
           href="#main"
           class={`bg-base-100 sr-only px-3 py-2 text-sm focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-20 ${LINK}`}
         >
-          Skip to the page
+          Skip to main content
         </a>
         <header class="cp-rule bg-base-100 sticky top-0 z-10">
           <div class="mx-auto flex max-w-4xl flex-wrap items-center gap-x-5 gap-y-2 px-6 py-3">
@@ -153,8 +152,7 @@ export function Layout({ title, query, children }: LayoutProps) {
   );
 }
 
-// Every failure a reader can reach says what went wrong and what to do next,
-// on a real page. A bare status line leaves them with nowhere to go.
+// Renders a browser error with a recovery link and optional diagnostic code.
 export function ErrorPage({
   title,
   message,

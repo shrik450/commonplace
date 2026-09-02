@@ -1,12 +1,11 @@
 # Architecture
 
-This document names every module and the rule that orders them. Use it to
-decide where new code belongs.
+This document defines the module layers and helps you place new code.
 
-## The tower
+## Layers
 
-The system is one tower of five layers. Truth flows up. Dependencies point
-down. No module ever imports sideways or upward.
+The system has five layers. A module can import its own layer or a lower layer.
+It can't import a higher layer.
 
 ```
 L4  web/ , cli/      the two operator surfaces: HTTP and terminal
@@ -16,15 +15,12 @@ L1  core/            pure functions; the whole domain, no I/O
 L0  contracts/       types, error codes, and the two impure primitives
 ```
 
-Two properties make this tower legible.
+L1 contains pure domain logic. The sanitizer, walker, projector, and
+re-anchorer accept data and return data without file, database, browser, or
+clock access. Tests can reproduce their behavior with string inputs.
 
-First, **L1 holds the entire domain and touches nothing**. The sanitizer, the
-walker, the projector, and the re-anchorer take strings and return data. Any
-behavior worth arguing about is reproducible from a string literal in a test.
-No fixture path, no database, no browser.
-
-Second, **L2 holds no domain logic**. It moves rows and bytes. If a function in
-`store/` decides something about text, it belongs in `core/`.
+L2 performs database and file I/O but contains no domain logic. Put text
+processing and other domain decisions in `core/`.
 
 ## Modules
 
@@ -39,8 +35,8 @@ Second, **L2 holds no domain logic**. It moves rows and bytes. If a function in
 | `item.ts` | `Item`, `ItemMetadata`, `Annotation`, `User`, `ApiToken` types |
 | `config.ts` | the `Config` type and a pure TOML parser; reading the file is L2 |
 
-`ids.ts` and `clock.ts` are the only places non-determinism enters. Everything
-else takes them as arguments. That is what makes a failing test reproduce.
+Only `ids.ts` and `clock.ts` access nondeterministic values. Other modules
+receive IDs and times as inputs so tests can reproduce failures.
 
 ### L1 `src/core/`
 
@@ -86,9 +82,8 @@ the other.
 
 ## The operator CLI
 
-`cp` is not a convenience. It is the introspection surface that makes the
-running system observable without a browser, and it doubles as the operator
-tool the app needs anyway. Every subcommand accepts `--json`.
+The `cp` command lets operators and automation inspect the system without a
+browser. Every subcommand supports `--json`.
 
 | Command | Prints |
 | ------- | ------ |
@@ -101,31 +96,28 @@ tool the app needs anyway. Every subcommand accepts `--json`.
 | `cp check <item>` | runs every invariant against one real item |
 | `cp fixtures capture` | refreshes the real-page corpus under `test/fixtures/real/` |
 
-Without it, anyone who needs to see system state writes a throwaway script.
+Use these commands instead of writing scripts to inspect system state.
 
 ## Errors and logs
 
-`AppError` carries a stable machine code and a context object. Log one JSON
-object per line: `{ level, code, msg, ...context }`. A code turns a failure
-report into a one-command search. Bare `throw new Error(...)` is banned by a
-test.
+`AppError` includes a stable machine-readable code and context object. Write
+one JSON log object per line: `{ level, code, msg, ...context }`. Use the code
+to search for related failures. A test rejects bare `throw new Error(...)`
+statements.
 
 ## Fixtures
 
-Two kinds, for two jobs.
+All fixtures live under `test/fixtures/` and belong to one of these groups:
 
-All fixtures live under `test/fixtures/`. There is no second root.
-
-- `test/fixtures/synthetic/` is committed. The files are tiny, hand-written HTML
+- `test/fixtures/synthetic/` is committed. The files are small HTML fixtures
   documents that cover the hard cases: nested inline elements, tables,
   `<pre>`, HTML entities, astral-plane characters that occupy two UTF-16 code
   units, and right-to-left text. Golden transcript and map files sit beside
-  each one. These run in milliseconds and are the walker's real test suite.
+  each source file. These fixtures form the primary walker test suite.
 - `test/fixtures/real/` is not committed and is rebuildable with
   `cp fixtures capture`. It holds a few real captures for spot checks. Real
   captures inline every resource, so they are megabytes each. Keeping them out
   of git keeps the repo small.
 
-A golden diff is a compact signal. "The walker changed the transcript of four
-synthetic fixtures" is one line that tells me to look hard, without reading any
-walker code.
+Golden-file differences show which fixture transcripts changed without
+requiring you to inspect the walker implementation first.

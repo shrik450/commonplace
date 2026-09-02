@@ -1,8 +1,8 @@
 # The offset contract
 
-Every feature in this app anchors to transcript offsets. This document is the
-exact contract. Change it only with a deliberate decision, because a change
-here moves every stored annotation.
+Every feature anchors to transcript offsets. This document defines the offset
+contract. Changing it can move every stored annotation, so update the related
+migration and tests with any contract change.
 
 ## Units
 
@@ -30,8 +30,8 @@ The Map is an array of runs. Each run is
    contiguous, which is what lets search store one row per block with one
    `(start, end)` range.
 
-Rules 1 to 4 mean the runs tile the transcript exactly. A test checks this for
-every fixture and for random generated documents.
+Rules 1 through 4 require the runs to cover the transcript exactly. Tests check
+this behavior for fixtures and generated documents.
 
 ## Node paths
 
@@ -60,10 +60,8 @@ starts at its first character, never one before it. That matters: a leading
 separator would make every whole-paragraph highlight store an offset one too
 low, and it would corrupt annotations silently.
 
-Three consequences follow, and none needs its own rule. The transcript never
-starts with a separator, because the transcript is empty then. It never ends
-with one, because nothing follows the last block. A `pre` block that ends with
-`\n` swallows the separator that would follow it.
+As a result, a transcript doesn't start or end with a separator. A `pre` block
+that ends with `\n` also prevents an extra separator before the next block.
 
 Other emitters:
 
@@ -75,12 +73,10 @@ Other emitters:
 - Replaced elements such as `<img>` emit nothing.
 - Inline elements emit nothing of their own.
 
-**The transcript never starts or ends with `\n`, whatever produced it.** A `br`
-that would emit the first character emits nothing, because there is nothing to
-break. When the walk finishes, the walker drops every trailing `\n`, shrinking
-the last run and removing it when it empties. Both rules apply before block
-indices are assigned, so a block left with no characters takes no index and
-leaves no hole.
+**The transcript never starts or ends with `\n`.** A leading `br` emits nothing.
+After walking, the walker removes trailing newlines and any empty final run. It
+applies these rules before assigning block indices, so empty blocks don't leave
+an index gap.
 
 The one exception is the join between two chapters. When the walker starts at a
 non-zero offset it emits a separator before its first character, so the last
@@ -96,8 +92,8 @@ takes an index.
 Collapse every run of ASCII whitespace to one space. A block never begins or
 ends with a space.
 
-**Collapse across the whole block, not inside one text node.** HTML's normal
-white-space processing collapses across inline boundaries. In
+**Collapse whitespace across the full block, not within each text node.** HTML
+whitespace processing spans inline element boundaries. In
 `<p>a <img alt="d"> b</p>` the image emits nothing, and the space on either side
 of it is one run of whitespace, so the transcript holds `a b` with one space.
 Collapsing each text node on its own gives two, and that is wrong.
@@ -106,10 +102,9 @@ Collapsing each text node on its own gives two, and that is wrong.
 run at all, because `validateMap` rejects a run whose `end` does not exceed its
 `start`.
 
-**Hold trailing whitespace back.** You cannot know a space is trailing until the
-block closes. Hold the last emitted space and release it only when the block
-emits its next character. Emitting a run and shrinking it afterwards leaves a
-zero-length run in the Map.
+**Delay trailing whitespace.** Keep the last space pending until the block emits
+another character. Removing it after creating a run could leave a zero-length
+Map run.
 
 Inside `<pre>`, preserve whitespace exactly, including newlines, and do not trim
 the block's edges. A preserved indent is text the reader needs. The HTML parser
@@ -123,9 +118,8 @@ ASCII whitespace and therefore never collapses.
 
 `is_content` marks whether a run belongs to the article body.
 
-Readability returns its article as an HTML **string**, not a node, and it mutates
-the document you hand it. So there is no "element readability chose" to test
-ancestry against. Compute the flags in three steps instead.
+Readability mutates its input document and returns the article as an HTML
+string, not a DOM node. Compute content flags with these steps:
 
 1. Deep-clone the sanitized document. Stamp every element in the clone with a
    `data-cp-path` attribute holding its `node_path`.
@@ -137,23 +131,22 @@ ancestry against. Compute the flags in three steps instead.
 The clone exists only inside the walker. `data-cp-path` never reaches the
 sanitized file the server stores.
 
-**When readability returns no article, every run in the body is content.** That
-is the rule, not a fallback. A short document readability declines to score is
-still a document the reader must be able to read.
+**When Readability returns no article, treat every body run as content.** This
+rule keeps short documents available in the reader.
 
 **`is_content` is uniform within a `block_index`.** Compute the flag for the
 block and give every run in it the same value. The search index stores one flag
 per block, so a mixed block has nowhere to put the disagreement.
 
-Never adopt readability's cleaned HTML as text. It is a heuristic that flags
-runs; the transcript is ours.
+Don't use Readability's cleaned HTML as transcript text. Use Readability only
+to classify transcript runs.
 
 The flags recompute from the stored capture at any time. Annotations never move
 when the flags change.
 
 ## The round trip
 
-This property is the acceptance test for the whole model.
+The acceptance test enforces this property:
 
 > Take any range `(a, b)` that lies inside content runs. Project the reader
 > view with that range highlighted. Read the text inside the highlight

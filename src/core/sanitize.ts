@@ -92,7 +92,7 @@ const purifier = createDOMPurify(
 
 export function sanitize(html: string): string {
   if (typeof html !== "string" || html.trim() === "") {
-    throw new AppError("WALK_UNPARSEABLE", "the input is not parseable HTML");
+    throw new AppError("WALK_UNPARSEABLE", "the HTML input is empty");
   }
   return `<!DOCTYPE html>\n${purifier.sanitize(html, CONFIG)}`;
 }

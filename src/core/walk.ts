@@ -11,9 +11,8 @@ function clean(value: string | null | undefined): string | null {
   return collapsed === "" ? null : collapsed.slice(0, 500);
 }
 
-// Reads page metadata from the original HTML. It must never run on the
-// sanitized copy: the sanitizer's allow-list has no meta element, so every
-// og:title and author tag is gone by then.
+// Reads metadata from the original HTML because sanitization removes `meta`
+// elements, including Open Graph titles and author values.
 export function metadata(html: string): Metadata {
   const doc = new JSDOM(html).window.document;
 
@@ -148,8 +147,8 @@ export function walk(
   const body = doc.body;
   if (body) for (const child of body.childNodes) collect(child, body, false);
 
-  // Segment the items into blocks. A segment ends when the owning block
-  // element changes, which is what reopens a parent block after a nested one.
+  // Start a segment when the owning block changes. A parent block can therefore
+  // have separate segments before and after a nested block.
   const segments: Item[][] = [];
   for (const item of items) {
     const last = segments[segments.length - 1];
@@ -194,12 +193,9 @@ export function walk(
     if (chunks.length > 0) blocks.push({ owner, chunks });
   }
 
-  // A leading `br` newline has nothing to break, and a trailing newline at
-  // the end of the document carries nothing after it, so both are dropped
-  // here. This runs before block indices are assigned, so a block left with
-  // no characters takes no index and leaves no hole, which validateMap
-  // rejects. When startOffset > 0 the leading newline is the join between
-  // two chapters, so the leading trim is skipped.
+  // Remove leading and trailing line breaks before assigning block indices.
+  // Keep a leading break when `startOffset` is nonzero because it separates
+  // this document from the preceding chapter.
   const chunks = blocks.flatMap((block) => block.chunks);
   if (startOffset === 0) {
     while (chunks.length > 0 && chunks[0]!.text.startsWith("\n")) {

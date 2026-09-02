@@ -570,8 +570,8 @@ describe("content flags", () => {
   }
 
   test("every run is content when readability declines to score", () => {
-    // A short document readability will not score is still a document the
-    // reader must be able to read. This is the rule, not a fallback.
+    // Treat a short document that Readability doesn't classify as content so
+    // the reader can still display it.
     const t2 = walk(sanitize("<html><body><p>Too short to score.</p></body></html>"));
     expect(t2.map.runs.length).toBeGreaterThan(0);
     for (const run of t2.map.runs) expect(run.is_content).toBe(true);
@@ -655,10 +655,9 @@ describe("options", () => {
 });
 
 describe("the property test", () => {
-  // A small grammar with a fixed seed list, so a failure reproduces. The
-  // generator lives here rather than in the implementation's own tests,
-  // because a generator the implementer owns is a generator the implementer
-  // can narrow.
+  // Use a small grammar and fixed seed list for reproducible failures. Keep the
+  // generator in the acceptance test so implementation changes can't narrow
+  // its input range.
   function makeRandom(seed: number): () => number {
     let state = seed >>> 0;
     return () => {

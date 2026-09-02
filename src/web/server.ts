@@ -20,8 +20,8 @@ export type { WebDeps };
 
 const repoRoot = join(import.meta.dir, "..", "..");
 
-// The reader script is bundled once per process, not per request. A build
-// failure is a programming error, so it surfaces rather than serving a stub.
+// Cache the reader bundle for the process lifetime. Propagate build failures
+// instead of serving an incomplete script.
 let bundled: Promise<string> | null = null;
 
 function readerScript(): Promise<string> {
@@ -32,15 +32,14 @@ function readerScript(): Promise<string> {
   }).then((result) => {
     const output = result.outputs[0];
     if (!output) {
-      throw new AppError("VIEW_SCRIPT_BUILD_FAILED", "reader.ts did not build");
+      throw new AppError("VIEW_SCRIPT_BUILD_FAILED", "Bun produced no reader script output");
     }
     return output.text();
   });
   return bundled;
 }
 
-// The routes a signed-out browser may reach: the landing page and the two
-// static assets. They hold no reader's data, so they carry no guard.
+// These routes don't expose library data and don't require authentication.
 export function publicRoutes() {
   return new Elysia()
     .get("/health", () => ({ ok: true }))
@@ -67,15 +66,14 @@ export function buildApp(deps: WebDeps) {
     .use(itemRoutes(deps));
 }
 
-// The web server is its own entry point. `src/cli/` and `src/web/` are
-// siblings, so the operator CLI cannot start the app for us.
+// Keep server startup in the web layer because the CLI and web layers can't
+// import each other.
 if (import.meta.main) {
   const config = await loadConfig(defaultConfigPath());
   const db = openDatabase(join(config.db_root, "db.sqlite"), now());
   const port = Number(process.env.PORT ?? 3000);
 
-  // One process serves and drains. A reader who saves a URL from the web has
-  // no terminal to run a worker in, so the worker runs here.
+  // Run the web server and ingest worker in the same process.
   const worker = startWorker({
     db,
     itemsRoot: config.items_root,
@@ -85,10 +83,9 @@ if (import.meta.main) {
   });
 
   const server = buildApp({ db, config, now }).listen(port);
-  console.log(JSON.stringify({ level: "info", msg: "listening", port }));
+  console.log(JSON.stringify({ level: "info", msg: "web server listening", port }));
 
-  // Stop the loop before the process leaves, so a capture in flight finishes
-  // writing its file and committing its row.
+  // Stop the server, then wait for the worker to finish its active ingest.
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.on(signal, () => {
       void (async () => {

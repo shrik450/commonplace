@@ -47,8 +47,8 @@ export function claimNext(
 ): FetchRequest | null {
   const leaseExpiresAt = addMs(now, leaseMs).toISOString();
   try {
-    // One statement, so two workers cannot pick the same row: the subquery
-    // and the update commit atomically.
+    // Select and update in one statement so concurrent workers can't claim the
+    // same request.
     return (
       db
         .query<FetchRequest, [string]>(
@@ -69,10 +69,9 @@ export function claimNext(
   }
 }
 
-// Claims one specific request by id, the way the foreground "cp ingest"
-// command does. Same atomic UPDATE ... RETURNING as claimNext, so two callers
-// cannot claim the same row: a second claim on a claimed or done row returns
-// null. Raises attempts the same way, so the attempts fence stays honest.
+// Claims a specific request for foreground ingest. The atomic
+// `UPDATE ... RETURNING` prevents concurrent claims and increments the attempt
+// counter used by later ownership checks.
 export function claimRequest(
   db: Database,
   id: RequestId,
@@ -96,9 +95,8 @@ export function claimRequest(
   }
 }
 
-// The fence on `attempts` keeps a worker whose lease expired from committing
-// over the worker that replaced it. `changes === 1` is the only signal that
-// the caller still owns the lease.
+// Match `attempts` so a worker with an expired lease can't commit after a new
+// worker claims the request.
 export function completeFetch(
   db: Database,
   id: RequestId,
@@ -135,13 +133,11 @@ export function failFetch(
   );
 }
 
-// Puts the reserved item id on the row while it stays claimed. The sweep
-// reads item_id from queued and claimed requests, so a crash after this
-// write leaves the item directory protected until the request settles.
+// Reserves an item ID while the request remains claimed. The orphan sweep
+// preserves directories referenced by queued and claimed requests.
 //
-// The reservation is deliberately dangling: item_id names an item row the
-// commit step has not written yet, and a crash must leave it that way. That
-// is why fetch_requests.item_id carries no foreign key.
+// The item row doesn't exist until ingest commits, so `fetch_requests.item_id`
+// can't use a foreign key.
 export function reserveItem(
   db: Database,
   id: RequestId,
@@ -160,8 +156,8 @@ export function reserveItem(
   );
 }
 
-// Returns a request to the queue after a retryable failure, clearing the
-// lease and recording why the last attempt failed. Same fence as completeFetch.
+// Returns a failed request to the queue and records the error. Matching
+// `attempts` prevents a worker with an expired lease from updating the row.
 export function releaseFetch(
   db: Database,
   id: RequestId,
@@ -180,12 +176,10 @@ export function releaseFetch(
   );
 }
 
-// The other cross-tenant read in the store, and the partner of itemPaths.
-// It exists only for the orphan sweep, which runs across all tenants; do not
-// copy this pattern into a request path. Only queued and claimed requests
-// hold directories the sweep must protect: a done request's item is already
-// in itemPaths, and a failed request will never run again, so its directory
-// is garbage the sweep must collect.
+// Returns reserved item paths across all tenants for the orphan sweep. Only
+// queued and claimed requests need protection. Completed items appear in
+// `itemPaths`, and failed requests don't run again. Don't use this unscoped
+// query in request handling.
 export function pendingItemPaths(db: Database): string[] {
   return db
     .query<{ user_id: UserId; item_id: ItemId }, []>(
@@ -231,8 +225,8 @@ export function sweepStaleLeases(
 ): { requeued: string[]; failed: string[] } {
   const nowIso = now.toISOString();
 
-  // One transaction, so no worker can claim a row between the two updates
-  // and have the second flip it to failed underneath itself.
+  // Create one transaction for both updates so a worker can't claim a request
+  // between them.
   const sweep = db.transaction(() => {
     const requeued = db
       .query<{ id: RequestId }, [string, number]>(
@@ -256,8 +250,7 @@ export function sweepStaleLeases(
     return { requeued, failed };
   });
 
-  // One transaction, so no worker can claim a row between the two updates
-  // and have the second flip it to failed underneath itself.
+  // Acquire the write lock before either update runs.
   try {
     return sweep.immediate();
   } catch (error) {

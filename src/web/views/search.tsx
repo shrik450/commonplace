@@ -23,7 +23,7 @@ function Hit({ result }: { result: SearchResult }) {
       </a>
       {result.is_content ? null : (
         <p class="text-secondary mt-1 text-xs">
-          Found outside the article, in the page around it.
+          This match appears outside the article content.
         </p>
       )}
     </li>
@@ -44,13 +44,12 @@ export function SearchPage({
       </PageHeading>
       {query === "" ? (
         <p class="text-secondary max-w-prose py-8 text-sm">
-          Type a word in the bar above. Commonplace looks inside every page you
-          saved, including the parts the reader hides.
+          Enter a word in the search field. Commonplace searches every saved
+          page, including text outside the article content.
         </p>
       ) : results.length === 0 ? (
         <p class="text-secondary max-w-prose py-8 text-sm">
-          Nothing matches “{query}”. Try one shorter word, or check the
-          spelling.
+          Nothing matches “{query}”. Check the spelling, or try a shorter term.
         </p>
       ) : (
         <ul>{results.map((result) => (

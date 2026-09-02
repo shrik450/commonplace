@@ -17,9 +17,8 @@ const VOID_ELEMENTS = new Set([
   "wbr",
 ]);
 
-// Attribute and tag names are joined into the markup verbatim, so a name
-// that could smuggle in extra attributes or close the tag early is a
-// programming error and must fail loudly.
+// Validate tag and attribute names because the renderer inserts them without
+// escaping. Invalid names could inject attributes or close a tag.
 const NAME_PATTERN = /^[A-Za-z_:][\w.:-]*$/;
 
 class HtmlNode {
@@ -85,7 +84,7 @@ export function jsx(
   }
   if (typeof type === "function") {
     const rendered = (type as (props: unknown) => unknown)(props);
-    // A component may return an HtmlNode, an array of them, or nothing.
+    // `renderChild` handles a component result, including arrays and empty values.
     return new HtmlNode(renderChild(rendered));
   }
   return new HtmlNode(renderElement(type, props));

@@ -10,15 +10,15 @@ import { NewTokenPage, RevokeTokenPage, SettingsPage } from "../views/settings";
 import { authDeps, preferredLocale, toLogin, type WebDeps } from "./deps";
 
 const MESSAGES: Record<string, string> = {
-  VIEW_MISSING_FIELD: "Give the token a name first, so you can tell it apart from the others later.",
+  VIEW_MISSING_FIELD: "Enter a token name so you can identify it later.",
   STORE_NOT_FOUND: "That token is already gone. Nothing else changed.",
 };
 
 function badRequest(error: AppError): Response {
   return page(
     <ErrorPage
-      title="That did not work"
-      message={MESSAGES[error.code] ?? "Commonplace could not do that. Go back to settings and try again."}
+      title="Commonplace could not update the token"
+      message={MESSAGES[error.code] ?? "Return to settings, and try the token action again."}
       code={error.code}
       href="/settings"
       linkLabel="Back to settings"
@@ -40,8 +40,7 @@ export function settingsRoutes(deps: WebDeps) {
         <SettingsPage tokens={tokens} locale={preferredLocale(request)} />,
       );
     })
-    // Revoking cannot be undone, so the button on the settings page links
-    // here and the POST below only runs after this page asks.
+    // Show a confirmation page before the POST request revokes the token.
     .get("/settings/tokens/:id/revoke", async ({ request, params }) => {
       const principal = await authenticate(request, authDeps(deps)).catch(
         () => null,
@@ -83,8 +82,7 @@ export function settingsRoutes(deps: WebDeps) {
         );
       }
 
-      // The secret is handed back once, in this response. The store keeps
-      // only its hash, so no later page can show it again.
+      // Return the secret only in this response. The store retains its hash.
       const { secret } = createApiToken(
         deps.db,
         principal.user.id,

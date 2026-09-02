@@ -17,9 +17,8 @@ export function authDeps(deps: WebDeps): {
   return { db: deps.db, config: deps.config, now: deps.now() };
 }
 
-// The reader's own date format, read from the browser rather than pinned to
-// one country. An unknown or malformed tag falls back to British English,
-// which is what this app shipped with.
+// Format dates using the browser's preferred supported locale. Use British
+// English when the header is missing or contains no valid locale.
 const FALLBACK_LOCALE = "en-GB";
 
 export function preferredLocale(request: Request): string {
@@ -39,8 +38,8 @@ export function preferredLocale(request: Request): string {
     .toSorted((a, b) => b.q - a.q);
 
   for (const { tag } of tags) {
-    // supportedLocalesOf throws on a tag that is not well formed, and a
-    // header is caller input, so a bad tag must not take the page down.
+    // `supportedLocalesOf` throws for malformed tags, which are valid input to
+    // reject from this untrusted header.
     try {
       if (Intl.DateTimeFormat.supportedLocalesOf(tag).length > 0) return tag;
     } catch {
@@ -50,9 +49,7 @@ export function preferredLocale(request: Request): string {
   return FALLBACK_LOCALE;
 }
 
-// Every guarded route answers a signed-out reader the same way: send them to
-// the login route rather than a bare 401, because every guarded route is a
-// page a person asked for.
+// Redirect signed-out browser requests to the interactive sign-in flow.
 export function toLogin(): Response {
   return new Response(null, { status: 303, headers: { location: "/login" } });
 }

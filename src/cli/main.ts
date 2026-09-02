@@ -108,7 +108,7 @@ function captureFilename(url: string): string {
   try {
     parsed = new URL(url);
   } catch {
-    throw new AppError("CLI_BAD_URL", `malformed URL "${url}"`, { url });
+    throw new AppError("CLI_BAD_URL", `"${url}" isn't a valid URL`, { url });
   }
   const pathPart = parsed.pathname
     .replace(/^\/+|\/+$/g, "")
@@ -116,9 +116,8 @@ function captureFilename(url: string): string {
   return pathPart ? `${parsed.hostname}-${pathPart}.html` : `${parsed.hostname}.html`;
 }
 
-// Captures every URL in urls.txt into test/fixtures/real/. One failing URL
-// does not abort the rest; the exit code reports the outcome. The capture
-// function is injectable so tests can run this without the network.
+// Captures each URL from `urls.txt` into `test/fixtures/real/`. Failures don't
+// stop later captures, and the return value reports whether any capture failed.
 export async function fixturesCapture(
   captureFn: (request: CaptureRequest) => Promise<{ path: string; bytes: number }> = capture,
   dir: string = REAL_FIXTURES_DIR,
@@ -143,7 +142,7 @@ export async function fixturesCapture(
     try {
       const outputPath = join(dir, captureFilename(url));
       const result = await captureFn({ url, outputPath });
-      console.log(`captured ${url} -> ${result.path} (${result.bytes} bytes)`);
+      console.log(`Captured ${url} to ${result.path} (${result.bytes} bytes)`);
     } catch (error) {
       failures += 1;
       console.error(toLogLine("error", error, { url }));
@@ -152,15 +151,14 @@ export async function fixturesCapture(
 
   if (failures > 0) {
     console.error(
-      `fixtures capture: ${failures} of ${urls.length} captures failed`,
+      `Fixture capture failed for ${failures} of ${urls.length} URLs`,
     );
   }
   return failures > 0 ? 1 : 0;
 }
 
-// One foreground ingest: enqueue a request, drain once, print the outcome.
-// The user id is required and must be a UUID; guessing a tenant is exactly
-// the mistake branded ids exist to prevent.
+// Runs one ingest in the foreground. Require an explicit user ID so the
+// command can't select a tenant implicitly.
 export async function ingestCommand(options: {
   url: string;
   user: string | undefined;
@@ -171,7 +169,7 @@ export async function ingestCommand(options: {
   if (options.user === undefined) {
     throw new AppError(
       "CLI_BAD_ARGUMENT",
-      '"ingest" needs "--user <uuid>"',
+      "ingest requires --user <uuid>",
       { flag: "--user" },
     );
   }
@@ -181,7 +179,7 @@ export async function ingestCommand(options: {
   } catch {
     throw new AppError(
       "CLI_BAD_ARGUMENT",
-      '"--user" must be a UUID',
+      "--user must contain a UUID",
       { user: options.user },
     );
   }
@@ -208,14 +206,13 @@ export async function ingestCommand(options: {
       capture: options.captureFn ?? capture,
       browserPath: config.browser_path,
     };
-    // Claim the request this command enqueued, not the oldest queued one:
-    // with anything else in the queue, a drain would ingest someone else's
-    // request and leave the URL the operator typed waiting.
+    // Claim this command's request directly. Claiming the oldest request could
+    // process unrelated queued work and leave this command waiting.
     const claimed = claimRequest(db, request.id, now(), LEASE_MS);
     if (claimed === null) {
       throw new AppError(
         "STORE_NOT_FOUND",
-        "the enqueued request never became claimable",
+        "the new ingest request isn't available to claim",
       );
     }
     const outcome = await ingestRequest(deps, claimed);
@@ -231,7 +228,7 @@ export async function ingestCommand(options: {
         );
       }
     } else if (outcome.state === "done") {
-      console.log(`ingested ${options.url} as ${outcome.itemId}`);
+      console.log(`Ingested ${options.url} as ${outcome.itemId}`);
     } else {
       console.error(
         `ingest ${outcome.state} (${outcome.code}): ${outcome.message}`,
@@ -258,7 +255,7 @@ async function run(argv: string[]): Promise<number> {
       if (value === undefined) {
         throw new AppError(
           "CLI_BAD_ARGUMENT",
-          '"--config" requires a path',
+          "--config requires a path",
           { flag: "--config" },
         );
       }
@@ -271,7 +268,7 @@ async function run(argv: string[]): Promise<number> {
       if (value === undefined) {
         throw new AppError(
           "CLI_BAD_ARGUMENT",
-          '"--user" requires a UUID',
+          "--user requires a UUID",
           { flag: "--user" },
         );
       }
@@ -291,7 +288,7 @@ async function run(argv: string[]): Promise<number> {
   if (command === undefined) {
     throw new AppError(
       "CLI_UNKNOWN_COMMAND",
-      "no command given; expected one of: doctor, fixtures, ingest",
+      "Enter a command: doctor, fixtures, or ingest",
     );
   }
   if (command === "fixtures") {
@@ -299,13 +296,13 @@ async function run(argv: string[]): Promise<number> {
     if (subcommand !== "capture") {
       throw new AppError(
         "CLI_UNKNOWN_COMMAND",
-        `unknown fixtures subcommand "${subcommand ?? ""}"; expected: capture`,
+        `Unknown fixtures subcommand "${subcommand ?? ""}". Use capture.`,
       );
     }
     if (positionals.length > 0) {
       throw new AppError(
         "CLI_BAD_ARGUMENT",
-        `unexpected argument "${positionals[0]}" for command "fixtures"`,
+        `Command fixtures doesn't accept "${positionals[0]}"`,
       );
     }
     return fixturesCapture();
@@ -315,14 +312,14 @@ async function run(argv: string[]): Promise<number> {
     if (url === undefined) {
       throw new AppError(
         "CLI_BAD_ARGUMENT",
-        '"ingest" needs a URL',
+        "ingest requires a URL",
         { flag: "url" },
       );
     }
     if (positionals.length > 0) {
       throw new AppError(
         "CLI_BAD_ARGUMENT",
-        `unexpected argument "${positionals[0]}" for command "ingest"`,
+        `Command ingest doesn't accept "${positionals[0]}"`,
       );
     }
     return ingestCommand({ url, user, json, configPath });
@@ -330,13 +327,13 @@ async function run(argv: string[]): Promise<number> {
   if (positionals.length > 0) {
     throw new AppError(
       "CLI_BAD_ARGUMENT",
-      `unexpected argument "${positionals[0]}" for command "${command}"`,
+      `Command ${command} doesn't accept "${positionals[0]}"`,
     );
   }
   if (command !== "doctor") {
     throw new AppError(
       "CLI_UNKNOWN_COMMAND",
-      `unknown command "${command}"; expected one of: doctor, fixtures, ingest`,
+      `Unknown command "${command}". Use doctor, fixtures, or ingest.`,
     );
   }
 
@@ -344,7 +341,7 @@ async function run(argv: string[]): Promise<number> {
   if (json) {
     console.log(JSON.stringify(report));
   } else {
-    console.log(`doctor: ${report.ok ? "ok" : "failed"}`);
+    console.log(`Doctor: ${report.ok ? "passed" : "failed"}`);
     for (const check of report.checks) {
       console.log(`  ${check.ok ? "pass" : "FAIL"} ${check.name}: ${check.detail}`);
     }

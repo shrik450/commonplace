@@ -1,9 +1,8 @@
 # Commonplace — agent guide
 
-Read this file first. It is the map of the repo and the rules of the road.
-Read `README.md` for why the system is shaped this way. Read the files in
-`docs/` when you touch the area they cover. Read `docs/design.md` before you
-change anything under `src/web/`; it fixes the look of every page.
+Read this file first for repository structure and development rules. Read
+`README.md` for the system rationale. Read the relevant file in `docs/` before
+you change its area. Read `docs/design.md` before you change `src/web/`.
 
 ## The model in one paragraph
 
@@ -49,9 +48,8 @@ src/
 scripts/       verify.ts               (tooling; the layer rule does not apply)
 ```
 
-`test/invariants/module-list.test.ts` enforces this list. A file under `src/`
-that is not listed fails the gate. Adding a module is a deliberate decision, so
-raise it rather than inventing one.
+`test/invariants/module-list.test.ts` enforces this list. Before you add a file
+under `src/`, propose the module-list change for review.
 
 ## Commands
 
@@ -67,15 +65,14 @@ raise it rather than inventing one.
 | `docker build -t commonplace .` | Build the image. Pins Bun and installs Chromium. |
 | `docker run` | Run it. Mount the config at `/home/bun/.config/commonplace/config.toml`, mount `/data/db` and `/data/items`, publish 3000. |
 
-`bun run verify` is the definition of done. Nothing else counts.
+Run `bun run verify` before you report that a change is complete.
 
 In `--json` mode, stdout holds exactly one line. The raw output of any failing
 tool goes to stderr, so a failure is diagnosable without a second run.
 
-**The gate fails closed.** A step passes only when the tool exits 0 and its
-output parses clean. When the two disagree, the step fails. A tool that crashes
-must never be reported as a pass. Never make a check pass by ignoring an exit
-code or by defaulting a count to zero.
+**The gate fails closed.** A step passes only when the tool exits with code 0
+and its output parses correctly. If those results conflict, the step fails.
+Don't ignore an exit code or treat missing output as zero errors.
 
 ## Hard invariants
 
@@ -118,15 +115,14 @@ your change pass.
     skips the subtree marked `data-cp-projected`, because a captured page's
     markup is not ours to fix.
 
-All eleven exist today, and two more ride alongside them: `route-guard`, which
-makes every route call `authenticate` or appear on the unguarded list, and
-`branded-ids`, which makes every id parameter and field carry its brand. Never
-write an invariant test that passes because it checks nothing.
+Two additional invariants also run. `route-guard` requires every route to call
+`authenticate` or appear in the public-route list. `branded-ids` requires every
+ID parameter and field to use its branded type. Every invariant test must prove
+that its checker rejects a known violation.
 
-Every invariant is a pure checker function in `test/invariants/lib.ts`. Each
-checker has two tests: one that runs it over the real repo, and one that runs
-it over a known-bad input and asserts it fails. A checker without the second
-test is worthless, because nobody knows it can fail.
+Each invariant is a pure checker in `test/invariants/lib.ts`. Test each checker
+against the repository and a known invalid input. The invalid case proves that
+the checker can fail.
 
 When you fix a bug that no invariant caught, add an invariant test for it.
 
@@ -135,20 +131,18 @@ When you fix a bug that no invariant caught, add an invariant test for it.
 The files under `test/acceptance/` state what a piece of work must do. They
 are written before the work starts. Make them pass.
 
-Do not edit an acceptance test to make your own code pass. That is the one
-forbidden edit, and a reviewer reads every diff that touches these files.
+Don't edit an acceptance test only to make an implementation pass. Reviewers
+inspect every change to these files.
 
-Do change one when the design changes. A specification written before the work
-can be wrong, and an assertion that cannot pass helps nobody. When you change
-one, say in your report which assertion moved and why. Let the design evolve
-when it needs to.
+Change an acceptance test when the approved design changes. In your report,
+identify the changed assertion and explain why the specification changed.
 
 ## Errors
 
 Throw `AppError` from `src/contracts/errors.ts`. Every error carries a stable
 code, namespaced by module: `CONFIG_*`, `STORE_*`, `WALK_*`, `INGEST_*`,
-`AUTH_*`, `VIEW_*`, `EXPORT_*`. Logs are one JSON object per line. A code makes
-a failure greppable, so never throw a bare string.
+`AUTH_*`, `VIEW_*`, and `EXPORT_*`. Logs contain one JSON object per line. Use
+the code to search for related failures, and never throw a bare string.
 
 ## Ids
 
@@ -172,13 +166,13 @@ Read `.claude/skills/web-design-guidelines/SKILL.md` before you touch anything
 under `src/web/`. It is the gate for user interface work, and it has two
 halves.
 
-The machine half is the `ui-guidelines` invariant, which `bun run verify`
-runs. Interactive state lives in the `class` attribute as Tailwind utilities,
+The `ui-guidelines` invariant provides the automated check. `bun run verify`
+runs it. Interactive state lives in the `class` attribute as Tailwind utilities,
 never in a CSS component class, because that is what the checker reads. Use
 the shared `LINK`, `ACTION`, `SUBMIT`, and `FIELD` constants from
 `src/web/views/layout.tsx` rather than writing a new class string.
 
-The human half is a read against
+Complete the manual check against
 `.claude/skills/web-design-guidelines/references/web-interface-guidelines.md`,
 the vendored copy of the Vercel Web Interface Guidelines. A machine
 cannot see layout, contrast, or whether a sentence makes sense. Where those

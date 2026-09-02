@@ -55,8 +55,8 @@ export function ReaderPageView({
             <span>{noteCount(annotations.length)}</span>
           </nav>
         </header>
-        {/* Someone else's markup. The UI gate skips this subtree, because we
-            cannot fix a link or an image inside a page we only archived. */}
+        {/* The UI invariant skips projected markup because it comes from the
+            archived page rather than this interface. */}
         <div class="mt-8" data-cp-projected>
           {raw(html)}
         </div>

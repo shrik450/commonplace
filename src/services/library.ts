@@ -39,9 +39,8 @@ export type SearchResult = {
   snippet: SnippetPart[];
 };
 
-// The two control characters searchBlocks wraps a match in. The store keeps
-// the snippet byte for byte; splitting it into parts is a view concern, so it
-// happens here and never in SQL.
+// `searchBlocks` surrounds matches with these control characters. This service
+// converts the plain-text snippet into parts that the view can render safely.
 const HIT_OPEN = "\u0002";
 const HIT_CLOSE = "\u0003";
 
@@ -57,7 +56,7 @@ export function listLibrary(
 function requireItem(deps: LibraryDeps, userId: UserId, itemId: ItemId): Item {
   const item = getItem(deps.db, userId, itemId);
   if (item === null) {
-    throw new AppError("STORE_NOT_FOUND", "no such item", {
+    throw new AppError("STORE_NOT_FOUND", "the item doesn't exist for this user", {
       user_id: userId,
       item_id: itemId,
     });
@@ -91,9 +90,8 @@ export async function captureFile(
   return readItemFile(deps.itemsRoot, userId, itemId, "sanitized.html");
 }
 
-// Every annotation is placed through its quote before it is drawn. A stored
-// offset that still matches its quote is used as it stands; one that drifted
-// moves; one whose quote is gone is not drawn at all.
+// Validates each annotation against its quote. Stale offsets move to the
+// nearest match, and annotations with no match remain hidden.
 export function placeAnnotations(
   transcript: string,
   annotations: Annotation[],

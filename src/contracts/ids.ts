@@ -9,14 +9,13 @@ export type AnnotationId = Branded<"AnnotationId">;
 export type TokenId = Branded<"TokenId">;
 export type RequestId = Branded<"RequestId">;
 
-// Migrations and other non-entity uses still need a plain id.
+// Creates an unbranded ID for records that don't represent domain entities.
 export function newId(): string {
   return Bun.randomUUIDv7();
 }
 
-// The only place random bytes are made. Everything that needs unguessable
-// values -- the PKCE verifier, the OIDC state and nonce, and every API token
-// secret -- comes through here, so invariant 10 can see all of it in one file.
+// Generates secrets for PKCE, OpenID Connect state and nonce values, and API
+// tokens. Keeping random byte generation here makes it auditable.
 export function newSecret(byteLength: number): string {
   const bytes = new Uint8Array(byteLength);
   crypto.getRandomValues(bytes);

@@ -8,9 +8,7 @@ import { enqueueFetch } from "../../store/queue";
 import { ErrorPage, page } from "../views/layout";
 import { authDeps, toLogin, type WebDeps } from "./deps";
 
-// Two callers reach this route: the library form and an iOS Shortcut. The
-// form wants the library page back, the Shortcut wants JSON, and
-// `principal.via` already tells the two apart.
+// Accepts form data from the library and JSON from an iOS Shortcut.
 async function readUrl(request: Request): Promise<string | null> {
   const type = request.headers.get("content-type") ?? "";
   if (type.includes("application/json")) {
@@ -44,8 +42,8 @@ export function itemSaveRoutes(deps: WebDeps) {
       () => null,
     );
     if (principal === null) {
-      // A Shortcut cannot follow a redirect to a login page, so a rejected
-      // credential gets the status that says so.
+      // Return an HTTP 401 response to API clients instead of redirecting them
+      // to the interactive sign-in flow.
       if (request.headers.get("authorization") !== null) {
         return new Response(
           JSON.stringify({ error: "AUTH_TOKEN_INVALID" }),
@@ -59,11 +57,10 @@ export function itemSaveRoutes(deps: WebDeps) {
     if (url === null || !isFetchable(url)) {
       const error = new AppError(
         "INGEST_BAD_URL",
-        `"${url ?? ""}" is not an http or https URL`,
+        `"${url ?? ""}" isn't an HTTP or HTTPS URL`,
         { url: url ?? "" },
       );
-      // A Shortcut reads JSON. A reader who mistyped a link deserves a page
-      // that says what to type instead.
+      // Return JSON to API clients and a corrective page to browser clients.
       if (principal.via === "token") {
         return new Response(JSON.stringify({ error: error.code }), {
           status: 400,
@@ -72,17 +69,17 @@ export function itemSaveRoutes(deps: WebDeps) {
       }
       return page(
         ErrorPage({
-          title: "That is not a link Commonplace can save",
+          title: "Commonplace cannot save that address",
           message:
-            "Paste a whole web address that starts with http:// or https://, such as https://example.com/an-essay.",
+            "Enter a complete web address that starts with http:// or https://, such as https://example.com/an-essay.",
           code: error.code,
         }),
         400,
       );
     }
 
-    // Enqueue and return. A capture takes tens of seconds, and the worker
-    // inside this process drains the queue, so nothing here waits for it.
+    // Return after enqueueing because page capture runs asynchronously in the
+    // process worker.
     const queued = enqueueFetch(deps.db, {
       id: newRequestId(),
       item_id: null,

@@ -14,9 +14,8 @@ import type { WebDeps } from "./deps";
 
 const CLEAR_SESSION_COOKIE = `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 
-// The callback URL comes from the config, never from the Host header. An OIDC
-// redirect_uri must match the value registered with the issuer byte for byte,
-// and a header a caller controls cannot be trusted to produce it.
+// Build the OpenID Connect callback URL from trusted config. The value must
+// exactly match the redirect URI registered with the identity provider.
 export function loginRedirectUri(config: Config): string {
   return `${config.base_url}/login/callback`;
 }
@@ -45,7 +44,7 @@ export function authRoutes(deps: WebDeps) {
           ErrorPage({
             title: "Signing in is not available",
             message:
-              "Commonplace could not reach the service that signs you in. Wait a minute, then try again. If it keeps failing, check the login settings.",
+              "Commonplace could not reach the identity provider. Try again. If the problem continues, check the OpenID Connect settings.",
             code,
             href: "/login",
             linkLabel: "Try signing in again",
@@ -70,9 +69,9 @@ export function authRoutes(deps: WebDeps) {
         return new Response(
           `<!DOCTYPE html>${String(
             ErrorPage({
-              title: "That sign-in did not finish",
+              title: "Commonplace could not complete sign-in",
               message:
-                "The sign-in took too long, or it started in another browser. Start again from the beginning.",
+                "The sign-in request expired or started in another browser. Start a new sign-in request.",
               code,
               href: "/login",
               linkLabel: "Sign in again",
@@ -90,8 +89,8 @@ export function authRoutes(deps: WebDeps) {
     });
 }
 
-// Signing out needs no reader: a cookie that no longer verifies still deserves
-// to be cleared, so this route drops the cookie and sends the browser home.
+// Clear the session cookie even when it is invalid, then return to the home
+// page.
 export function logoutRoute() {
   return new Elysia().get("/logout", () =>
     seeOther("/", [CLEAR_SESSION_COOKIE]),

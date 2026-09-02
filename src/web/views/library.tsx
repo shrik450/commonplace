@@ -73,8 +73,8 @@ export function LibraryPage({
       </form>
       {items.length === 0 ? (
         <p class="text-secondary max-w-prose py-8 text-sm">
-          Your library is empty. Paste a link above and Commonplace saves the
-          whole page, ready to read and search.
+          Your library is empty. Enter a web address to save a searchable copy
+          of the page.
         </p>
       ) : (
         <ul>{items.map((item) => (

@@ -34,17 +34,16 @@
 // - `POST /items` answers a session with a redirect and a token with JSON.
 //   The two callers want different things, and `principal.via` already tells
 //   them apart.
-// - The route enqueues and returns. It never waits for the capture, because
-//   a capture takes tens of seconds and a browser request must not.
-// - A token acts as its owner, so a request saved with Bob's token belongs to
-//   Bob whatever session cookie rides along with it.
+// - The route returns after enqueueing instead of waiting for a capture that
+//   can take tens of seconds.
+// - A request authenticated with Bob's token belongs to Bob, regardless of
+//   the session cookie in the request.
 // - The token secret is shown once, at creation, and never again.
 //
 // What this file cannot check
 // ---------------------------
-// It does not build the Docker image; that is far too slow for the gate. It
-// reads the Dockerfile as text and checks the decisions that are easy to get
-// wrong and expensive to discover in production.
+// The gate doesn't build the Docker image because that would make verification
+// too slow. Instead, these tests inspect critical Dockerfile configuration.
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
@@ -350,9 +349,9 @@ describe("saving a URL with an API token", () => {
     expect(listFetchRequests(env.db, ALICE, 10)).toHaveLength(1);
   });
 
-  // A token acts as its owner. A cookie riding along with it must not move
-  // the row into the cookie holder's library.
-  test("the token's owner owns the request, whatever cookie rides along", async () => {
+  // The bearer token determines ownership even when the request also contains
+  // a session cookie.
+  test("the token owner owns the request regardless of the session cookie", async () => {
     const env = await freshEnv("token-owner");
     const app = buildApp({ db: env.db, config: env.config, now });
     const { secret } = createApiToken(env.db, BOB, "bob's phone", now());
@@ -547,8 +546,7 @@ describe("the worker runs inside the server process", () => {
     expect(items[0]!.url).toBe("https://example.com/queued");
   }, 30_000);
 
-  // stop() must resolve only after the loop has left, so a shutdown never
-  // kills a capture between writing a file and committing its row.
+  // `stop()` waits for the worker loop and any active capture to finish.
   test("stop resolves after the loop has left", async () => {
     const env = await freshEnv("worker-stop");
     const worker = startWorker({
@@ -575,7 +573,7 @@ describe("the Dockerfile", () => {
     return readFile(join(repoRoot, "Dockerfile"), "utf8");
   }
 
-  test("it pins a Bun version rather than tracking latest", async () => {
+  test("it pins a specific Bun version", async () => {
     const text = await dockerfile();
     expect(text).toMatch(/FROM\s+oven\/bun:\d+\.\d+\.\d+/);
     expect(text).not.toMatch(/FROM\s+oven\/bun:latest/);

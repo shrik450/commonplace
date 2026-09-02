@@ -39,17 +39,16 @@ export type IngestOutcome =
   | { state: "retry"; code: ErrorCode; message: string }
   | { state: "failed"; code: ErrorCode; message: string };
 
-// A second attempt cannot change these. An EPUB stays an EPUB, a lost lease
-// belongs to another worker, and a malformed Map is a walker bug. Everything
-// else — a timeout, a dead browser, a full disk — may succeed next time.
+// Don't retry errors that another attempt can't resolve. Other failures, such
+// as a timeout or temporary I/O error, return to the queue.
 const PERMANENT_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
   "INGEST_UNSUPPORTED_SOURCE",
   "INGEST_LEASE_LOST",
   "INGEST_BLOCK_MISMATCH",
 ]);
 
-// The one that runs the pipeline. Every AppError becomes an outcome; a
-// non-AppError is a bug and escapes.
+// Converts expected `AppError` failures into queue outcomes. Unexpected errors
+// propagate to the worker host.
 export async function ingestRequest(
   deps: IngestDeps,
   request: FetchRequest,
@@ -80,19 +79,16 @@ async function runIngest(
   }
   const url = request.url;
 
-  // Choose the item id: the request's own reservation first, then the URL
-  // lookup — items carries UNIQUE INDEX items_user_url, so a minted id for a
-  // URL the user already holds would throw STORE_CONFLICT — then a new id.
-  // The lookup only chooses the id; the commit decides insert against update
-  // by reading the row.
+  // Reuse the reserved item ID across retries. For a new request, reuse an item
+  // with the same URL to satisfy the `items_user_url` unique index.
   const foundByUrl =
     request.item_id === null
       ? getItemByUrl(deps.db, request.user_id, url)
       : null;
   const itemId = request.item_id ?? foundByUrl?.id ?? newItemId();
 
-  // Reserve before any file is written. The reservation is what tells the
-  // orphan sweep the directory is still needed while this request is claimed.
+  // Reserve the item ID before writing files so the orphan sweep preserves the
+  // directory while the request remains active.
   if (!reserveItem(deps.db, request.id, request.attempts, itemId)) {
     throw new AppError(
       "INGEST_LEASE_LOST",
@@ -124,8 +120,8 @@ async function runIngest(
     sanitized,
   );
 
-  // Metadata reads the original, never the sanitized copy, because the
-  // sanitizer deletes every meta element.
+  // Read metadata from the original HTML because sanitization removes `meta`
+  // elements.
   const meta = metadata(original);
   const title = meta.title ?? url;
 
@@ -134,7 +130,7 @@ async function runIngest(
   if (text.length === 0) {
     throw new AppError(
       "INGEST_EMPTY_TRANSCRIPT",
-      "the page walked to no text; the capture reported success but wrote nothing readable",
+      "the captured page contains no readable text",
       { url },
     );
   }
@@ -156,14 +152,13 @@ async function runIngest(
 
   const blocks = buildBlocks(map.runs, text, itemId, request.user_id);
 
-  // One transaction: item row, block index, completed request. A crash
-  // mid-commit leaves none of them, and a lost lease rolls all of it back.
-  // bun:sqlite transactions are synchronous, so every await already happened.
+  // Store the item, search index, and completed request in one transaction.
+  // `bun:sqlite` transactions are synchronous, so all asynchronous work must
+  // finish before this point.
   const finishedAt = deps.now();
   const commit = deps.db.transaction(() => {
-    // Decide insert against update by reading the row, not by remembering
-    // which lookup chose the id. A retry carries its reservation, so the
-    // URL lookup never ran on this attempt even when the item already exists.
+    // Read the row again because a retry can carry an item ID without running
+    // the URL lookup in this attempt.
     const existing = getItem(deps.db, request.user_id, itemId);
     if (existing === null) {
       insertItem(deps.db, {
@@ -187,7 +182,7 @@ async function runIngest(
     if (!completeFetch(deps.db, request.id, request.attempts, itemId)) {
       throw new AppError(
         "INGEST_LEASE_LOST",
-        "the lease was lost before the commit; the transaction rolled back",
+        "another worker claimed the request before the transaction committed",
         { request_id: request.id },
       );
     }
@@ -218,7 +213,7 @@ function buildBlocks(
     if (group.isContent !== run.is_content) {
       throw new AppError(
         "INGEST_BLOCK_MISMATCH",
-        "runs in one block disagree on is_content",
+        "runs in the same block have different is_content values",
         { block_index: run.block_index },
       );
     }

@@ -123,35 +123,34 @@ One process, one SQLite database with the FTS5 extension.
   never runs on the walker's thread. Acquisition shells out to
   `single-file-cli`, a thin, swappable adapter (files in, files out). The
   adapter spawns the tool rather than importing it, so a browser crash cannot
-  take down the worker. It passes a `--blocked-url-pattern` list that strips ads
-  and consent modals before capture. The patterns are regular expressions, not
-  globs, and the output path is a positional argument, not a flag. The sanitizer strips every embedded script.
-  In one pass, the walker emits the transcript, the Map, and content flags.
+  stop the worker. It uses `--blocked-url-pattern` with regular expressions to
+  remove ads and consent dialogs before capture. It passes the output path as a
+  positional argument. The sanitizer removes embedded scripts. The walker emits
+  the transcript, Map, and content flags in one pass.
 - **Store** — SQLite on one root: `users`, `items`, `annotations`, `api_tokens`,
   plus an FTS5 table. Each FTS row is one block from the Map, carrying its
   `(start, end)` and its `is_content` flag as a filter column, so a search hit
   returns the snippet and the transcript range in one query and deep-links
-  straight to the passage. A block, not a run: a run is one text node, so a
-  phrase broken by `<em>` would span three of them and never match. Every
-  block is indexed — search never silently misses text that the reader view
-  hides. Item files live on the other root, under
+  to the passage. Each row represents a paragraph-sized block rather than one
+  run. Indexing by run would prevent phrase matches across inline elements such
+  as `<em>`. Search indexes every block, including text hidden from the reader
+  view. Item files live on the other root, under
   `items/<user_id>/<item_id>/`: `original.html`, `sanitized.html`,
   `source.epub`, `transcript.txt`, and `map.json`.
 - **Viewer** — three routes per item. The reader view is the annotation surface:
   it renders only readability-classified runs, projected from the original DOM
   rather than readability's cleaned HTML, and its elements carry transcript
-  offsets so a small script can turn selections into ranges. Misclassification
-  is fixed per item later if it bites — the flags recompute from the stored
-  capture, and annotations never move. The capture view serves the sanitized
+  offsets so a small script can turn selections into ranges. Content flags can
+  be recomputed from the stored capture without moving annotations. The capture view serves the sanitized
   file unchanged as a static archive (`script-src 'none'`); showing highlights
   there is a later, additive step through the Map. A raw text page shows the
   transcript.
 - **API** — CRUD for items and annotations, search, vault export. The web UI
   calls this API; it is also the integration surface for anything else.
 - **CLI** — `cp`, one operator command over the same services: `doctor`,
-  `ingest`, `transcript`, `map`, `search`, `check`. Every subcommand speaks
-  `--json`. It makes the running system observable without a browser, which is
-  what both an operator and an agent need.
+  `ingest`, `transcript`, `map`, `search`, and `check`. Every subcommand supports
+  `--json`, which lets operators and automation inspect the system without a
+  browser.
 - **Auth** — Pocket ID over OIDC (passkeys only), signed session cookies, and
   hashed long-lived API tokens for non-browser clients.
 
@@ -221,10 +220,9 @@ vault frontmatter) get baked at implementation.
   literal. A test enforces the rule; see `docs/architecture.md`.
 - **One gate** — `bun run verify` runs the type checker, the linter, and the
   tests, and prints a one-line JSON summary. It is the only definition of done.
-- **Executable invariants** — the rules in this README are tests in
-  `test/invariants/`, not prose. Offsets tile the transcript, `core` stays
-  pure, every row carries `user_id`, the capture view ships no script. A rule
-  nobody checks is a rule that decays.
+- **Executable invariants** — tests in `test/invariants/` enforce these rules.
+  Offsets cover the transcript, `core` remains pure, every row includes
+  `user_id`, and the capture view includes no script.
 - **Errors** — one `AppError` with a stable, namespaced code and one JSON log
   line per event. Bare `throw new Error` is banned by a test, because a
   failure should be greppable.
@@ -237,8 +235,8 @@ vault frontmatter) get baked at implementation.
 
 ## Building it
 
-`AGENTS.md` is the entry point: the layer rule, the module list, the commands,
-and the hard invariants, in one short file.
+Start with `AGENTS.md` for the layer rule, module list, commands, and enforced
+invariants.
 
 `docs/architecture.md` names every module and states the layer rule: imports
 point one way, from `web` and `cli` down through `services` and `store` to
@@ -252,9 +250,9 @@ annotation.
 `docs/dependencies.md` records every pinned version and why. `bunfig.toml`
 rejects any package published in the last 14 days.
 
-`bun run verify` is the gate: type check, lint, and tests, printed as one JSON
-line. It fails closed. The rules above are tests under `test/invariants/`, not
-prose, so a rule nobody checks cannot quietly decay.
+Run `bun run verify` to type-check, lint, and test the project. The command can
+print one JSON summary line and treats unrecognized tool output as a failure.
+Tests under `test/invariants/` enforce the system rules.
 
 ## Why single-file-cli
 

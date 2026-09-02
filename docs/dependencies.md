@@ -1,36 +1,32 @@
 # Dependencies
 
-Every package here passed an audit before it landed. This file records what we
-pin, why, and when to look again.
+This file records each approved package version, its selection criteria, and
+its next review point.
 
 ## Rules
 
-**Pin exact versions.** No `^`, no `~`. A range is an unreviewed future install.
-`bunfig.toml` sets `exact = true`, so `bun add` cannot write a range by accident.
+**Pin exact versions.** Don't use `^` or `~`. A version range can install code
+that the project hasn't reviewed. `bunfig.toml` sets `exact = true`, so
+`bun add` writes exact versions.
 
-**Nothing younger than 14 days.** `bunfig.toml` sets
-`install.minimumReleaseAge = 1209600`. Bun filters out any version published
-more recently when it resolves a range, for direct and transitive packages
-alike. A stolen publish token shows up as a fresh release, so age is a cheap
-filter that works even when nobody is watching.
+**Require a 14-day release age.** `bunfig.toml` sets
+`install.minimumReleaseAge = 1209600`. When Bun resolves a range, it excludes
+direct and transitive package versions published within the last 14 days. This
+delay reduces exposure to a compromised package release.
 
-**The rule filters ranges. It does not block an exact version you name.**
-Tested on 2026-09-01: `bun add dompurify@^3.4.0` installed 3.4.13 and skipped
-the 12-day-old 3.4.14, while `bun add dompurify@3.4.14` installed 3.4.14. That
-is the right behavior, because naming a version is an explicit override, but it
-is not what "filters out any version" suggests. So: run `bun add <package>`
-with no version and let the resolver pick. `exact = true` then writes the aged
-version as a hard pin. Name a version only when you mean to override the rule,
-and write down why, the way the `@types/bun` note below does.
+**The release-age rule applies only when Bun resolves a range.** A test on
+2026-09-01 showed that `bun add dompurify@^3.4.0` selected 3.4.13 and excluded
+the 12-day-old 3.4.14. However, `bun add dompurify@3.4.14` installed the exact
+version. Run `bun add <package>` without a version to apply the age rule, then
+let `exact = true` record the resolved version. Document the reason for any
+explicit override.
 
-One package is exempt, through `minimumReleaseAgeExcludes`: `@types/bun` must
-track the runtime version. It ships only `.d.ts` files and runs no install
+`minimumReleaseAgeExcludes` exempts `@types/bun` because it must match the Bun
+runtime version. The package contains only `.d.ts` files and has no install
 script.
 
-**Audit before the first install.** The rules above are automatic. They do not
-replace reading the registry metadata for a package we have never used: publish
-history, maintainer count, install scripts, and the size of the transitive
-tree.
+**Audit before the first install.** For each new package, review its publish
+history, maintainer count, install scripts, and transitive dependency count.
 
 ## Current set
 
@@ -51,89 +47,76 @@ tree.
 
 ## Rejected
 
-- `@elysiajs/html` — it drags in a 17-package tree, including `yargs` and
-  `chalk`, to do something Bun already does. Bun compiles TSX itself, and an
+- `@elysiajs/html` — Adds 17 packages, including `yargs` and `chalk`, for
+  behavior that Bun already provides. Bun compiles TSX itself, and an
   Elysia handler can return a `Response` holding a string.
-- `@kitajs/html` — rejected for a specific reason, not for size. It escapes
-  children **only** when you pass a `safe` attribute. Read
+- `@kitajs/html` — Escapes children **only** when the caller passes a `safe`
+  attribute. Read
   `index.js` line 498 in version 4.2.13:
   `contentsToString(children, hasAttrs && attrs.safe)`. Escaping is opt-in, so
-  one forgotten attribute on a page that renders an annotation note is a
-  cross-site scripting hole. We want the opposite default.
+  omitting one attribute could cause a cross-site scripting vulnerability.
 
-  We write our own runtime in `src/web/views/jsx-runtime.ts`. It escapes every
-  interpolated value, and `raw()` is the single, greppable opt-out. It does not
-  hand-roll the hard part: the escaping itself calls `Bun.escapeHTML`, the same
-  native function `@kitajs/html` uses when it detects Bun. So we take the
-  well-tested escaper and supply only the default-safe wiring, which is about
-  forty lines and fully tested.
+  The runtime in `src/web/views/jsx-runtime.ts` escapes every interpolated value
+  and uses `raw()` as its only explicit opt-out. It delegates escaping to
+  `Bun.escapeHTML`, the same native function that `@kitajs/html` uses with Bun.
+  The local runtime changes the default behavior without implementing a new
+  escaping algorithm.
 
-- `linkedom` — rejected because **DOMPurify fails open against it**. The audit
-  recommended linkedom for its smaller tree, 16 packages against jsdom's 37,
-  and for not reading the filesystem at import. A spike overturned that.
-  Running DOMPurify against a linkedom window returns `isSupported: undefined`
-  and hands back the input unchanged, script tag and all. It does not throw and
-  does not warn, so every test downstream would report success while the
-  sanitizer did nothing.
+- `linkedom` — DOMPurify doesn't support its window implementation. Although
+  linkedom adds 16 packages instead of jsdom's 37 and doesn't read the file
+  system during import, DOMPurify returns `isSupported: undefined` and leaves
+  the input unchanged. It doesn't report an error, so unsupported sanitization
+  could appear successful.
 
-  Two parser differences rule it out on their own. linkedom uses `htmlparser2`,
+  Two parser differences also prevent its use. linkedom uses `htmlparser2`,
   which does not implement HTML tree construction. It does not insert the
   implied `tbody` inside a `table`, and it does not drop the newline after a
   `<pre>` start tag. Both make the walker's tree disagree with the browser's,
   and `node_path` addresses the browser's tree.
 
-- `parse5` alone, with a sanitizer of our own — rejected. Its tree is correct
+- `parse5` with a local sanitizer — Rejected. Its tree is correct
   and its dependency count is the lowest of the set, but Readability needs a
-  DOM, so a DOM library is required anyway. Writing our own HTML sanitizer to
-  replace DOMPurify means owning the mutation-XSS bypass classes DOMPurify
-  already tracks, and that is not a fixed amount of work. `parse5` still
+  DOM, so the project still needs a DOM library. A local HTML sanitizer would
+  also need to handle the mutation-XSS bypass classes that DOMPurify tracks. `parse5` still
   arrives in the tree, inside `jsdom`.
 
-- a JOSE library — rejected because the ID token needs no signature check in
-  this milestone. The token arrives in the body of a direct HTTPS request the
+- A JOSE library — The current authorization code flow doesn't require an ID
+  token signature check. The token arrives in the body of a direct HTTPS request the
   server makes to the token endpoint. `discover` pins that endpoint's origin
   to the configured `issuer_url` and requires the `https:` scheme. OpenID
   Connect Core 3.1.3.7 item 6 says TLS server validation may stand in for the
-  signature check in exactly that case. So there is no JWKS fetch and no JWT
-  verification, and therefore no library.
+  signature check in that case. Therefore, this flow doesn't fetch a JSON Web
+  Key Set (JWKS), verify a JSON Web Token (JWT), or require a JOSE library.
 
   That argument holds only for the authorization code flow. An ID token that
   arrives from a redirect or a fragment has no TLS guarantee and would need a
-  real signature check, and therefore a library.
+  signature check and a JOSE library.
 
-## Notes on the risky picks
+## Package risks
 
-**`@types/bun` 1.4.0 is fresh, and I pinned it anyway.** The audit says hold.
-I overrode it for one reason: the older 1.3.14 does not describe the Bun 1.4.0
-runtime we use, so it would hide real type errors and invent fake ones. The
-package ships only `.d.ts` files and runs no install script, so a compromise
-lies to the type checker rather than executing code. Wrong types are the larger
-risk here.
+**`@types/bun` 1.4.0 is exempt from the release-age rule.** Version 1.3.14
+doesn't describe the Bun 1.4.0 runtime and could produce incorrect type-check
+results. Version 1.4.0 contains only `.d.ts` files and has no install script.
 
 **`@parcel/watcher` runs an install script.** It is the only install script in
-all nine dependency trees. It arrives under `@tailwindcss/cli` and compiles a
-native binary. It is long-lived and widely used, so this is accepted, not
-ignored. If the CSS build ever moves off the Tailwind CLI, this leaves with it.
+the dependency trees. `@tailwindcss/cli` uses it to compile a native binary.
+Remove it if the CSS build stops using the Tailwind CLI.
 
-**Single maintainers are the standing risk.** `elysia`, `daisyui`, and `oxlint`
-each publish through one account. A stolen token on any of them lands in our
-tree at the next unpinned install. Exact pins are the reason that does not
-happen automatically.
+**Three packages publish through one maintainer account.** A compromised
+account for `elysia`, `daisyui`, or `oxlint` could publish a malicious release.
+Exact version pins prevent an automatic upgrade to that release.
 
 ## Later milestones
 
-These are not audited yet. Audit each one before it lands.
-
-`playwright`.
+Audit `playwright` before adding it.
 
 `dompurify`, `jsdom`, and `@mozilla/readability` were audited on 2026-09-01 and
 are pinned above. `linkedom` was audited at the same time and rejected. See
-`plan/audits/03-dom-stack.md`; the short version is in "Rejected" below.
+`plan/audits/03-dom-stack.md` and the Rejected section.
 
 ## single-file-cli flags, confirmed from its source
 
-The README once named these wrongly. These spellings come from `options.js` in
-version 2.1.3.
+These option names come from `options.js` in version 2.1.3.
 
 - `--blocked-url-pattern` takes regular expressions, not globs. The `url` part
   is lowercase.
@@ -141,12 +124,12 @@ version 2.1.3.
   downloads no browser of its own.
 - The output path is the second positional argument, not a flag.
 
-## What 2.1.3 costs us, and how the code covers it
+## Known limitations in version 2.1.3
 
-Version 2.6.4 fixes four things that touch our exact use. Every fix landed
-inside the same one-week release burst, so no version old enough to install has
-them. We stay on 2.1.3 until 2026-09-14 and cover the two that matter in our
-own code.
+Version 2.6.4 fixes four relevant issues. Those fixes arrived during the same
+one-week release period, so no version that meets the 14-day rule contains
+them. Version 2.1.3 remains pinned until the next review on 2026-09-14. Local
+code mitigates two issues.
 
 | Gap in 2.1.3 | Fixed in | Our cover |
 | ------------ | -------- | --------- |
@@ -155,8 +138,7 @@ own code.
 | Cross-origin iframes are saved empty | 2.3.1 | None. Accepted until the bump. |
 | A circular `@import` hangs until the timeout | 2.6.2 | The adapter's own kill timer bounds it. |
 
-The exit-code check is worth keeping after the bump. A tool that reports
-success while writing nothing is a failure mode worth catching in our code
-rather than trusting a version number to prevent.
+Keep the output-file check after upgrading. It verifies the capture result
+independently of the process exit code.
 
 See `plan/audits/01b-single-file-cli-versions.md` for the full comparison.

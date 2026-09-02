@@ -79,8 +79,8 @@ export function parseConfig(text: string): Config {
       { key: "base_url" },
     );
   }
-  // A trailing slash turns every joined path into a double slash, and an
-  // OIDC redirect_uri must match the registered value byte for byte.
+  // Reject a trailing slash so derived OpenID Connect redirect URIs exactly
+  // match their registered values.
   if (baseUrl.endsWith("/")) {
     throw new AppError(
       "CONFIG_INVALID_VALUE",

@@ -1,11 +1,11 @@
 import { AppError } from "./errors";
 
 export type Run = {
-  start: number; // inclusive, UTF-16 code units
-  end: number; // exclusive
-  doc_index: number; // 0 for an article; the spine index for a book
-  node_path: string; // slash-separated child indices, such as "1/0/3"
-  block_index: number; // groups runs into paragraph-sized blocks
+  start: number; // Inclusive offset in UTF-16 code units.
+  end: number; // Exclusive offset in UTF-16 code units.
+  doc_index: number; // Zero for an article, or the spine index for a book.
+  node_path: string; // Slash-separated child indices, such as `1/0/3`.
+  block_index: number; // Groups runs into paragraph-sized blocks.
   is_content: boolean;
 };
 
@@ -24,7 +24,7 @@ function malformed(message: string, index?: number): AppError {
 export function validateMap(map: TranscriptMap, textLength: number): void {
   if (map.runs.length === 0) {
     if (textLength > 0) {
-      throw malformed("a map with no runs cannot tile a non-empty text");
+      throw malformed("a map with no runs can't cover nonempty text");
     }
     return;
   }
