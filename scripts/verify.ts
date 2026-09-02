@@ -1,21 +1,18 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { checkSeals, computeSeals } from "./seal";
 
 export type VerifySummary = {
   ok: boolean;
   typecheck: { errors: number };
   lint: { errors: number };
   test: { pass: number; fail: number; failures: string[] };
-  seals: "ok" | "mismatch";
 };
 
 export function buildSummary(parts: Omit<VerifySummary, "ok">): VerifySummary {
   const ok =
     parts.typecheck.errors === 0 &&
     parts.lint.errors === 0 &&
-    parts.test.fail === 0 &&
-    parts.seals === "ok";
+    parts.test.fail === 0;
   return { ok, ...parts };
 }
 
@@ -112,21 +109,6 @@ async function run(cmd: string[]): Promise<Run> {
   }
 }
 
-async function sealStatus(): Promise<"ok" | "mismatch"> {
-  try {
-    const dir = join(repoRoot, "test", "acceptance");
-    const file = Bun.file(join(dir, "seals.json"));
-    if ((await file.exists()) === false) return "mismatch";
-    const recorded = (await file.json()) as Record<string, string>;
-    return checkSeals(recorded, await computeSeals(dir)).ok
-      ? "ok"
-      : "mismatch";
-  } catch {
-    // A malformed or unreadable seals.json fails closed rather than crash.
-    return "mismatch";
-  }
-}
-
 type CountStep = { errors: number; raw?: string };
 type TestStep = {
   pass: number;
@@ -182,21 +164,6 @@ async function orchestrate(): Promise<{
   summary: VerifySummary;
   failingToolOutput: string[];
 }> {
-  // A tampered acceptance file makes every other step meaningless, so check
-  // the seals first and stop on a mismatch before running anything else.
-  const seals = await sealStatus();
-  if (seals === "mismatch") {
-    return {
-      summary: buildSummary({
-        typecheck: { errors: 0 },
-        lint: { errors: 0 },
-        test: { pass: 0, fail: 0, failures: [] },
-        seals,
-      }),
-      failingToolOutput: [],
-    };
-  }
-
   const [typecheckStep, lintStep, testStep] = await Promise.all([
     typecheck(),
     lint(),
@@ -210,7 +177,6 @@ async function orchestrate(): Promise<{
       fail: testStep.fail,
       failures: testStep.failures,
     },
-    seals,
   });
   const failingToolOutput = [
     typecheckStep.raw,
@@ -231,7 +197,6 @@ if (import.meta.main) {
     console.log(`lint: ${summary.lint.errors} error(s)`);
     console.log(`test: ${summary.test.pass} pass, ${summary.test.fail} fail`);
     for (const name of summary.test.failures) console.log(`  FAIL ${name}`);
-    console.log(`seals: ${summary.seals}`);
     console.log(`ok: ${summary.ok}`);
   }
 

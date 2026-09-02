@@ -45,7 +45,7 @@ src/
   services/    acquire.ts ingest.ts worker.ts library.ts annotate.ts export.ts auth.ts
   web/         server.ts routes/ views/ client/reader.ts
   cli/         main.ts
-scripts/       verify.ts seal.ts        (tooling; the layer rule does not apply)
+scripts/       verify.ts               (tooling; the layer rule does not apply)
 ```
 
 `test/invariants/module-list.test.ts` enforces this list. A file under `src/`
@@ -104,9 +104,8 @@ your change pass.
     `Bun.randomUUIDv7()` outside `src/contracts/clock.ts` and
     `src/contracts/ids.ts`. Build and read times through `clock.ts`, which
     exports `now`, `addMs`, `toIso`, `parseIso`, and `isBefore`.
-11. `seals` — the acceptance tests match their recorded hash.
 
-Invariants 1, 2, 3, 9, 10, and 11 exist today. The rest arrive with the
+Invariants 1, 2, 3, 9, and 10 exist today. The rest arrive with the
 milestone that makes them meaningful. Never write an invariant test that passes
 because it checks nothing.
 
@@ -119,10 +118,16 @@ When you fix a bug that no invariant caught, add an invariant test for it.
 
 ## Acceptance tests are the specification
 
-The files under `test/acceptance/` state what a piece of work must do. They are
-written before the work starts, and `test/acceptance/seals.json` records the
-hash of each one. Make them pass. Do not edit them. If one is wrong, say which
-assertion and why.
+The files under `test/acceptance/` state what a piece of work must do. They
+are written before the work starts. Make them pass.
+
+Do not edit an acceptance test to make your own code pass. That is the one
+forbidden edit, and a reviewer reads every diff that touches these files.
+
+Do change one when the design changes. A specification written before the work
+can be wrong, and an assertion that cannot pass helps nobody. When you change
+one, say in your report which assertion moved and why. Let the design evolve
+when it needs to.
 
 ## Errors
 

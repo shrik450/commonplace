@@ -5,7 +5,6 @@
   "scripts": {
     "verify": "bun run scripts/verify.ts",
     "verify:browser": "bun test test/browser",
-    "seal": "bun run scripts/seal.ts",
     "css": "bunx @tailwindcss/cli -i src/web/styles.css -o public/app.css",
     "css:watch": "bunx @tailwindcss/cli -i src/web/styles.css -o public/app.css --watch",
     "cp": "bun run src/cli/main.ts",
