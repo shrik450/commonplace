@@ -540,18 +540,31 @@ describe("src/store/queue claimNext", () => {
         /UPDATE fetch_requests SET state\s*=\s*'claimed'.*?RETURNING\s*\*/g,
       ),
     ].map((match) => match[0]);
-    expect(claims).toHaveLength(1);
+    // claimNext picks the oldest queued row and claimRequest claims one named
+    // row. Both are single statements, so neither can race a concurrent
+    // claimer into double-claiming the row.
+    expect(claims).toHaveLength(2);
 
-    const claim = claims[0]!;
-    expect(claim).toMatch(/SELECT id FROM fetch_requests/);
-    expect(claim).toMatch(/state\s*=\s*'queued'/);
-    expect(claim).toMatch(/ORDER BY created_at\s*,\s*id/);
-    expect(claim).toMatch(/LIMIT 1/);
-    expect(claim).toMatch(/attempts\s*=\s*attempts\s*\+\s*1/);
+    const claimNext = claims.find((claim) =>
+      claim.includes("SELECT id FROM fetch_requests"),
+    );
+    expect(claimNext).toBeDefined();
+    expect(claimNext).toMatch(/state\s*=\s*'queued'/);
+    expect(claimNext).toMatch(/ORDER BY created_at\s*,\s*id/);
+    expect(claimNext).toMatch(/LIMIT 1/);
+    expect(claimNext).toMatch(/attempts\s*=\s*attempts\s*\+\s*1/);
+
+    const claimRequest = claims.find(
+      (claim) => !claim.includes("SELECT id FROM fetch_requests"),
+    );
+    expect(claimRequest).toMatch(/WHERE id\s*=\s*\?\s*AND state\s*=\s*'queued'/);
+    expect(claimRequest).toMatch(/attempts\s*=\s*attempts\s*\+\s*1/);
 
     // A SELECT that picks the job and an UPDATE that claims it are two
     // statements, so two workers could pick the same row.
-    const rest = normalized.split(claim).join(" ");
+    const rest = normalized
+      .split(claimNext!).join(" ")
+      .split(claimRequest!).join(" ");
     expect(rest).not.toMatch(/SELECT id FROM fetch_requests/);
   });
 });

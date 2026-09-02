@@ -3,6 +3,32 @@ import { JSDOM } from "jsdom";
 
 import type { Run, Transcript } from "../contracts/transcript";
 
+export type Metadata = { title: string | null; author: string | null };
+
+function clean(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed === "" ? null : collapsed.slice(0, 500);
+}
+
+// Reads page metadata from the original HTML. It must never run on the
+// sanitized copy: the sanitizer's allow-list has no meta element, so every
+// og:title and author tag is gone by then.
+export function metadata(html: string): Metadata {
+  const doc = new JSDOM(html).window.document;
+
+  const title =
+    clean(doc.querySelector('meta[property="og:title"]')?.getAttribute("content")) ??
+    clean(doc.querySelector("title")?.textContent) ??
+    clean(doc.querySelector("h1")?.textContent);
+
+  const author =
+    clean(doc.querySelector('meta[name="author"]')?.getAttribute("content")) ??
+    clean(doc.querySelector('meta[property="article:author"]')?.getAttribute("content"));
+
+  return { title, author };
+}
+
 export const BLOCK_ELEMENTS = [
   "address",
   "article",

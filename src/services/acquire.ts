@@ -30,7 +30,7 @@ export type CaptureRequest = {
 
 export type CaptureResult = { path: string; bytes: number };
 
-const DEFAULT_TIMEOUT_MS = 120_000;
+export const DEFAULT_TIMEOUT_MS = 120_000;
 const MIN_CAPTURE_BYTES = 512;
 
 // The npm package is "single-file-cli"; the binary it puts on PATH is

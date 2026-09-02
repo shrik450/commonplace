@@ -107,7 +107,11 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE TABLE fetch_requests (
         id               TEXT PRIMARY KEY,
         user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        item_id          TEXT REFERENCES items(id) ON DELETE CASCADE,
+        -- No foreign key. A worker reserves the item id here before it
+        -- writes any file, and the item row does not exist until the ingest
+        -- commits. That forward reference is the crash-safe order, and a
+        -- foreign key cannot express "this will point at a row soon".
+        item_id          TEXT,
         url              TEXT,
         source_path      TEXT,
         state            TEXT NOT NULL CHECK (state IN ('queued', 'claimed', 'done', 'failed')),

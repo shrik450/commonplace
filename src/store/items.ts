@@ -107,6 +107,18 @@ export function listItems(
     .map(itemOf);
 }
 
+// One of two cross-tenant reads in the store. It exists only for the orphan
+// sweep, which runs across all tenants; do not copy this pattern into a
+// request path.
+export function itemPaths(db: Database): string[] {
+  return db
+    .query<{ user_id: UserId; id: ItemId }, []>(
+      "SELECT user_id, id FROM items",
+    )
+    .all()
+    .map((row) => `${row.user_id}/${row.id}`);
+}
+
 export function updateItem(
   db: Database,
   userId: UserId,

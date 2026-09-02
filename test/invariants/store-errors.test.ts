@@ -195,15 +195,17 @@ describe("store errors leave as AppError with a STORE_ code", () => {
     );
   });
 
-  test("completeFetch with an unknown item_id is a constraint failure", () => {
+  // This case once forced its failure with a foreign key on
+  // fetch_requests.item_id. Milestone 5 dropped that key, because a worker
+  // reserves an item id before the item row exists. The guarantee under test
+  // is unchanged: completeFetch must never leak a raw SQLiteError.
+  test("completeFetch against a dropped table fails with a STORE_ code", () => {
     const db = makeDb();
     seedUser(db);
     enqueueFetch(db, makeFetch());
     claimNext(db, NOW, 1_000);
-    expectStoreError(
-      () => completeFetch(db, FETCH_1, 1, MISSING_ITEM),
-      "STORE_CONSTRAINT_FAILED",
-    );
+    db.exec("DROP TABLE fetch_requests");
+    expectStoreError(() => completeFetch(db, FETCH_1, 1, MISSING_ITEM));
   });
 
   test("indexBlocks against a database with no schema fails with a STORE_ code", () => {

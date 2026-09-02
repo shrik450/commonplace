@@ -48,6 +48,18 @@ export function itemDir(
   return join(itemsRoot, userId, itemId);
 }
 
+// files.ts owns the item directory layout, so nothing above it calls mkdir
+// on an item path directly.
+export async function ensureItemDir(
+  itemsRoot: string,
+  userId: UserId,
+  itemId: ItemId,
+): Promise<string> {
+  const dir = itemDir(itemsRoot, userId, itemId);
+  await mkdir(dir, { recursive: true });
+  return dir;
+}
+
 export async function writeItemFile(
   itemsRoot: string,
   userId: UserId,

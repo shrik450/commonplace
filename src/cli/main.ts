@@ -1,10 +1,17 @@
 import { access, mkdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { now } from "../contracts/clock";
 import { AppError, toLogLine } from "../contracts/errors";
+import { asUserId, newRequestId } from "../contracts/ids";
+import type { UserId } from "../contracts/ids";
 import type { Config } from "../contracts/config";
 import { defaultConfigPath, loadConfig } from "../store/config";
+import { openDatabase } from "../store/db";
+import { enqueueFetch, claimRequest } from "../store/queue";
 import { capture, SINGLE_FILE_BINARY } from "../services/acquire";
-import type { CaptureRequest } from "../services/acquire";
+import type { CaptureRequest, CaptureResult } from "../services/acquire";
+import { ingestRequest } from "../services/ingest";
+import { LEASE_MS, applyOutcome } from "../services/worker";
 
 type Check = { name: string; ok: boolean; detail: string };
 
@@ -151,10 +158,96 @@ export async function fixturesCapture(
   return failures > 0 ? 1 : 0;
 }
 
+// One foreground ingest: enqueue a request, drain once, print the outcome.
+// The user id is required and must be a UUID; guessing a tenant is exactly
+// the mistake branded ids exist to prevent.
+export async function ingestCommand(options: {
+  url: string;
+  user: string | undefined;
+  json: boolean;
+  configPath?: string;
+  captureFn?: (request: CaptureRequest) => Promise<CaptureResult>;
+}): Promise<number> {
+  if (options.user === undefined) {
+    throw new AppError(
+      "CLI_BAD_ARGUMENT",
+      '"ingest" needs "--user <uuid>"',
+      { flag: "--user" },
+    );
+  }
+  let userId: UserId;
+  try {
+    userId = asUserId(options.user);
+  } catch {
+    throw new AppError(
+      "CLI_BAD_ARGUMENT",
+      '"--user" must be a UUID',
+      { user: options.user },
+    );
+  }
+
+  const config = await loadConfig(options.configPath);
+  const db = openDatabase(join(config.db_root, "db.sqlite"), now());
+  try {
+    const request = enqueueFetch(db, {
+      id: newRequestId(),
+      item_id: null,
+      url: options.url,
+      source_path: null,
+      state: "queued",
+      lease_expires_at: null,
+      attempts: 0,
+      error_code: null,
+      created_at: now().toISOString(),
+      user_id: userId,
+    });
+    const deps = {
+      db,
+      itemsRoot: config.items_root,
+      now,
+      capture: options.captureFn ?? capture,
+      browserPath: config.browser_path,
+    };
+    // Claim the request this command enqueued, not the oldest queued one:
+    // with anything else in the queue, a drain would ingest someone else's
+    // request and leave the URL the operator typed waiting.
+    const claimed = claimRequest(db, request.id, now(), LEASE_MS);
+    if (claimed === null) {
+      throw new AppError(
+        "STORE_NOT_FOUND",
+        "the enqueued request never became claimable",
+      );
+    }
+    const outcome = await ingestRequest(deps, claimed);
+    applyOutcome(deps, claimed, outcome);
+    if (options.json) {
+      if (outcome.state === "done") {
+        console.log(
+          JSON.stringify({ item_id: outcome.itemId, state: "done" }),
+        );
+      } else {
+        console.log(
+          JSON.stringify({ state: outcome.state, code: outcome.code }),
+        );
+      }
+    } else if (outcome.state === "done") {
+      console.log(`ingested ${options.url} as ${outcome.itemId}`);
+    } else {
+      console.error(
+        `ingest ${outcome.state} (${outcome.code}): ${outcome.message}`,
+      );
+    }
+    return outcome.state === "done" ? 0 : 1;
+  } finally {
+    db.close();
+  }
+}
+
 async function run(argv: string[]): Promise<number> {
   const positionals: string[] = [];
   let configPath: string | undefined;
   let json = false;
+  let user: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -173,6 +266,19 @@ async function run(argv: string[]): Promise<number> {
       i++;
     } else if (arg.startsWith("--config=")) {
       configPath = arg.slice("--config=".length);
+    } else if (arg === "--user") {
+      const value = argv[i + 1];
+      if (value === undefined) {
+        throw new AppError(
+          "CLI_BAD_ARGUMENT",
+          '"--user" requires a UUID',
+          { flag: "--user" },
+        );
+      }
+      user = value;
+      i++;
+    } else if (arg.startsWith("--user=")) {
+      user = arg.slice("--user=".length);
     } else if (arg.startsWith("--")) {
       throw new AppError("CLI_BAD_ARGUMENT", `unknown option "${arg}"`);
     } else {
@@ -185,7 +291,7 @@ async function run(argv: string[]): Promise<number> {
   if (command === undefined) {
     throw new AppError(
       "CLI_UNKNOWN_COMMAND",
-      "no command given; expected one of: doctor, fixtures",
+      "no command given; expected one of: doctor, fixtures, ingest",
     );
   }
   if (command === "fixtures") {
@@ -204,6 +310,23 @@ async function run(argv: string[]): Promise<number> {
     }
     return fixturesCapture();
   }
+  if (command === "ingest") {
+    const url = positionals.shift();
+    if (url === undefined) {
+      throw new AppError(
+        "CLI_BAD_ARGUMENT",
+        '"ingest" needs a URL',
+        { flag: "url" },
+      );
+    }
+    if (positionals.length > 0) {
+      throw new AppError(
+        "CLI_BAD_ARGUMENT",
+        `unexpected argument "${positionals[0]}" for command "ingest"`,
+      );
+    }
+    return ingestCommand({ url, user, json, configPath });
+  }
   if (positionals.length > 0) {
     throw new AppError(
       "CLI_BAD_ARGUMENT",
@@ -213,7 +336,7 @@ async function run(argv: string[]): Promise<number> {
   if (command !== "doctor") {
     throw new AppError(
       "CLI_UNKNOWN_COMMAND",
-      `unknown command "${command}"; expected one of: doctor, fixtures`,
+      `unknown command "${command}"; expected one of: doctor, fixtures, ingest`,
     );
   }
 
