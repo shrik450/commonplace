@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "verify": "bun run scripts/verify.ts",
+    "serve": "bun run src/web/server.ts",
     "verify:browser": "bun test test/browser",
     "css": "bunx @tailwindcss/cli -i src/web/styles.css -o public/app.css",
     "css:watch": "bunx @tailwindcss/cli -i src/web/styles.css -o public/app.css --watch",

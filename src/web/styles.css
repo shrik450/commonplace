@@ -1,5 +1,147 @@
 @import "tailwindcss";
 
 @plugin "daisyui" {
-  themes: dark --default;
+  themes: parchment --default, ink --prefersdark;
+}
+
+/* Warm paper. See docs/design.md; do not add a second accent hue. */
+@plugin "daisyui/theme" {
+  name: "parchment";
+  default: true;
+  color-scheme: light;
+  --color-base-100: #fffdf8;
+  --color-base-200: #f7f3ec;
+  --color-base-300: #e2dacd;
+  --color-base-content: #23201c;
+  --color-primary: #b4522f;
+  --color-primary-content: #fffdf8;
+  --color-secondary: #6e675e;
+  --color-secondary-content: #fffdf8;
+  --color-accent: #b4522f;
+  --color-accent-content: #fffdf8;
+  --color-neutral: #23201c;
+  --color-neutral-content: #f7f3ec;
+  --radius-box: 0.25rem;
+  --radius-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Blue-black ink with a faint violet cast, never neutral grey. */
+@plugin "daisyui/theme" {
+  name: "ink";
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #14151a;
+  --color-base-200: #1a1b22;
+  --color-base-300: #2a2b34;
+  --color-base-content: #e6e2da;
+  --color-primary: #d97a4e;
+  --color-primary-content: #14151a;
+  --color-secondary: #9b94a6;
+  --color-secondary-content: #14151a;
+  --color-accent: #d97a4e;
+  --color-accent-content: #14151a;
+  --color-neutral: #e6e2da;
+  --color-neutral-content: #14151a;
+  --radius-box: 0.25rem;
+  --radius-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@theme {
+  --font-reading: Newsreader, "Iowan Old Style", Palatino, Georgia, serif;
+  --font-chrome: Inter, system-ui, -apple-system, sans-serif;
+  --color-wash: rgb(214 148 61 / 0.28);
+}
+
+[data-theme="ink"] {
+  --color-wash: rgb(217 155 78 / 0.24);
+}
+
+body {
+  font-family: var(--font-chrome);
+}
+
+/* The reading column. One measure, set in characters, so the line length
+   holds whatever the reader's font size is. */
+.cp-transcript {
+  font-family: var(--font-reading);
+  font-size: 1.125rem;
+  line-height: 1.7;
+  max-width: 68ch;
+}
+
+.cp-block {
+  margin-block: 0.9em;
+}
+
+.cp-transcript h1,
+.cp-transcript h2,
+.cp-transcript h3 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin-block: 1.6em 0.6em;
+}
+
+.cp-transcript h1 {
+  font-size: 1.5rem;
+}
+
+.cp-transcript h2 {
+  font-size: 1.3rem;
+}
+
+.cp-transcript h3 {
+  font-size: 1.15rem;
+}
+
+.cp-transcript blockquote {
+  border-inline-start: 2px solid var(--color-primary);
+  padding-inline-start: 1rem;
+  color: var(--color-secondary);
+  font-style: italic;
+}
+
+.cp-transcript pre {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+  background: var(--color-base-200);
+  padding: 0.75rem 1rem;
+}
+
+/* A list item keeps its marker without the transcript owning a real list. */
+.cp-block[data-cp-tag="li"] {
+  padding-inline-start: 1.25rem;
+  position: relative;
+}
+
+.cp-block[data-cp-tag="li"]::before {
+  content: "·";
+  position: absolute;
+  inset-inline-start: 0.35rem;
+  color: var(--color-secondary);
+}
+
+/* A wash, not a block: two highlights over the same words deepen, and the
+   text under them stays readable. */
+.cp-mark {
+  background: var(--color-wash);
+  color: inherit;
+  padding-block: 0.05em;
+  border-radius: 0.125rem;
+}
+
+.cp-rule {
+  border-block-end: 1px solid var(--color-base-300);
+}
+
+.cp-hit {
+  color: var(--color-primary);
+  font-weight: 600;
 }

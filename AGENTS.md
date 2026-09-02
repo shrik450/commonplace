@@ -2,7 +2,8 @@
 
 Read this file first. It is the map of the repo and the rules of the road.
 Read `README.md` for why the system is shaped this way. Read the files in
-`docs/` when you touch the area they cover.
+`docs/` when you touch the area they cover. Read `docs/design.md` before you
+change anything under `src/web/`; it fixes the look of every page.
 
 ## The model in one paragraph
 
@@ -61,6 +62,7 @@ raise it rather than inventing one.
 | `bun run verify:browser` | The Playwright tests. Slow. |
 | `bun run cp <sub>` | The operator CLI. See `bun run cp --help`. |
 | `bun run cp doctor` | Check config, roots, browser path, and database health. |
+| `bun run serve` | Run the web app. Reads the config; `PORT` overrides 3000. |
 | `bun run css` | Build `public/app.css`. Add `:watch` for development. |
 
 `bun run verify` is the definition of done. Nothing else counts.
@@ -105,9 +107,10 @@ your change pass.
     `src/contracts/ids.ts`. Build and read times through `clock.ts`, which
     exports `now`, `addMs`, `toIso`, `parseIso`, and `isBefore`.
 
-Invariants 1, 2, 3, 9, and 10 exist today. The rest arrive with the
-milestone that makes them meaningful. Never write an invariant test that passes
-because it checks nothing.
+All ten exist today, and two more ride alongside them: `route-guard`, which
+makes every route call `authenticate` or appear on the unguarded list, and
+`branded-ids`, which makes every id parameter and field carry its brand. Never
+write an invariant test that passes because it checks nothing.
 
 Every invariant is a pure checker function in `test/invariants/lib.ts`. Each
 checker has two tests: one that runs it over the real repo, and one that runs

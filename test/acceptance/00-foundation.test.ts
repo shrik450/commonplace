@@ -43,7 +43,7 @@ import { AppError, isAppError, toLogLine } from "../../src/contracts/errors";
 import { parseConfig } from "../../src/contracts/config";
 import { defaultConfigPath, loadConfig } from "../../src/store/config";
 import { Fragment, jsx, jsxs, raw } from "../../src/web/views/jsx-runtime";
-import { app } from "../../src/web/server";
+import { publicRoutes } from "../../src/web/server";
 
 const repoRoot = join(import.meta.dir, "..", "..");
 const fixtureDir = join(repoRoot, "test", "fixtures", "config");
@@ -623,6 +623,7 @@ describe("src/web/views/jsx-runtime", () => {
 });
 
 describe("src/web/server", () => {
+  const app = publicRoutes();
   test("GET /health returns ok as JSON", async () => {
     const response = await app.handle(new Request("http://localhost/health"));
     expect(response.status).toBe(200);

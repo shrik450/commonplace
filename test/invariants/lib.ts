@@ -1,6 +1,9 @@
+import { JSDOM } from "jsdom";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, normalize, relative } from "node:path";
 
+import { contentRanges } from "../../src/contracts/transcript";
+import type { TranscriptMap } from "../../src/contracts/transcript";
 import type { TableInfo } from "../../src/store/db";
 
 export type ImportEdge = { from: string; to: string; line: number };
@@ -560,6 +563,8 @@ export const UNGUARDED_ROUTES = new Set([
   "/app.css",
   "/login",
   "/login/callback",
+  "/logout",
+  "/reader.js",
 ]);
 
 // A route call's first argument, taken up to the first comma, parenthesis,
@@ -599,6 +604,10 @@ export function checkRouteGuard(
         });
         continue;
       }
+      // `.get("q")` on a URLSearchParams is not a route. A route path is
+      // always rooted, so a literal that does not start with "/" is some
+      // other method that happens to share the name.
+      if (!route.startsWith("/")) continue;
       if (UNGUARDED_ROUTES.has(route)) continue;
       const body = file.source.slice(match.index);
       const handler = body.slice(0, nextRouteIndex(body));
@@ -618,4 +627,86 @@ function nextRouteIndex(body: string): number {
   ROUTE_PATTERN.lastIndex = 0;
   const matches = [...body.matchAll(ROUTE_PATTERN)];
   return matches.length > 1 ? matches[1]!.index! : body.length;
+}
+
+// Invariant 5: the round trip. Project a range, read the text inside the
+// highlight elements, and it must equal the transcript slice that range
+// stands for. A range crossing a non-content run reads back as the content
+// parts it covers, in order, because the reader view renders content only.
+export type RoundTripViolation = {
+  fixture: string;
+  start: number;
+  end: number;
+  expected: string;
+  got: string;
+};
+
+export function checkRoundTrip(
+  fixture: string,
+  transcript: string,
+  map: TranscriptMap,
+  ranges: Array<{ start: number; end: number }>,
+  render: (range: { start: number; end: number }) => string,
+): RoundTripViolation[] {
+  const violations: RoundTripViolation[] = [];
+  for (const range of ranges) {
+    if (range.end <= range.start) continue;
+
+    const document = new JSDOM(`<body>${render(range)}</body>`).window.document;
+    const got = [...document.querySelectorAll("mark[data-cp-annotation]")]
+      .map((mark) => mark.textContent ?? "")
+      .join("");
+    const expected = contentRanges(map, range.start, range.end)
+      .map((part) => transcript.slice(part.start, part.end))
+      .join("");
+
+    if (got !== expected) {
+      violations.push({ fixture, start: range.start, end: range.end, expected, got });
+    }
+  }
+  return violations;
+}
+
+// Invariant 8: the capture route serves someone else's page, so it runs with
+// no script at all. The checker reads the route's own handler, not the whole
+// file, so a header set on a different route cannot vouch for this one.
+export const CAPTURE_ROUTE = "/items/:id/capture";
+
+export function checkCaptureCsp(
+  files: { path: string; source: string }[],
+): Violation[] {
+  const violations: Violation[] = [];
+  let found = 0;
+
+  for (const file of files) {
+    const path = file.path.replaceAll("\\", "/");
+    if (!path.includes("src/web/")) continue;
+
+    for (const match of file.source.matchAll(ROUTE_PATTERN)) {
+      if (literalPathOf(match[2]!) !== CAPTURE_ROUTE) continue;
+      found += 1;
+
+      const line = file.source.slice(0, match.index).split("\n").length;
+      const body = file.source.slice(match.index);
+      const handler = body.slice(0, nextRouteIndex(body));
+      if (!handler.includes("script-src 'none'")) {
+        violations.push({
+          file: file.path,
+          line,
+          rule: "capture-csp",
+          detail: `the ${CAPTURE_ROUTE} handler does not send script-src 'none'`,
+        });
+      }
+    }
+  }
+
+  if (found !== 1) {
+    violations.push({
+      file: "src/web/",
+      line: 0,
+      rule: "capture-csp",
+      detail: `expected exactly one ${CAPTURE_ROUTE} route, found ${found}`,
+    });
+  }
+  return violations;
 }
