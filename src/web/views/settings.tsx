@@ -1,15 +1,12 @@
 import type { ApiToken } from "../../contracts/item";
 import {
   FONTS,
-  LINE_SPACINGS,
-  PARAGRAPH_SPACINGS,
-  TEXT_SIZES,
-  TEXT_WIDTHS,
+  READING_RANGES,
   THEMES,
   type UserSettings,
 } from "../../contracts/settings";
 import { readableDate } from "./library";
-import { ACTION, FIELD, LINK, Layout, PageHeading, SELECT_FIELD, SUBMIT } from "./layout";
+import { ACTION, FIELD, LINK, Layout, PageHeading, RANGE_FIELD, SELECT_FIELD, SUBMIT } from "./layout";
 
 function TokenRow({ token, locale }: { token: ApiToken; locale: string }) {
   return (
@@ -68,13 +65,31 @@ export function NewTokenPage({ name, secret, settings }: { name: string; secret:
   );
 }
 
-export function SettingsSelect({ name, label, values, current, compact = false }: { name: string; label: string; values: readonly string[]; current: string; compact?: boolean }) {
+function optionLabel(value: string): string {
+  return value === "sans" ? "Sans serif" : value[0]!.toUpperCase() + value.slice(1);
+}
+
+function SettingsSelect({ name, label, values, current }: { name: string; label: string; values: readonly string[]; current: string }) {
   return (
-    <label class={`grid gap-1 ${compact ? "text-xs" : "text-sm"}`}>
+    <label class="grid gap-1 text-sm">
       {label}
       <select name={name} class={SELECT_FIELD} autocomplete="off">
-        {values.map((value) => <option value={value} selected={current === value}>{value[0]!.toUpperCase() + value.slice(1)}</option>)}
+        {values.map((value) => <option value={value} selected={current === value}>{optionLabel(value)}</option>)}
       </select>
+    </label>
+  );
+}
+
+function SettingsRange({ name, label, current, unit }: { name: keyof typeof READING_RANGES; label: string; current: number; unit: string }) {
+  const range = READING_RANGES[name];
+  const outputId = `${name}-value`;
+  return (
+    <label class="grid gap-2 text-sm">
+      <span class="flex justify-between gap-4">
+        <span>{label}</span>
+        <output id={outputId} for={name} class="text-secondary tabular-nums" data-cp-range-output data-cp-unit={unit}>{current}{unit}</output>
+      </span>
+      <input id={name} type="range" name={name} min={range.min} max={range.max} step={range.step} value={current} class={RANGE_FIELD} autocomplete="off" />
     </label>
   );
 }
@@ -92,10 +107,10 @@ export function SettingsPage({ tokens, locale, settings }: { tokens: ApiToken[];
           <h2 class="mb-3 text-base font-semibold">Reading</h2>
           <div class="grid gap-5 sm:grid-cols-2">
             <SettingsSelect name="font" label="Font" values={FONTS} current={settings.font} />
-            <SettingsSelect name="text_size" label="Text size" values={TEXT_SIZES} current={settings.text_size} />
-            <SettingsSelect name="line_spacing" label="Line spacing" values={LINE_SPACINGS} current={settings.line_spacing} />
-            <SettingsSelect name="paragraph_spacing" label="Paragraph spacing" values={PARAGRAPH_SPACINGS} current={settings.paragraph_spacing} />
-            <SettingsSelect name="text_width" label="Text width" values={TEXT_WIDTHS} current={settings.text_width} />
+            <SettingsRange name="text_size" label="Text size" current={settings.text_size} unit=" px" />
+            <SettingsRange name="line_spacing" label="Line spacing" current={settings.line_spacing} unit="%" />
+            <SettingsRange name="paragraph_spacing" label="Paragraph spacing" current={settings.paragraph_spacing} unit="%" />
+            <SettingsRange name="text_width" label="Text width" current={settings.text_width} unit=" ch" />
           </div>
           <article
             class="mt-8"
@@ -105,8 +120,22 @@ export function SettingsPage({ tokens, locale, settings }: { tokens: ApiToken[];
             data-cp-line-spacing={settings.line_spacing}
             data-cp-paragraph-spacing={settings.paragraph_spacing}
             data-cp-text-width={settings.text_width}
+            style={`--cp-text-size: ${settings.text_size}px; --cp-line-spacing: ${settings.line_spacing / 100}; --cp-paragraph-spacing: ${settings.paragraph_spacing / 100}em; --cp-text-width: ${settings.text_width}ch`}
           >
-            <p class="cp-transcript">This short passage shows how your reading settings will look.</p>
+            <div class="cp-transcript">
+              <h3>A quiet place to read</h3>
+              <p class="cp-block">
+                Good reading settings let the words take priority. This sample includes enough text to show the font, line length, and space between paragraphs.
+              </p>
+              <p class="cp-block">
+                Change each control and watch this passage respond. Try a narrow column for focused reading, or add more space when dense pages feel crowded.
+              </p>
+              <blockquote class="cp-block">The best setting is the one that helps you keep reading.</blockquote>
+              <ul class="cp-block">
+                <li>Compare short and long lines.</li>
+                <li>Check how separate paragraphs feel.</li>
+              </ul>
+            </div>
           </article>
         </section>
         <button type="submit" class={SUBMIT}>Save settings</button>

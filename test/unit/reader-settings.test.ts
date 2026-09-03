@@ -2,59 +2,42 @@ import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import { describe, expect, test } from "bun:test";
 
-import { asItemId, asUserId } from "../../src/contracts/ids";
-import type { Item } from "../../src/contracts/item";
-import { ReaderPageView } from "../../src/web/views/reader";
+import { asUserId } from "../../src/contracts/ids";
+import { SettingsPage } from "../../src/web/views/settings";
 
 const SCRIPT = readFileSync(new URL("../../public/reader-settings.js", import.meta.url), "utf8");
-const ITEM_ID = asItemId("11111111-1111-4111-8111-111111111111");
 const USER_ID = asUserId("22222222-2222-4222-8222-222222222222");
-const ITEM: Item = {
-  id: ITEM_ID,
-  user_id: USER_ID,
-  url: "https://example.com/reader",
-  title: "Reader title",
-  author: null,
-  created_at: "2026-01-01T00:00:00.000Z",
-  ingested_at: "2026-01-01T00:00:00.000Z",
-};
 const SETTINGS = {
   user_id: USER_ID,
   theme: "auto" as const,
   font: "sans" as const,
-  text_size: "medium" as const,
-  line_spacing: "comfortable" as const,
-  paragraph_spacing: "comfortable" as const,
-  text_width: "comfortable" as const,
+  text_size: 18,
+  line_spacing: 170,
+  paragraph_spacing: 90,
+  text_width: 68,
 };
 
 describe("reader settings preview", () => {
-  test("uses the rendered reader structure for close and native summary behavior", () => {
-    const rendered = String(ReaderPageView({
-      item: ITEM,
-      html: "<p>Reader content</p>",
-      annotations: [],
+  test("updates the sample and numeric label from each slider", () => {
+    const rendered = String(SettingsPage({
+      tokens: [],
       locale: "en-US",
       settings: SETTINGS,
-      interactive: true,
     }));
     const dom = new JSDOM(`<!doctype html>${rendered}`, {
       runScripts: "outside-only",
-      url: `http://localhost/items/${ITEM_ID}`,
+      url: "http://localhost/settings",
     });
 
     dom.window.eval(SCRIPT);
     const document = dom.window.document;
-    const close = document.querySelector("[data-cp-settings-details] > a");
-    expect(close?.getAttribute("href")).toBe(`/items/${ITEM_ID}`);
-    expect(close?.closest("form")).toBeNull();
-    expect(document.querySelector("summary")?.hasAttribute("aria-expanded")).toBe(false);
-
-    const textSize = document.querySelector<HTMLSelectElement>('select[name="text_size"]');
-    expect(textSize).not.toBeNull();
-    textSize!.value = "large";
+    const textSize = document.querySelector<HTMLInputElement>('input[name="text_size"]');
+    expect(textSize?.type).toBe("range");
+    textSize!.value = "22";
     textSize!.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
-    expect(document.querySelector("[data-cp-reader]")?.getAttribute("data-cp-text-size")).toBe("large");
+    expect(document.querySelector("[data-cp-reader]")?.getAttribute("data-cp-text-size")).toBe("22");
+    expect(document.querySelector("[data-cp-reader]")?.getAttribute("style")).toContain("--cp-text-size: 22px");
+    expect(document.querySelector("[data-cp-range-output]")?.textContent).toBe("22 px");
     dom.window.close();
   });
 });

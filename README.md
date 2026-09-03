@@ -46,7 +46,8 @@ configured roots.
 Ingest writes files before it commits the item row. A lease-aware sweep removes
 abandoned directories while protecting active work.
 
-Schema version 3 adds per-user settings. Schema version 2 migrates old databases
+Schema version 4 adds numeric reading controls and a monospace font. Schema
+version 3 adds per-user settings. Schema version 2 migrates old databases
 by retaining only article rows with a non-null URL. It discards book rows,
 incomplete article rows, their annotations
 and search blocks, and legacy non-URL requests. Orphaned old item directories
@@ -64,8 +65,9 @@ The web app provides:
 - API token creation and revocation;
 - per-account appearance and reading settings.
 
-The reader and structured text view use server-rendered HTML. A small same-origin script previews settings live and saves them without a reload,
-with a normal form fallback.
+The reader and structured text view use server-rendered HTML. A small same-origin
+script previews the settings page and saves changes without a reload, with a
+normal form fallback.
 The saved copy serves the captured page with a strict
 policy that allows inline CSS and embedded data images and fonts, while
 blocking scripts and network resources.

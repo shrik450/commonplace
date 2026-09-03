@@ -15,12 +15,12 @@ describe("database migration behavior", () => {
     roots.push(root);
     const db = openDatabase(join(root, "db.sqlite"), APPLIED_AT);
 
-    expect(SCHEMA_VERSION).toBe(3);
+    expect(SCHEMA_VERSION).toBe(4);
     expect(
       db.query<{ version: number }, []>(
         "SELECT version FROM migrations ORDER BY version",
       ).all(),
-    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
+    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
     expect(
       db.query<{ name: string }, []>(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'items'",

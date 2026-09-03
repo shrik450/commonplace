@@ -1,11 +1,10 @@
 import { Elysia } from "elysia";
 
 import { AppError } from "../../contracts/errors";
-import { asItemId, asTokenId, type UserId } from "../../contracts/ids";
+import { asTokenId } from "../../contracts/ids";
 import { parseSettings, type UserSettings } from "../../contracts/settings";
 import { authenticate, createApiToken, revokeApiToken } from "../../services/auth";
 import type { ApiToken } from "../../contracts/item";
-import { getItem } from "../../store/items";
 import { listApiTokens } from "../../store/users";
 import { updateUserSettings } from "../../store/settings";
 import { ErrorPage, page } from "../views/layout";
@@ -55,25 +54,6 @@ function tokenError(error: AppError, settings: UserSettings): Response {
   );
 }
 
-function returnTarget(value: string | undefined, userId: UserId, db: WebDeps["db"]): string {
-  if (value === undefined || !value.startsWith("/") || value.startsWith("//")) return "/settings";
-  let parsed: URL;
-  try {
-    parsed = new URL(value, "http://commonplace.invalid");
-  } catch {
-    return "/settings";
-  }
-  if (parsed.search !== "" || parsed.hash !== "") return "/settings";
-  const match = /^\/items\/([^/]+)$/.exec(parsed.pathname);
-  if (match === null) return "/settings";
-  try {
-    const itemId = asItemId(match[1]!);
-    return getItem(db, userId, itemId) === null ? "/settings" : `/items/${itemId}`;
-  } catch {
-    return "/settings";
-  }
-}
-
 export function settingsRoutes(deps: WebDeps) {
   return new Elysia()
     .get("/settings", async ({ request }) => {
@@ -100,7 +80,7 @@ export function settingsRoutes(deps: WebDeps) {
       const acceptsJson = request.headers.get("accept")?.includes("application/json") ?? false;
       return acceptsJson
         ? new Response(null, { status: 204 })
-        : new Response(null, { status: 303, headers: { location: returnTarget(fields.get("return_to") ?? undefined, principal.user.id, deps.db) } });
+        : new Response(null, { status: 303, headers: { location: "/settings" } });
     })
     // Show a confirmation page before the POST request revokes the token.
     .get("/settings/tokens/:id/revoke", async ({ request, params }) => {

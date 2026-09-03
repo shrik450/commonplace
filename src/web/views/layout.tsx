@@ -21,6 +21,8 @@ export const FIELD = `bg-transparent py-1 text-sm outline-none placeholder:text-
 
 export const SELECT_FIELD = `border border-base-300 bg-base-100 text-base-content px-2 py-1 text-sm outline-none ${FOCUS}`;
 
+export const RANGE_FIELD = `accent-primary w-full cursor-pointer ${FOCUS}`;
+
 // Renders the standard page heading. The home and reader views use larger
 // headings.
 export function PageHeading({ children }: { children?: Child }) {

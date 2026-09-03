@@ -10,6 +10,12 @@
     ["paragraph_spacing", "data-cp-paragraph-spacing"],
     ["text_width", "data-cp-text-width"],
   ]);
+  const properties = new Map([
+    ["text_size", ["--cp-text-size", (value) => `${value}px`]],
+    ["line_spacing", ["--cp-line-spacing", (value) => String(Number(value) / 100)]],
+    ["paragraph_spacing", ["--cp-paragraph-spacing", (value) => `${Number(value) / 100}em`]],
+    ["text_width", ["--cp-text-width", (value) => `${value}ch`]],
+  ]);
   const fields = ["theme", ...attributes.keys()];
   let saves = Promise.resolve();
 
@@ -25,6 +31,12 @@
       if (reader) {
         const attribute = attributes.get(name);
         if (attribute) reader.setAttribute(attribute, field.value);
+        const property = properties.get(name);
+        if (property) reader.style.setProperty(property[0], property[1](field.value));
+      }
+      if (field instanceof HTMLInputElement && field.type === "range") {
+        const output = field.closest("label")?.querySelector("[data-cp-range-output]");
+        if (output) output.textContent = `${field.value}${output.dataset.cpUnit ?? ""}`;
       }
     }
   };

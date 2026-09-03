@@ -2,33 +2,32 @@ import { AppError } from "./errors";
 import type { UserId } from "./ids";
 
 export const THEMES = ["auto", "light", "dark"] as const;
-export const FONTS = ["serif", "sans"] as const;
-export const TEXT_SIZES = ["small", "medium", "large"] as const;
-export const LINE_SPACINGS = ["compact", "comfortable", "loose"] as const;
-export const PARAGRAPH_SPACINGS = ["compact", "comfortable", "loose"] as const;
-export const TEXT_WIDTHS = ["narrow", "comfortable", "wide"] as const;
+export const FONTS = ["serif", "sans", "monospace"] as const;
+
+export const READING_RANGES = {
+  text_size: { min: 16, max: 24, step: 1 },
+  line_spacing: { min: 140, max: 200, step: 5 },
+  paragraph_spacing: { min: 50, max: 150, step: 5 },
+  text_width: { min: 52, max: 84, step: 2 },
+} as const;
 
 export type Theme = (typeof THEMES)[number];
 export type Font = (typeof FONTS)[number];
-export type TextSize = (typeof TEXT_SIZES)[number];
-export type LineSpacing = (typeof LINE_SPACINGS)[number];
-export type ParagraphSpacing = (typeof PARAGRAPH_SPACINGS)[number];
-export type TextWidth = (typeof TEXT_WIDTHS)[number];
 
 export type UserSettings = {
   user_id: UserId;
   theme: Theme;
   font: Font;
-  text_size: TextSize;
-  line_spacing: LineSpacing;
-  paragraph_spacing: ParagraphSpacing;
-  text_width: TextWidth;
+  text_size: number;
+  line_spacing: number;
+  paragraph_spacing: number;
+  text_width: number;
 };
 
 export type SettingsFields = Readonly<Record<string, string>>;
 
 export function parseSettings(userId: UserId, fields: SettingsFields): UserSettings {
-  const read = <T extends string>(name: string, values: readonly T[]): T => {
+  const readOption = <T extends string>(name: string, values: readonly T[]): T => {
     const value = fields[name];
     // SAFETY: the form value is checked against the corresponding option list.
     if (value === undefined || !values.includes(value as T)) {
@@ -37,23 +36,31 @@ export function parseSettings(userId: UserId, fields: SettingsFields): UserSetti
     // SAFETY: the preceding condition throws unless value is in values.
     return value as T;
   };
+  const readRange = (name: keyof typeof READING_RANGES): number => {
+    const value = Number(fields[name]);
+    const range = READING_RANGES[name];
+    if (!Number.isInteger(value) || value < range.min || value > range.max || (value - range.min) % range.step !== 0) {
+      throw new AppError("VIEW_INVALID_VALUE", `Choose a valid ${name.replaceAll("_", " ")} value, then submit again.`, { field: name });
+    }
+    return value;
+  };
   return {
     user_id: userId,
-    theme: read("theme", THEMES),
-    font: read("font", FONTS),
-    text_size: read("text_size", TEXT_SIZES),
-    line_spacing: read("line_spacing", LINE_SPACINGS),
-    paragraph_spacing: read("paragraph_spacing", PARAGRAPH_SPACINGS),
-    text_width: read("text_width", TEXT_WIDTHS),
+    theme: readOption("theme", THEMES),
+    font: readOption("font", FONTS),
+    text_size: readRange("text_size"),
+    line_spacing: readRange("line_spacing"),
+    paragraph_spacing: readRange("paragraph_spacing"),
+    text_width: readRange("text_width"),
   };
 }
 
 export const DEFAULT_SETTINGS: Omit<UserSettings, "user_id"> = {
   theme: "auto",
   font: "serif",
-  text_size: "medium",
-  line_spacing: "comfortable",
-  paragraph_spacing: "comfortable",
-  text_width: "comfortable",
+  text_size: 18,
+  line_spacing: 170,
+  paragraph_spacing: 90,
+  text_width: 68,
 };
 

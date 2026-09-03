@@ -462,11 +462,11 @@ describe("token management", () => {
     const app = buildApp({ db: env.db, config: { ...config, items_root: env.itemsRoot }, now });
     const values = {
       theme: "dark",
-      font: "sans",
-      text_size: "large",
-      line_spacing: "loose",
-      paragraph_spacing: "compact",
-      text_width: "wide",
+      font: "monospace",
+      text_size: "22",
+      line_spacing: "190",
+      paragraph_spacing: "60",
+      text_width: "80",
     };
     const body = new URLSearchParams(values).toString();
     const saved = await post(app, "/settings", body, {
@@ -474,7 +474,7 @@ describe("token management", () => {
       cookie: session(ALICE),
     });
     expect(saved.status).toBe(303);
-    expect(env.db.query("SELECT theme, font, text_size FROM user_settings WHERE user_id = ?").get(ALICE)).toMatchObject({ theme: "dark", font: "sans", text_size: "large" });
+    expect(env.db.query("SELECT theme, font, text_size FROM user_settings WHERE user_id = ?").get(ALICE)).toMatchObject({ theme: "dark", font: "monospace", text_size: 22 });
 
     const invalid = await post(app, "/settings", new URLSearchParams({ ...values, theme: "blue" }).toString(), {
       "content-type": "application/x-www-form-urlencoded",
@@ -489,7 +489,9 @@ describe("token management", () => {
     const darkBody = await darkPage.text();
     expect(darkBody).toContain('<html lang="en" data-theme="ink">');
     expect(darkBody).toContain('<meta name="theme-color" content="#14151a"/>');
-    expect(darkBody).toContain('data-cp-reader data-cp-font="sans" data-cp-text-size="large" data-cp-line-spacing="loose" data-cp-paragraph-spacing="compact" data-cp-text-width="wide"');
+    expect(darkBody).toContain('data-cp-reader data-cp-font="monospace" data-cp-text-size="22" data-cp-line-spacing="190" data-cp-paragraph-spacing="60" data-cp-text-width="80"');
+    expect(darkBody).toContain('input id="text_size" type="range"');
+    expect(darkBody).toContain("This sample includes enough text");
     expect(darkBody).toContain('autocomplete="off"');
 
     for (const theme of ["light", "auto"] as const) {

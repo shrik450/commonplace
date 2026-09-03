@@ -291,46 +291,12 @@ describe("authenticated reader routes", () => {
     expect(response.status).toBe(400);
   });
 
-  test("returns only owned item paths from return_to", async () => {
-    const env = await environment("settings-return-target");
-    const app = buildApp({ db: env.db, config: { ...CONFIG, items_root: env.itemsRoot }, now });
-    const values = {
-      theme: "auto",
-      font: "sans",
-      text_size: "medium",
-      line_spacing: "comfortable",
-      paragraph_spacing: "comfortable",
-      text_width: "comfortable",
-    };
-    const postSettings = async (userId: UserId, returnTo: string) => app.handle(new Request("http://localhost/settings", {
-      method: "POST",
-      headers: { cookie: cookie(userId), "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ ...values, return_to: returnTo }),
-    }));
-
-    const owned = await postSettings(ALICE, `/items/${env.itemId}`);
-    expect(owned.status).toBe(303);
-    expect(owned.headers.get("location")).toBe(`/items/${env.itemId}`);
-
-    for (const [userId, returnTo] of [
-      [ALICE, "//evil.example"],
-      [ALICE, "https://evil.example/"],
-      [BOB, `/items/${env.itemId}`],
-      [ALICE, "/settings/tokens"],
-    ] as const) {
-      const response = await postSettings(userId, returnTo);
-      expect(response.status).toBe(303);
-      expect(response.headers.get("location")).toBe("/settings");
-      expect(response.headers.get("location")).not.toContain("evil.example");
-    }
-  });
-
   test("serve structured text and the frozen saved copy only to the owner", async () => {
     const env = await environment("routes");
     const app = buildApp({ db: env.db, config: { ...CONFIG, items_root: env.itemsRoot }, now });
     const reader = await app.handle(new Request(`http://localhost/items/${env.itemId}`, { headers: { cookie: cookie(ALICE) } }));
     const readerBody = await reader.text();
-    const settings = new URLSearchParams({ theme: "auto", font: "sans", text_size: "large", line_spacing: "loose", paragraph_spacing: "compact", text_width: "wide" });
+    const settings = new URLSearchParams({ theme: "auto", font: "monospace", text_size: "22", line_spacing: "190", paragraph_spacing: "60", text_width: "80" });
     const saved = await app.handle(new Request("http://localhost/settings", {
       method: "POST",
       headers: { cookie: cookie(ALICE), "content-type": "application/x-www-form-urlencoded" },
@@ -339,8 +305,8 @@ describe("authenticated reader routes", () => {
     expect(saved.status).toBe(303);
     const styledReader = await app.handle(new Request(`http://localhost/items/${env.itemId}`, { headers: { cookie: cookie(ALICE) } }));
     const styledReaderBody = await styledReader.text();
-    expect(styledReaderBody).toContain('data-cp-text-size="large"');
-    expect(styledReaderBody).toContain("data-cp-settings-details");
+    expect(styledReaderBody).toContain('data-cp-text-size="22"');
+    expect(styledReaderBody).not.toContain("data-cp-settings-details");
     const raw = await app.handle(new Request(`http://localhost/items/${env.itemId}/raw`, { headers: { cookie: cookie(ALICE) } }));
     expect(raw.status).toBe(200);
     const rawBody = await raw.text();
@@ -350,7 +316,7 @@ describe("authenticated reader routes", () => {
     expect(rawBody).not.toBe(readerBody);
     expect(rawBody).toContain("Structured text");
     expect(rawBody).toContain("data-cp-block");
-    expect(rawBody).toContain('data-cp-text-size="large"');
+    expect(rawBody).toContain('data-cp-text-size="22"');
     expect(rawBody).not.toContain("data-cp-settings-details");
     expect(rawBody).not.toContain("Page settings");
     const capture = await app.handle(new Request(`http://localhost/items/${env.itemId}/capture`, { headers: { cookie: cookie(ALICE) } }));

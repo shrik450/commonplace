@@ -89,14 +89,14 @@ describe("tenant-scoped rows", () => {
   test("stores settings per tenant and rejects invalid values", () => {
     const db = database();
     const alice = getUserSettings(db, ALICE);
-    updateUserSettings(db, { ...alice, theme: "dark", text_size: "large" });
-    expect(getUserSettings(db, ALICE)).toMatchObject({ theme: "dark", text_size: "large" });
+    updateUserSettings(db, { ...alice, theme: "dark", text_size: 22 });
+    expect(getUserSettings(db, ALICE)).toMatchObject({ theme: "dark", text_size: 22 });
     expect(getUserSettings(db, BOB).theme).toBe("auto");
     db.run("DELETE FROM user_settings WHERE user_id = ?", [BOB]);
     expect(() => getUserSettings(db, BOB)).toThrow(
       expect.objectContaining({ code: "STORE_NOT_FOUND" }),
     );
-    expect(() => parseSettings(ALICE, { theme: "blue", font: "serif", text_size: "medium", line_spacing: "comfortable", paragraph_spacing: "comfortable", text_width: "comfortable" })).toThrow(AppError);
+    expect(() => parseSettings(ALICE, { theme: "blue", font: "serif", text_size: "18", line_spacing: "170", paragraph_spacing: "90", text_width: "68" })).toThrow(AppError);
     db.close();
   });
 

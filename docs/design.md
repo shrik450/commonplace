@@ -38,8 +38,8 @@ Follow these color rules:
 ## Type
 
 - Use Newsreader for transcript text and Inter for interface text. Account
-  settings can choose serif or sans reading text, with controlled size, line
-  spacing, paragraph spacing, and text width.
+  settings can choose serif, sans serif, or monospace reading text. Sliders
+  control size, line spacing, paragraph spacing, and text width.
 - Fontsource is not installed yet, so declare both families with fallbacks:
   `Newsreader, "Iowan Old Style", Palatino, Georgia, serif` and
   `Inter, system-ui, sans-serif`. Add the packages later as a deliberate

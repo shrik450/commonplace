@@ -77,7 +77,6 @@ async function itemPageResponse(
         annotations={view.annotations}
         locale={preferredLocale(request)}
         settings={userSettings(deps, principal.user.id)}
-        interactive={mode === "reader"}
       />,
     );
   } catch (error) {

@@ -94,7 +94,8 @@ Annotations retain transcript offsets and their quote in SQLite. Rendering
 re-anchors the quote against the current transcript and projects it through the
 current Map. No DOM path or document position enters the database.
 
-Schema version 3 adds durable per-user settings. Schema version 2 migrates old
+Schema version 4 adds numeric reading controls and a monospace font. Schema
+version 3 adds durable per-user settings. Schema version 2 migrates old
 databases by retaining only article rows with a non-null URL. It discards book
 rows, incomplete article rows, their annotations and search blocks, and legacy
 non-URL requests. Orphaned old item directories
