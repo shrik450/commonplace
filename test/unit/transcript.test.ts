@@ -13,14 +13,14 @@ function makeRun(
   start: number,
   end: number,
   isContent = true,
-  docIndex = 0,
+  documentIndex = 0,
   nodePath = "1/0",
   blockIndex = 0,
 ) {
   return {
     start,
     end,
-    doc_index: docIndex,
+    doc_index: documentIndex,
     node_path: nodePath,
     block_index: blockIndex,
     is_content: isContent,

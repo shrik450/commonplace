@@ -8,7 +8,7 @@ import { AppError } from "../contracts/errors";
 import type { ItemId } from "../contracts/ids";
 import { newItemId } from "../contracts/ids";
 import type { FetchRequest } from "../contracts/item";
-import { validateMap, type Run } from "../contracts/transcript";
+import { blocksOf, validateMap, type TranscriptMap } from "../contracts/transcript";
 import type { CaptureRequest, CaptureResult } from "./acquire";
 import {
   ensureItemDir,
@@ -30,7 +30,7 @@ export type IngestDeps = {
   itemsRoot: string;
   now: () => Date;
   capture: (request: CaptureRequest) => Promise<CaptureResult>;
-  browserPath?: string;
+  browserPath: string;
   captureTimeoutMs?: number;
 };
 
@@ -42,7 +42,6 @@ export type IngestOutcome =
 // Don't retry errors that another attempt can't resolve. Other failures, such
 // as a timeout or temporary I/O error, return to the queue.
 const PERMANENT_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
-  "INGEST_UNSUPPORTED_SOURCE",
   "INGEST_LEASE_LOST",
   "INGEST_BLOCK_MISMATCH",
 ]);
@@ -70,13 +69,6 @@ async function runIngest(
   deps: IngestDeps,
   request: FetchRequest,
 ): Promise<IngestOutcome> {
-  if (request.source_path !== null || request.url === null) {
-    throw new AppError(
-      "INGEST_UNSUPPORTED_SOURCE",
-      "only HTML fetched from a URL can be ingested",
-      { request_id: request.id, url: request.url },
-    );
-  }
   const url = request.url;
 
   // Reuse the reserved item ID across retries. For a new request, reuse an item
@@ -150,7 +142,7 @@ async function runIngest(
     JSON.stringify(map),
   );
 
-  const blocks = buildBlocks(map.runs, text, itemId, request.user_id);
+  const blocks = buildBlocks(map, text, itemId, request.user_id);
 
   // Store the item, search index, and completed request in one transaction.
   // `bun:sqlite` transactions are synchronous, so all asynchronous work must
@@ -164,7 +156,6 @@ async function runIngest(
       insertItem(deps.db, {
         id: itemId,
         user_id: request.user_id,
-        kind: "article",
         url,
         title,
         author: meta.author,
@@ -193,45 +184,33 @@ async function runIngest(
 }
 
 function buildBlocks(
-  runs: Run[],
+  map: TranscriptMap,
   transcript: string,
   itemId: ItemId,
   userId: FetchRequest["user_id"],
 ): BlockRow[] {
-  type Group = { start: number; end: number; isContent: boolean };
-  const groups = new Map<number, Group>();
-  for (const run of runs) {
-    const group = groups.get(run.block_index);
-    if (group === undefined) {
-      groups.set(run.block_index, {
-        start: run.start,
-        end: run.end,
-        isContent: run.is_content,
-      });
-      continue;
-    }
-    if (group.isContent !== run.is_content) {
+  const blocks: BlockRow[] = [];
+  for (const block of blocksOf(map)) {
+    const first = block.runs[0]!;
+    const last = block.runs.at(-1)!;
+    const isContent = first.is_content;
+    if (block.runs.some((run) => run.is_content !== isContent)) {
       throw new AppError(
         "INGEST_BLOCK_MISMATCH",
         "runs in the same block have different is_content values",
-        { block_index: run.block_index },
+        { block_index: block.index },
       );
     }
-    group.end = run.end;
-  }
-
-  const blocks: BlockRow[] = [];
-  for (const [blockIndex, group] of groups) {
-    const blockText = transcript.slice(group.start, group.end);
-    if (blockText.trim() === "") continue;
+    const text = transcript.slice(first.start, last.end);
+    if (text.trim() === "") continue;
     blocks.push({
       item_id: itemId,
       user_id: userId,
-      block_index: blockIndex,
-      start_offset: group.start,
-      end_offset: group.end,
-      is_content: group.isContent,
-      text: blockText,
+      block_index: block.index,
+      start_offset: first.start,
+      end_offset: last.end,
+      is_content: isContent,
+      text,
     });
   }
   return blocks;

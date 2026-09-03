@@ -1,297 +1,120 @@
 # Commonplace
 
-A personal reading archive. Save web articles and EPUB books, search their full
-text, annotate passages, and link those annotations from your notes.
-
-> [!NOTE]
-> This repo is entirely vibecoded, and nothing after this paragraph is
-> human-written.
+Commonplace is a personal archive for saved web pages. It keeps a local copy,
+extracts searchable text, and renders highlights from the current transcript.
 
 ## The model
 
-One transcript per item, many views. Every row belongs to a user — the data
-model is multi-tenant from day one.
+Each capture produces the current transcript and Map. They remain stable until
+the next recapture of that URL. The transcript is the full text in reading
+order. The Map records which node in the sanitized capture produced each
+transcript span.
 
-- **Item** — one thing you read. A web `article` or a `book`. Owned by the user
-  who ingested it.
-- **Transcript** — the item's full text as one ordered character stream in
-  reading order. Built once at ingest, immutable afterward. Search, annotations,
-  and citations all anchor to the transcript. It is the single source of truth
-  for what the item says.
-- **Map** — the run table: `(start, end, doc_index, node_path, is_content)`. It
-  records which source DOM node produced each span of transcript characters.
-  That gives a bidirectional mapping between transcript offsets and DOM nodes.
-  For books, the walker concatenates all spine documents first, so transcript
-  offsets stay global across the whole item and resolve correctly in any view.
-- **View** — one rendering of the item: the raw capture, the cleaned reader
-  page, raw text, or the EPUB. No view is authoritative; every view is derived
-  from the transcript through the Map.
-- **Annotation** — `(user_id, item_id, start_offset, end_offset, quote, note)`,
-  anchored to character offsets in the transcript. Because the offsets index our
-  own transcript, one annotation works for a book, a web page, and every view,
-  without caring about format. The quoted string lets us re-anchor by text match
-  if the file is ever replaced — and matches how ereader highlights arrive, as
-  raw text.
+Search and reader pages project from the transcript and Map. A recapture reuses
+the item ID and replaces the four capture files. An annotation stores a
+transcript range and its quote. The reader re-anchors the quote before
+rendering, so changed offsets do not silently move a highlight.
 
-Rules that keep the model honest:
+Only the Map stores DOM positions. The database stores no DOM paths.
 
-- Sanitize before you walk. The Map's DOM references point at the sanitized
-  document, the file you serve — not the raw original capture.
-- Only the Map stores positions. Views hold no offsets, and the database never
-  stores DOM paths.
-- Readability is a heuristic, not a source of truth. Use it only to flag which
-  runs are content; keep your own text in the transcript rather than adopting
-  readability's cleaned HTML.
-
-## Dataflow
+## Data flow
 
 ```
-URL / EPUB upload
-      |  acquire (out of process: single-file-cli, or file read)
-      v
-Capture (raw SingleFile HTML)   SourceFile (EPUB)   ItemMetadata
-      |  sanitize (in process)
-      v
-SanitizedCapture
-      |  linearize (the walker, one pass)
-      v
-Transcript  +  Map   (fused, immutable, one directory per item)
-      |                      |
-      | index                | project (per request)
-      v                      v
-FTS rows                View HTML + highlight spans
-                             ^
-      Annotation --------------|
-      | create: Selection + reader DOM (data-start) -> Range
-      v
-DB rows (items, annotations)
-      |  export (rebuildable)
-      v
-VaultStub + symlink tree
+URL
+  │
+  ▼
+SingleFile capture → sanitize → walk → transcript + Map
+                                      │          │
+                                      ▼          ▼
+                                  FTS blocks  reader projection
+                                      │
+                                      ▼
+                                  search page
 ```
 
-The forms, by lifetime:
+Ingest writes these four files under
+`items/<user_id>/<item_id>/`:
 
-| Form                                        | Lifetime                | Storage |
-| ------------------------------------------- | ----------------------- | ------- |
-| `FetchRequest`                              | dies after ingest       | DB      |
-| `Capture` (raw, unsanitized)                | durable, immutable      | file    |
-| `SourceFile` (EPUB)                         | durable, immutable      | file    |
-| `ItemMetadata`                              | durable, mutable        | DB      |
-| `SanitizedCapture`                          | durable, immutable      | file    |
-| `Transcript`                                | durable, immutable      | file    |
-| `Map`                                       | durable, immutable      | file    |
-| `Annotation`                                | durable, mutable        | DB      |
-| Projection (views, highlights, search hits) | ephemeral, per request  | none    |
-| `VaultStub` + symlinks                      | disposable, rebuildable | file    |
+- `original.html` — the captured page.
+- `sanitized.html` — the safe page served by the archive.
+- `transcript.txt` — the current text stream.
+- `map.json` — the current transcript-to-DOM Map.
 
-Keep the lifetimes apart. Projections hold no truth: rebuild them per request
-and never treat them as state. Durable mutable records (item metadata,
-annotations) belong in the DB and hold no positions. The immutable forms are
-written once and never edited. The immutable forms can regenerate from the
-durable inputs — sanitize, walk, index — so a `VACUUM INTO` snapshot plus the
-item dirs is a complete backup. (With WAL mode, copying the live database file
-by hand is not safe; snapshot through `VACUUM INTO` instead.)
+SQLite stores users, item metadata, annotations, API token hashes, and the
+queue. The database and item files can live on separate configured roots.
+Ingest writes files before it commits the item row. A lease-aware sweep removes
+abandoned directories while protecting active work.
 
-## App/deploy split
+Schema version 2 migrates old databases by retaining only article rows with a
+non-null URL. It discards book rows, incomplete article rows, their annotations
+and search blocks, and legacy non-URL requests. Orphaned old item directories
+are removed by the normal cleanup sweep.
 
-The app owns capabilities and never assumes locations. The deployment owns
-locations and never contains logic.
+## Product surface
 
-- The app exposes two configurable storage roots, `db` and `items`, and requires
-  no co-location. Two roots allow a user to keep SQLite on fast, reliable
-  storage while item files live on a large, potentially slow drive, and let
-  deploy point each side at whichever filesystem suits it.
-- All derived state — the FTS index, the Map, vault stubs, the symlink tree —
-  rebuilds from the durable forms.
-- Ingest writes across both roots in an order that is crash-safe: write files
-  first, then commit the DB row, then sweep any orphans.
+The web app provides:
 
-Nothing in the app knows where the two roots point. The app ships the
-`Dockerfile` and image build; deployment configures it. Paths, socket location,
-bind mounts, TLS, and the Pocket ID issuer URL with its client credentials all
-live in `~/.config/commonplace`.
+- a public landing page and health endpoint;
+- OIDC sign-in with signed, secure session cookies;
+- a library and full-text search;
+- URL saving from the library or an API token;
+- a reader, raw transcript, and authenticated sanitized capture;
+- API token creation and revocation.
 
-## Components
+The reader uses server-rendered HTML. It ships no application JavaScript. The
+capture route sends `script-src 'none'` and the sanitizer removes scripts.
 
-One process, one SQLite database with the FTS5 extension.
+Annotations remain renderable from stored rows. Annotation creation is not
+exposed until there is a complete selection-to-save flow.
 
-- **Ingest** — receives a URL or EPUB upload, queues a `FetchRequest`, and
-  drains it in one worker thread (the queue is the `FetchRequest` table; jobs
-  are claimed with an atomic `UPDATE ... RETURNING` and swept on startup by
-  lease timeout). The worker owns its own database connection, so the query path
-  never runs on the walker's thread. Acquisition shells out to
-  `single-file-cli`, a thin, swappable adapter (files in, files out). The
-  adapter spawns the tool rather than importing it, so a browser crash cannot
-  stop the worker. It uses `--blocked-url-pattern` with regular expressions to
-  remove ads and consent dialogs before capture. It passes the output path as a
-  positional argument. The sanitizer removes embedded scripts. The walker emits
-  the transcript, Map, and content flags in one pass.
-- **Store** — SQLite on one root: `users`, `items`, `annotations`, `api_tokens`,
-  plus an FTS5 table. Each FTS row is one block from the Map, carrying its
-  `(start, end)` and its `is_content` flag as a filter column, so a search hit
-  returns the snippet and the transcript range in one query and deep-links
-  to the passage. Each row represents a paragraph-sized block rather than one
-  run. Indexing by run would prevent phrase matches across inline elements such
-  as `<em>`. Search indexes every block, including text hidden from the reader
-  view. Item files live on the other root, under
-  `items/<user_id>/<item_id>/`: `original.html`, `sanitized.html`,
-  `source.epub`, `transcript.txt`, and `map.json`.
-- **Viewer** — three routes per item. The reader view is the annotation surface:
-  it renders only readability-classified runs, projected from the original DOM
-  rather than readability's cleaned HTML, and its elements carry transcript
-  offsets so a small script can turn selections into ranges. Content flags can
-  be recomputed from the stored capture without moving annotations. The capture view serves the sanitized
-  file unchanged as a static archive (`script-src 'none'`); showing highlights
-  there is a later, additive step through the Map. A raw text page shows the
-  transcript.
-- **API** — CRUD for items and annotations, search, vault export. The web UI
-  calls this API; it is also the integration surface for anything else.
-- **CLI** — `cp`, one operator command over the same services: `doctor`,
-  `ingest`, `transcript`, `map`, `search`, and `check`. Every subcommand supports
-  `--json`, which lets operators and automation inspect the system without a
-  browser.
-- **Auth** — Pocket ID over OIDC (passkeys only), signed session cookies, and
-  hashed long-lived API tokens for non-browser clients.
+## Security and isolation
 
-## Auth
+Every stored row belongs to a user, except the tenant table and SQLite-owned
+tables. Every request authenticates before reading library data. Bearer tokens
+identify their owner, even when a request also carries another session cookie.
+Token secrets are shown once and only their SHA-256 hashes are stored.
 
-Two ways in, one identity provider, no passwords anywhere.
+OIDC discovery must return same-origin HTTPS endpoints for the configured
+issuer. Login uses authorization code flow with PKCE. Redirect URLs come from
+`base_url`, never from the request Host header.
 
-- **Login** — the app speaks OIDC directly to Pocket ID, the way Beszel does:
-  authorization code flow with PKCE, endpoints discovered from the issuer URL.
-  No reverse-proxy auth layer, no tinyauth. Pocket ID's passkeys are the only
-  human login. Pocket ID also gives per-app access control, so a second account
-  (a partner, say) can use the reading archive without terminal access.
-- **Sessions** — a successful login mints a signed session cookie (HttpOnly,
-  SameSite=Lax). Every route checks it: UI, API, and the static item files. The
-  overlay script carries no auth logic; it rides the same-origin cookie.
-- **API tokens** — long-lived bearer tokens for non-browser clients that cannot
-  do passkeys, such as iOS Shortcuts. Create them in the web UI after login;
-  store only the SHA-256 hash, show the token once at creation. A token acts as
-  its owner. Revoke by deleting the row.
+## Running it
 
-## Locked decisions
+Install the pinned dependencies, then build the stylesheet:
 
-Stack and contracts, decided up front. Details (the sanitizer allowlist, the
-vault frontmatter) get baked at implementation.
+```sh
+bun install
+bun run css
+```
 
-- **Runtime** — Bun (pinned in the Dockerfile), TypeScript, one process. Package
-  install, test runner, and bundler all come from Bun.
-- **Web** — Elysia with server-rendered TSX. No SPA, no client framework, no
-  client routing. Pages are per-request projections, matching the model.
-- **Styling** — Tailwind CSS 4 with daisyUI for components; Fontsource variable
-  fonts (Newsreader for reading, Inter for chrome); lucide icons as inline SVGs.
-  Dark mode from the start. One CSS build step, `--watch` in dev.
-- **Client script** — the reader view carries one small vanilla TypeScript
-  script that turns selections into transcript offsets from the `data-start`
-  attributes the server emits. The capture view ships with no script at all
-  (`script-src 'none'`) until highlight display is added later. No client
-  framework anywhere.
-- **Search vs. reader view** — the reader view shows only readability-classified
-  runs; search indexes every run with `is_content` as a filter column.
-  Misclassification is visible in search, not silent.
-- **Database** — `bun:sqlite` with FTS5, WAL mode set once at startup,
-  `busy_timeout` on every connection. Every row carries a `user_id`.
-- **Queue** — in-process only: the `FetchRequest` table plus one worker thread,
-  one job at a time. No Redis, no external broker.
-- **Offset contract** — transcript offsets count UTF-16 code units. Node paths
-  address the sanitized tree, which is the file both sides parse, so the walker
-  and the browser agree on the shape. The walker emits one `\n` between blocks
-  and nothing between inline elements. Every annotation stores its quote so
-  offsets can re-anchor by text match.
-- **IDs** — UUIDv7, stored as TEXT, minted with `Bun.randomUUIDv7()`. Bun ships
-  it, so the project carries no `uuid` package.
-- **Sanitizer** — DOMPurify over jsdom; scripts, event handlers, and
-  `javascript:` URLs always stripped.
-- **Capture** — `single-file-cli`. It inlines every resource, so a capture
-  renders with the network unplugged. See "Why single-file-cli" below.
-- **Browser** — one Chromium, pinned by Playwright and shared by capture and
-  tests. The app never guesses where it lives: config carries `browser_path`,
-  and development falls back to `chromium.executablePath()`.
-- **Config** — TOML at `~/.config/commonplace`: `db_root`, `items_root`,
-  `base_url`, `issuer_url`, `client_id`, `client_secret`, `session_secret`.
-  `base_url` is the public origin, with no trailing slash. The login redirect
-  comes from it, never from the `Host` header a caller controls.
-- **Backups** — `VACUUM INTO` snapshot plus the item dirs. Nothing else.
-- **Layering** — five layers, imports pointing one way only: contracts, core,
-  store, services, then web and cli. The whole domain lives in `core` as pure
-  functions with no I/O, so every behavior is reproducible from a string
-  literal. A test enforces the rule; see `docs/architecture.md`.
-- **One gate** — `bun run verify` runs the type checker, the linter, and the
-  tests, and prints a one-line JSON summary. It is the only definition of done.
-- **Executable invariants** — tests in `test/invariants/` enforce these rules.
-  Offsets cover the transcript, `core` remains pure, every row includes
-  `user_id`, and the capture view includes no script.
-- **Errors** — one `AppError` with a stable, namespaced code and one JSON log
-  line per event. Bare `throw new Error` is banned by a test, because a
-  failure should be greppable.
-- **Tooling** — oxlint (oxc) for linting, `tsc --noEmit` for type checking,
-  `bun test` for tests. Property tests pin the offset contract: annotate,
-  project, and the highlighted text equals the quote. Browser tests drive
-  Playwright's `chromium` from inside `bun test`, not `@playwright/test`: one
-  test runner, not two. jsdom cannot test the selection script, because it
-  implements neither the `Selection` API nor layout.
+Run the checks with:
 
-## Building it
+```sh
+bun run verify
+```
 
-Start with `AGENTS.md` for the layer rule, module list, commands, and enforced
-invariants.
+Run the app with `bun run serve`. Run `bun run cp doctor` to check the config,
+storage roots, browser, and capture executable. Capture one URL with:
 
-`docs/architecture.md` names every module and states the layer rule: imports
-point one way, from `web` and `cli` down through `services` and `store` to
-`core` and `contracts`. The whole domain lives in `core` as pure functions, so
-any behavior is reproducible from a string literal.
+```sh
+bun run cp ingest https://example.com/article --user <user-uuid>
+```
 
-`docs/offset-contract.md` states the offset rules exactly. Read it before
-touching the walker or the projector, because a change there moves every stored
-annotation.
+The config lives at `~/.config/commonplace/config.toml`, unless
+`XDG_CONFIG_HOME` changes that root. It names `db_root`, `items_root`,
+`base_url`, OIDC settings, `session_secret`, and the required
+`browser_path` to the Chromium executable used for capture.
 
-`docs/dependencies.md` records every pinned version and why. `bunfig.toml`
-rejects any package published in the last 14 days.
+Build the image with `docker build -t commonplace .`. Mount the config at
+`/home/bun/.config/commonplace/config.toml`, mount `/data/db` and
+`/data/items`, and publish port 3000.
 
-Run `bun run verify` to type-check, lint, and test the project. The command can
-print one JSON summary line and treats unrecognized tool output as a failure.
-Tests under `test/invariants/` enforce the system rules.
+## Design boundaries
 
-## Why single-file-cli
+Bun runs the server, CLI, database, and tests. TypeScript code is split into
+contracts, pure core functions, stores, services, and thin web and CLI layers.
+`bun run verify` runs `tsc`, `oxlint`, and the three test groups directly.
 
-Three candidates were measured on 2026-08-27, on seven sites: Wikipedia, MDN,
-react.dev, danluu.com, ciechanow.ski, the Guardian, and GitHub. Each capture was
-reopened with every network request blocked. The metric is `net_fail`: requests
-that still tried to leave the machine. An archive that reaches for the network
-is an archive that decays.
-
-| Capture method                 | Sites with 0 `net_fail` |
-| ------------------------------ | ----------------------- |
-| `single-file-cli`              | 7 of 7                  |
-| `abx-dl`                       | 5 of 7                  |
-| Playwright with a hand inliner | 2 of 7                  |
-
-**abx-dl is SingleFile.** It loads the SingleFile browser extension into its own
-Chromium, beside uBlock and a cookie-banner dismisser. On four targets its
-output matched `single-file-cli` within 160 bytes. It lost twice. It could not
-capture the Guardian at all, failing after 229 seconds with
-`SingleFile download for tab did not complete`. On ciechanow.ski it returned 90
-of 95 diagrams as blank white images; enabling its `infiniscroll` plugin did not
-help. Its only real advantage, blocking ads and consent modals, is one
-`--blocked-url-pattern` flag on the CLI. It costs a Python toolchain, a second
-Chromium, and roughly 6.6 MB of scaffolding per capture. Rejected.
-
-**A hand-written inliner is the fallback, not the plan.** About 60 lines of
-Playwright — collect responses, rewrite the CSSOM, inline images and frames —
-produced captures visually identical to SingleFile's on Wikipedia and react.dev.
-It fails on the long tail: images that never load because they sit below the
-fold, inside `display: none` menus, or belong to the inactive colour theme. It
-also drops shadow DOM and writes frames without a sandbox. Each gap is a few
-more lines, and you find each one by opening an old capture and seeing a broken
-image.
-
-This is why acquisition stays a swappable adapter. If `single-file-cli` is ever
-abandoned, roughly 60 lines recover most of its value.
-
-## Out of scope
-
-- **PDFs.** Typeset PDFs cannot be linearized into a single transcript, so they
-  break the model on purpose.
-- **Progress sync and offline reading.**
+The system supports web pages only. PDFs, EPUB files, progress sync, and
+offline reading are not implemented because they need different product
+contracts.

@@ -1,8 +1,3 @@
-import { raw } from "./jsx-runtime";
-
-// Apply the saved theme before the first paint to prevent a theme flash.
-const THEME_BOOTSTRAP = `try{var t=localStorage.getItem("cp-theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}`;
-
 // Keep interactive state in these class strings so the UI invariant can check
 // the rendered markup.
 const FOCUS =
@@ -54,24 +49,6 @@ function SearchIcon() {
   );
 }
 
-function ContrastIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
 export function Layout({ title, query, children }: LayoutProps) {
   return (
     <html lang="en">
@@ -90,8 +67,6 @@ export function Layout({ title, query, children }: LayoutProps) {
         />
         <title>{`${title} — Commonplace`}</title>
         <link rel="stylesheet" href="/app.css" />
-        <script>{raw(THEME_BOOTSTRAP)}</script>
-        <script src="/reader.js" type="module" defer></script>
       </head>
       <body class="bg-base-200 text-base-content min-h-screen">
         <a
@@ -134,14 +109,6 @@ export function Layout({ title, query, children }: LayoutProps) {
             <a href="/logout" class={`text-sm ${LINK}`}>
               Log out
             </a>
-            <button
-              type="button"
-              data-cp-theme-toggle
-              aria-label="Switch between the light and dark theme"
-              class={`p-1 ${LINK}`}
-            >
-              <ContrastIcon />
-            </button>
           </div>
         </header>
         <main id="main" class="mx-auto max-w-4xl px-6 py-10">

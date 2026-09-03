@@ -22,7 +22,6 @@ export type Layer =
   | "services"
   | "web"
   | "cli"
-  | "scripts"
   | "test";
 
 const LAYER_DIRS = [
@@ -41,8 +40,7 @@ const MAY_IMPORT: Record<Layer, Layer[]> = {
   services: ["contracts", "core", "store"],
   web: ["contracts", "core", "store", "services"],
   cli: ["contracts", "core", "store", "services"],
-  scripts: ["contracts", "core", "store", "services", "web", "cli", "scripts", "test"],
-  test: ["contracts", "core", "store", "services", "web", "cli", "scripts", "test"],
+  test: ["contracts", "core", "store", "services", "web", "cli", "test"],
 };
 
 const IMPURE_MODULES = ["node:fs", "node:path", "bun:sqlite"];
@@ -72,7 +70,6 @@ export function layerOf(path: string): Layer | null {
   for (const dir of LAYER_DIRS) {
     if (p.includes(`src/${dir}/`)) return dir;
   }
-  if (p.includes("scripts/")) return "scripts";
   if (p.includes("test/")) return "test";
   return null;
 }
@@ -324,10 +321,8 @@ const ALLOWED_MODULES = [
   "src/contracts/config.ts",
   "src/core/sanitize.ts",
   "src/core/walk.ts",
-  "src/core/epub.ts",
   "src/core/project.ts",
   "src/core/anchor.ts",
-  "src/core/search.ts",
   "src/store/db.ts",
   "src/store/config.ts",
   "src/store/items.ts",
@@ -339,8 +334,6 @@ const ALLOWED_MODULES = [
   "src/services/acquire.ts",
   "src/services/ingest.ts",
   "src/services/library.ts",
-  "src/services/annotate.ts",
-  "src/services/export.ts",
   "src/services/auth.ts",
   "src/services/worker.ts",
   "src/web/server.ts",
@@ -349,7 +342,7 @@ const ALLOWED_MODULES = [
 
 // Named prefixes, not a bare src/, so a milestone can add a view or route
 // without editing this array.
-const ALLOWED_PREFIXES = ["src/web/routes/", "src/web/views/", "src/web/client/"];
+const ALLOWED_PREFIXES = ["src/web/routes/", "src/web/views/"];
 
 export function checkModuleList(
   files: { path: string }[],
@@ -416,7 +409,7 @@ export const EXPECTED_COLUMNS: Record<string, readonly string[]> = {
   migrations: ["applied_at", "version"],
   users: ["created_at", "email", "id", "subject"],
   api_tokens: ["created_at", "id", "last_used_at", "name", "token_hash", "user_id"],
-  items: ["author", "created_at", "id", "ingested_at", "kind", "title", "url", "user_id"],
+  items: ["author", "created_at", "id", "ingested_at", "title", "url", "user_id"],
   annotations: [
     "created_at",
     "end_offset",
@@ -435,7 +428,6 @@ export const EXPECTED_COLUMNS: Record<string, readonly string[]> = {
     "id",
     "item_id",
     "lease_expires_at",
-    "source_path",
     "state",
     "url",
     "user_id",
@@ -494,7 +486,7 @@ export function checkTenancy(tables: TableInfo[]): SchemaViolation[] {
 const POSITION_NAME_PATTERNS = [/_path$/, /xpath/, /selector/, /_dom/, /dom_/, /node/, /doc_index/];
 // The one name the allowlist admits: a filesystem path of a user-imported
 // file, never a position inside a document.
-const POSITION_NAME_ALLOWED = new Set(["source_path"]);
+const POSITION_NAME_ALLOWED = new Set<string>();
 
 export function checkNoPositionsInDb(tables: TableInfo[]): SchemaViolation[] {
   const exempt = ftsShadowNames(tables);
@@ -544,9 +536,8 @@ export function checkNoPositionsInDb(tables: TableInfo[]): SchemaViolation[] {
 }
 
 
-// The public routes. This list is the decision record. It names five paths
-// where plan/briefs/04-auth-spec.md names four, because "/" was added after
-// that document was written and only this list is kept current:
+// Public routes are listed explicitly so adding a new unauthenticated entry
+// remains a deliberate decision:
 // - "/" — the landing page is public; the acceptance suite requires GET /
 //   to answer 200 with no credential.
 // - "/health" — the container health check has no credential.
@@ -560,7 +551,6 @@ export const UNGUARDED_ROUTES = new Set([
   "/login",
   "/login/callback",
   "/logout",
-  "/reader.js",
 ]);
 
 // A route call's first argument, taken up to the first comma, parenthesis,

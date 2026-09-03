@@ -8,11 +8,6 @@ import { translate, write } from "./db";
 
 export const MAX_ATTEMPTS = 3;
 
-const REQUEST_COLUMNS = `
-  id, user_id, item_id, url, source_path, state,
-  lease_expires_at, attempts, error_code, created_at
-`;
-
 export function enqueueFetch(
   db: Database,
   request: FetchRequest,
@@ -20,15 +15,14 @@ export function enqueueFetch(
   write(
     db,
     `INSERT INTO fetch_requests (
-       id, user_id, item_id, url, source_path, state,
+       id, user_id, item_id, url, state,
        lease_expires_at, attempts, error_code, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       request.id,
       request.user_id,
       request.item_id,
       request.url,
-      request.source_path,
       request.state,
       request.lease_expires_at,
       request.attempts,
@@ -47,8 +41,6 @@ export function claimNext(
 ): FetchRequest | null {
   const leaseExpiresAt = addMs(now, leaseMs).toISOString();
   try {
-    // Select and update in one statement so concurrent workers can't claim the
-    // same request.
     return (
       db
         .query<FetchRequest, [string]>(
@@ -69,9 +61,7 @@ export function claimNext(
   }
 }
 
-// Claims a specific request for foreground ingest. The atomic
-// `UPDATE ... RETURNING` prevents concurrent claims and increments the attempt
-// counter used by later ownership checks.
+// Foreground ingest claims its own request instead of taking the oldest one.
 export function claimRequest(
   db: Database,
   id: RequestId,
@@ -95,8 +85,6 @@ export function claimRequest(
   }
 }
 
-// Match `attempts` so a worker with an expired lease can't commit after a new
-// worker claims the request.
 export function completeFetch(
   db: Database,
   id: RequestId,
@@ -133,11 +121,8 @@ export function failFetch(
   );
 }
 
-// Reserves an item ID while the request remains claimed. The orphan sweep
-// preserves directories referenced by queued and claimed requests.
-//
-// The item row doesn't exist until ingest commits, so `fetch_requests.item_id`
-// can't use a foreign key.
+// Reserve an item directory while the request remains active. The item row is
+// written only after its files are complete, so the reservation needs no FK.
 export function reserveItem(
   db: Database,
   id: RequestId,
@@ -156,8 +141,6 @@ export function reserveItem(
   );
 }
 
-// Returns a failed request to the queue and records the error. Matching
-// `attempts` prevents a worker with an expired lease from updating the row.
 export function releaseFetch(
   db: Database,
   id: RequestId,
@@ -176,10 +159,6 @@ export function releaseFetch(
   );
 }
 
-// Returns reserved item paths across all tenants for the orphan sweep. Only
-// queued and claimed requests need protection. Completed items appear in
-// `itemPaths`, and failed requests don't run again. Don't use this unscoped
-// query in request handling.
 export function pendingItemPaths(db: Database): string[] {
   return db
     .query<{ user_id: UserId; item_id: ItemId }, []>(
@@ -190,43 +169,11 @@ export function pendingItemPaths(db: Database): string[] {
     .map((row) => `${row.user_id}/${row.item_id}`);
 }
 
-export function listFetchRequests(
-  db: Database,
-  userId: UserId,
-  limit: number,
-): FetchRequest[] {
-  return db
-    .query<FetchRequest, [string, number]>(
-      `SELECT ${REQUEST_COLUMNS} FROM fetch_requests
-       WHERE user_id = ?
-       ORDER BY created_at DESC, id DESC LIMIT ?`,
-    )
-    .all(userId, limit);
-}
-
-export function getFetchRequest(
-  db: Database,
-  userId: UserId,
-  id: RequestId,
-): FetchRequest | null {
-  return (
-    db
-      .query<FetchRequest, [string, string]>(
-        `SELECT ${REQUEST_COLUMNS} FROM fetch_requests
-         WHERE user_id = ? AND id = ?`,
-      )
-      .get(userId, id) ?? null
-  );
-}
-
 export function sweepStaleLeases(
   db: Database,
   now: Date,
 ): { requeued: string[]; failed: string[] } {
   const nowIso = now.toISOString();
-
-  // Create one transaction for both updates so a worker can't claim a request
-  // between them.
   const sweep = db.transaction(() => {
     const requeued = db
       .query<{ id: RequestId }, [string, number]>(
@@ -250,7 +197,6 @@ export function sweepStaleLeases(
     return { requeued, failed };
   });
 
-  // Acquire the write lock before either update runs.
   try {
     return sweep.immediate();
   } catch (error) {

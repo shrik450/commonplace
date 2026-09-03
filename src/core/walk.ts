@@ -2,6 +2,7 @@ import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 
 import type { Run, Transcript } from "../contracts/transcript";
+import { BLOCK_ELEMENTS } from "./sanitize";
 
 export type Metadata = { title: string | null; author: string | null };
 
@@ -28,49 +29,7 @@ export function metadata(html: string): Metadata {
   return { title, author };
 }
 
-export const BLOCK_ELEMENTS = [
-  "address",
-  "article",
-  "aside",
-  "blockquote",
-  "caption",
-  "dd",
-  "details",
-  "div",
-  "dl",
-  "dt",
-  "fieldset",
-  "figcaption",
-  "figure",
-  "footer",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "header",
-  "hgroup",
-  "hr",
-  "li",
-  "main",
-  "nav",
-  "ol",
-  "p",
-  "pre",
-  "section",
-  "summary",
-  "table",
-  "tbody",
-  "td",
-  "tfoot",
-  "th",
-  "thead",
-  "tr",
-  "ul",
-];
-
-const BLOCK_SET = new Set(BLOCK_ELEMENTS);
+const BLOCK_SET = new Set<string>(BLOCK_ELEMENTS);
 
 type Item = {
   kind: "text" | "break";
@@ -114,13 +73,7 @@ function isContentPath(kept: Set<string> | null, path: string): boolean {
   return false;
 }
 
-export function walk(
-  sanitizedHtml: string,
-  options: { docIndex?: number; startOffset?: number; startBlockIndex?: number } = {},
-): Transcript {
-  const docIndex = options.docIndex ?? 0;
-  const startOffset = options.startOffset ?? 0;
-  const startBlockIndex = options.startBlockIndex ?? 0;
+export function walk(sanitizedHtml: string): Transcript {
 
   const doc = new JSDOM(sanitizedHtml).window.document;
   const root = doc.documentElement;
@@ -194,15 +147,11 @@ export function walk(
   }
 
   // Remove leading and trailing line breaks before assigning block indices.
-  // Keep a leading break when `startOffset` is nonzero because it separates
-  // this document from the preceding chapter.
   const chunks = blocks.flatMap((block) => block.chunks);
-  if (startOffset === 0) {
-    while (chunks.length > 0 && chunks[0]!.text.startsWith("\n")) {
-      const first = chunks[0]!;
-      first.text = first.text.replace(/^\n+/, "");
-      if (first.text === "") chunks.shift();
-    }
+  while (chunks.length > 0 && chunks[0]!.text.startsWith("\n")) {
+    const first = chunks[0]!;
+    first.text = first.text.replace(/^\n+/, "");
+    if (first.text === "") chunks.shift();
   }
   while (chunks.length > 0 && chunks[chunks.length - 1]!.text.endsWith("\n")) {
     const last = chunks[chunks.length - 1]!;
@@ -215,8 +164,8 @@ export function walk(
 
   const runs: Run[] = [];
   let text = "";
-  let offset = startOffset;
-  let nextBlock = startBlockIndex;
+  let offset = 0;
+  let nextBlock = 0;
   let previous: { path: string; block: number; content: boolean } | null = null;
 
   const push = (chunk: string, path: string, block: number, content: boolean): void => {
@@ -224,7 +173,7 @@ export function walk(
     runs.push({
       start: offset,
       end: offset + chunk.length,
-      doc_index: docIndex,
+      doc_index: 0,
       node_path: path,
       block_index: block,
       is_content: content,
@@ -240,8 +189,7 @@ export function walk(
     const blockIndex = nextBlock;
     nextBlock += 1;
 
-    const needsSeparator =
-      (text.length > 0 || startOffset > 0) && !text.endsWith("\n");
+    const needsSeparator = text.length > 0 && !text.endsWith("\n");
     if (needsSeparator) {
       const carrier = previous ?? { path: ownerPath, block: blockIndex, content };
       push("\n", carrier.path, carrier.block, carrier.content);

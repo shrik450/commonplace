@@ -7,7 +7,13 @@ import { authenticate } from "../../services/auth";
 import { captureFile, loadTranscript, readerPage } from "../../services/library";
 import { ErrorPage, page } from "../views/layout";
 import { ReaderPageView } from "../views/reader";
-import { authDeps, libraryDeps, preferredLocale, toLogin, type WebDeps } from "./deps";
+import {
+  authDeps,
+  libraryDeps,
+  preferredLocale,
+  toLogin,
+  type WebDeps,
+} from "./deps";
 
 function readItemId(raw: string): ItemId | null {
   try {
@@ -112,8 +118,6 @@ export function itemRoutes(deps: WebDeps) {
         return new Response(html, {
           headers: {
             "content-type": "text/html; charset=utf-8",
-            // Disable scripts in archived pages. The `capture-csp` invariant
-            // reads this handler directly, so keep the policy here.
             "content-security-policy":
               "default-src 'none'; img-src data: https: http:;" +
               " style-src 'unsafe-inline'; script-src 'none'",

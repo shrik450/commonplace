@@ -5,7 +5,13 @@ import { listLibrary, searchLibrary } from "../../services/library";
 import { LibraryPage } from "../views/library";
 import { page } from "../views/layout";
 import { SearchPage } from "../views/search";
-import { authDeps, libraryDeps, preferredLocale, toLogin, type WebDeps } from "./deps";
+import {
+  authDeps,
+  libraryDeps,
+  preferredLocale,
+  toLogin,
+  type WebDeps,
+} from "./deps";
 
 const PAGE_SIZE = 50;
 const SEARCH_LIMIT = 30;

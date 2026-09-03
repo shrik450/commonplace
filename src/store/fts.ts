@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 
 import type { ItemId, UserId } from "../contracts/ids";
 import { AppError } from "../contracts/errors";
-import { translate, write } from "./db";
+import { translate } from "./db";
 
 export type BlockRow = {
   item_id: ItemId;
@@ -65,15 +65,6 @@ export function indexBlocks(
   } catch (error) {
     throw translate(error, { item_id: itemId, blocks: blocks.length });
   }
-}
-
-export function removeItem(db: Database, userId: UserId, itemId: ItemId): void {
-  write(
-    db,
-    "DELETE FROM blocks_fts WHERE item_id = ? AND user_id = ?",
-    [itemId, userId],
-    { item_id: itemId, user_id: userId },
-  );
 }
 
 type HitRow = {

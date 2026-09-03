@@ -3,9 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "verify": "bun run scripts/verify.ts",
+    "verify": "bun run typecheck && bun run lint && bun run test",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
+    "test": "bun test test/acceptance test/invariants test/unit",
     "serve": "bun run src/web/server.ts",
-    "verify:browser": "bun test test/browser",
     "css": "bunx @tailwindcss/cli -i src/web/styles.css -o public/app.css",
     "css:watch": "bunx @tailwindcss/cli -i src/web/styles.css -o public/app.css --watch",
     "cp": "bun run src/cli/main.ts",

@@ -8,7 +8,7 @@ dist/
 # Working artifacts, not repo history.
 plan/
 
-# Real captures are megabytes each and rebuild with `cp fixtures capture`.
+# Real captures are megabytes each and are not checked into the repository.
 test/fixtures/real/
 
 public/app.css

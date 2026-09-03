@@ -6,14 +6,12 @@ import type {
   UserId,
 } from "./ids";
 
-export type ItemKind = "article" | "book";
 export type FetchState = "queued" | "claimed" | "done" | "failed";
 
 export type Item = {
   id: ItemId;
   user_id: UserId;
-  kind: ItemKind;
-  url: string | null;
+  url: string;
   title: string;
   author: string | null;
   created_at: string;
@@ -52,8 +50,7 @@ export type FetchRequest = {
   id: RequestId;
   user_id: UserId;
   item_id: ItemId | null;
-  url: string | null;
-  source_path: string | null;
+  url: string;
   state: FetchState;
   lease_expires_at: string | null;
   attempts: number;

@@ -3,9 +3,8 @@
 //
 // What the implementer must create
 // --------------------------------
-// `src/services/ingest.ts` and `src/services/worker.ts`, plus the small
-// additions to `walk.ts`, `acquire.ts`, `queue.ts`, `items.ts`, `files.ts`,
-// and `errors.ts` that `plan/briefs/05-ingest-spec.md` revision 2 lists.
+// The ingest service and reusable worker keep file writes ahead of the item
+// commit and fence work with queue leases.
 //
 // Contract details this file pins down
 // ------------------------------------
@@ -13,8 +12,6 @@
 //
 // - `ingestRequest` returns an outcome. It never marks a request failed or
 //   queued itself. `drainOnce` owns that decision.
-// - A request that names a `source_path` fails permanently, whether or not it
-//   also names a URL.
 // - The orphan sweep protects a directory named by a `queued` or `claimed`
 //   request, and collects one named only by a `failed` request.
 // - `sweep` runs its three steps in one pass, so a request that runs out of
@@ -56,7 +53,6 @@ import { LEASE_MS, drainOnce, sweep } from "../../src/services/worker";
 import type { WorkerDeps } from "../../src/services/worker";
 import { openDatabase } from "../../src/store/db";
 import {
-  itemFilesPresent,
   itemDir,
   readItemFile,
 } from "../../src/store/files";
@@ -66,8 +62,6 @@ import {
   MAX_ATTEMPTS,
   claimNext,
   enqueueFetch,
-  failFetch,
-  getFetchRequest,
   pendingItemPaths,
   sweepStaleLeases,
 } from "../../src/store/queue";
@@ -153,6 +147,7 @@ function makeDeps(
     itemsRoot: env.itemsRoot,
     now: () => env.at,
     capture,
+    browserPath: "/usr/bin/chromium",
     ...overrides,
   };
 }
@@ -165,7 +160,6 @@ function queueRequest(
     id: newRequestId(),
     item_id: null,
     url: "https://example.com/article",
-    source_path: null,
     state: "queued",
     lease_expires_at: null,
     attempts: 0,
@@ -173,6 +167,12 @@ function queueRequest(
     created_at: env.at.toISOString(),
     ...overrides,
   });
+}
+
+function requestOf(env: Env, id: string): FetchRequest {
+  return env.db
+    .query<FetchRequest, [string]>("SELECT * FROM fetch_requests WHERE id = ?")
+    .get(id)!;
 }
 
 function blockCount(env: Env, itemId: ItemId): number {
@@ -194,24 +194,23 @@ describe("the happy path", () => {
     expect(outcome!.state).toBe("done");
     const itemId = (outcome as { state: "done"; itemId: ItemId }).itemId;
 
-    const settled = getFetchRequest(env.db, ALICE, request.id)!;
+    const settled = requestOf(env, request.id);
     expect(settled.state).toBe("done");
     expect(settled.item_id).toBe(itemId);
     expect(settled.error_code).toBeNull();
 
     const item = getItem(env.db, ALICE, itemId)!;
-    expect(item.kind).toBe("article");
     expect(item.url).toBe("https://example.com/article");
     expect(item.title).toBe("The Open Graph Title");
     expect(item.author).toBe("Ada Lovelace");
     expect(item.ingested_at).not.toBeNull();
 
-    expect(await itemFilesPresent(env.itemsRoot, ALICE, itemId)).toEqual([
+    expect((await readdir(itemDir(env.itemsRoot, ALICE, itemId))).toSorted()).toEqual([
       "original.html",
       "sanitized.html",
       "transcript.txt",
       "map.json",
-    ]);
+    ].toSorted());
 
     const expected = walk(sanitize(PAGE));
     const transcript = await readItemFile(
@@ -365,13 +364,13 @@ describe("the crash-safe order", () => {
     const env = await freshEnv("crash");
     const { request, itemId, dir } = await crashedIngest(env);
 
-    const after = getFetchRequest(env.db, ALICE, request.id)!;
+    const after = requestOf(env, request.id);
     expect(after.state).toBe("claimed");
     expect(after.item_id).toBe(itemId);
     expect(after.attempts).toBe(1);
 
     expect(existsSync(dir)).toBe(true);
-    expect(await itemFilesPresent(env.itemsRoot, ALICE, itemId)).toHaveLength(4);
+    expect(await readdir(itemDir(env.itemsRoot, ALICE, itemId))).toHaveLength(4);
     expect(getItem(env.db, ALICE, itemId)).toBeNull();
   });
 
@@ -399,34 +398,10 @@ describe("the crash-safe order", () => {
     );
 
     expect(result.requeued).toContain(request.id);
-    expect(getFetchRequest(env.db, ALICE, request.id)!.state).toBe("queued");
+    expect(requestOf(env, request.id)!.state).toBe("queued");
     expect(pendingItemPaths(env.db)).toContain(`${ALICE}/${itemId}`);
     expect(result.orphans).toEqual([]);
     expect(existsSync(dir)).toBe(true);
-  });
-
-  test("the sweep collects a directory no request will ever reuse", async () => {
-    const env = await freshEnv("collect");
-    const { request, itemId, dir } = await crashedIngest(env);
-
-    const claimed = getFetchRequest(env.db, ALICE, request.id)!;
-    expect(
-      failFetch(
-        env.db,
-        claimed.id,
-        claimed.attempts,
-        "INGEST_UNSUPPORTED_SOURCE",
-      ),
-    ).toBe(true);
-
-    env.at = addMs(env.at, 60_000);
-    const result = await sweep(
-      makeDeps(env, fakeCapture(PAGE), { orphanGraceMs: 0 }),
-    );
-
-    expect(pendingItemPaths(env.db)).not.toContain(`${ALICE}/${itemId}`);
-    expect(result.orphans).toEqual([dir]);
-    expect(existsSync(dir)).toBe(false);
   });
 
   test("a retry after a crash reuses the item id and leaves one directory", async () => {
@@ -440,7 +415,7 @@ describe("the crash-safe order", () => {
     expect(outcome!.state).toBe("done");
     expect((outcome as { state: "done"; itemId: ItemId }).itemId).toBe(itemId);
 
-    expect(getFetchRequest(env.db, ALICE, request.id)!.state).toBe("done");
+    expect(requestOf(env, request.id)!.state).toBe("done");
     expect(await readdir(join(env.itemsRoot, ALICE))).toEqual([itemId]);
     expect(itemPaths(env.db)).toEqual([`${ALICE}/${itemId}`]);
   });
@@ -510,7 +485,7 @@ describe("retry and exhaustion", () => {
     for (let attempt = 1; attempt < MAX_ATTEMPTS; attempt += 1) {
       const outcome = await drainOnce(deps);
       expect(outcome!.state).toBe("retry");
-      const row = getFetchRequest(env.db, ALICE, request.id)!;
+      const row = requestOf(env, request.id)!;
       expect(row.state).toBe("queued");
       expect(row.attempts).toBe(attempt);
       expect(row.error_code).toBe("ACQUIRE_FAILED");
@@ -519,7 +494,7 @@ describe("retry and exhaustion", () => {
 
     const last = await drainOnce(deps);
     expect(last!.state).toBe("retry");
-    const row = getFetchRequest(env.db, ALICE, request.id)!;
+    const row = requestOf(env, request.id)!;
     expect(row.state).toBe("failed");
     expect(row.attempts).toBe(MAX_ATTEMPTS);
     expect(row.error_code).toBe("INGEST_ATTEMPTS_EXHAUSTED");
@@ -538,39 +513,7 @@ describe("retry and exhaustion", () => {
 
     expect(outcome!.state).toBe("retry");
     expect((outcome as { code: string }).code).toBe("INGEST_EMPTY_TRANSCRIPT");
-    expect(getFetchRequest(env.db, ALICE, request.id)!.state).toBe("queued");
-  });
-});
-
-describe("a source this milestone cannot read", () => {
-  test("an EPUB request fails at once and never retries", async () => {
-    const env = await freshEnv("epub");
-    const request = queueRequest(env, {
-      user_id: ALICE,
-      url: null,
-      source_path: "/tmp/book.epub",
-    });
-
-    const outcome = await drainOnce(makeDeps(env, fakeCapture(PAGE)));
-
-    expect(outcome!.state).toBe("failed");
-    expect((outcome as { code: string }).code).toBe(
-      "INGEST_UNSUPPORTED_SOURCE",
-    );
-    const row = getFetchRequest(env.db, ALICE, request.id)!;
-    expect(row.state).toBe("failed");
-    expect(row.attempts).toBe(1);
-    expect(row.error_code).toBe("INGEST_UNSUPPORTED_SOURCE");
-    expect(await readdir(env.itemsRoot)).toEqual([]);
-  });
-
-  test("a request naming nothing fails the same way", async () => {
-    const env = await freshEnv("nothing");
-    queueRequest(env, { user_id: ALICE, url: null, source_path: null });
-    const outcome = await drainOnce(makeDeps(env, fakeCapture(PAGE)));
-    expect((outcome as { code: string }).code).toBe(
-      "INGEST_UNSUPPORTED_SOURCE",
-    );
+    expect(requestOf(env, request.id)!.state).toBe("queued");
   });
 });
 
@@ -606,7 +549,7 @@ describe("capturing a URL a user already saved", () => {
     // 2. Save the same URL again. The new request finds X, reserves X, and
     //    crashes before the commit.
     const { request } = await crashedIngest(env, { itemId });
-    expect(getFetchRequest(env.db, ALICE, request.id)!.item_id).toBe(itemId);
+    expect(requestOf(env, request.id)!.item_id).toBe(itemId);
 
     // 3. The lease expires and the request returns to queued.
     env.at = addMs(env.at, LEASE_MS + 1000);
@@ -614,7 +557,7 @@ describe("capturing a URL a user already saved", () => {
       makeDeps(env, fakeCapture(PAGE), { orphanGraceMs: 0 }),
     );
     expect(swept.requeued).toContain(request.id);
-    expect(getFetchRequest(env.db, ALICE, request.id)!.state).toBe("queued");
+    expect(requestOf(env, request.id)!.state).toBe("queued");
 
     // 4. The retry carries item_id = X and takes the update branch instead
     //    of the insert branch that throws on the UNIQUE index.

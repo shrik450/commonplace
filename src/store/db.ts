@@ -46,7 +46,7 @@ export type Migration = { version: number; sql: string };
 
 export type TableInfo = { name: string; sql: string; columns: string[] };
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const MIGRATIONS: readonly Migration[] = [
   {
@@ -129,6 +129,82 @@ export const MIGRATIONS: readonly Migration[] = [
         is_content UNINDEXED,
         tokenize = 'unicode61 remove_diacritics 2'
       );
+    `,
+  },
+  {
+    version: 2,
+    sql: `
+      CREATE TABLE items_new (
+        id          TEXT PRIMARY KEY,
+        user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        url         TEXT NOT NULL,
+        title       TEXT NOT NULL,
+        author      TEXT,
+        created_at  TEXT NOT NULL,
+        ingested_at TEXT
+      );
+      INSERT INTO items_new (id, user_id, url, title, author, created_at, ingested_at)
+        SELECT id, user_id, url, title, author, created_at, ingested_at
+        FROM items
+        WHERE kind = 'article' AND url IS NOT NULL;
+
+      DELETE FROM blocks_fts
+        WHERE item_id NOT IN (SELECT id FROM items_new);
+      DROP INDEX items_user_created;
+      DROP INDEX items_user_url;
+      ALTER TABLE items RENAME TO items_old;
+      ALTER TABLE items_new RENAME TO items;
+
+      CREATE TABLE annotations_new (
+        id           TEXT PRIMARY KEY,
+        user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        item_id      TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+        start_offset INTEGER NOT NULL,
+        end_offset   INTEGER NOT NULL,
+        quote        TEXT NOT NULL,
+        note         TEXT,
+        created_at   TEXT NOT NULL,
+        updated_at   TEXT NOT NULL,
+        CHECK (end_offset >= start_offset),
+        CHECK (start_offset >= 0)
+      );
+      INSERT INTO annotations_new (
+        id, user_id, item_id, start_offset, end_offset, quote, note,
+        created_at, updated_at
+      )
+        SELECT id, user_id, item_id, start_offset, end_offset, quote, note,
+               created_at, updated_at
+        FROM annotations
+        WHERE item_id IN (SELECT id FROM items);
+      DROP TABLE annotations;
+      DROP TABLE items_old;
+      ALTER TABLE annotations_new RENAME TO annotations;
+      CREATE INDEX items_user_created ON items(user_id, created_at DESC, id DESC);
+      CREATE UNIQUE INDEX items_user_url ON items(user_id, url);
+      CREATE INDEX annotations_user_item_offset ON annotations(user_id, item_id, start_offset);
+
+      CREATE TABLE fetch_requests_new (
+        id               TEXT PRIMARY KEY,
+        user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        item_id          TEXT,
+        url              TEXT NOT NULL,
+        state            TEXT NOT NULL CHECK (state IN ('queued', 'claimed', 'done', 'failed')),
+        lease_expires_at TEXT,
+        attempts         INTEGER NOT NULL DEFAULT 0,
+        error_code       TEXT,
+        created_at       TEXT NOT NULL
+      );
+      INSERT INTO fetch_requests_new (
+        id, user_id, item_id, url, state, lease_expires_at, attempts,
+        error_code, created_at
+      )
+        SELECT id, user_id, item_id, url, state, lease_expires_at, attempts,
+               error_code, created_at
+        FROM fetch_requests
+        WHERE url IS NOT NULL;
+      DROP TABLE fetch_requests;
+      ALTER TABLE fetch_requests_new RENAME TO fetch_requests;
+      CREATE INDEX fetch_requests_claimable ON fetch_requests(state, created_at, id);
     `,
   },
 ];

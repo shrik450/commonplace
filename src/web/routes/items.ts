@@ -84,7 +84,6 @@ export function itemSaveRoutes(deps: WebDeps) {
       id: newRequestId(),
       item_id: null,
       url,
-      source_path: null,
       state: "queued",
       lease_expires_at: null,
       attempts: 0,

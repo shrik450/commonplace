@@ -10,8 +10,7 @@
 //    `test/invariants/route-guard.test.ts`.
 // 5. Three new banned calls in `checkDeterminism`.
 //
-// The specification is `plan/briefs/04-auth-spec.md`. Where the two disagree,
-// this file wins.
+// This file records the authentication behavior as assertions.
 //
 // Facts verified against Bun 1.4.0 before this file was written
 // -------------------------------------------------------------
@@ -84,6 +83,7 @@ const CONFIG: Config = parseConfig(
     'client_id = "commonplace-test"',
     'client_secret = "test-client-secret"',
     `session_secret = "${SECRET}"`,
+    'browser_path = "/usr/bin/chromium"',
   ].join("\n"),
 );
 
@@ -1013,11 +1013,11 @@ describe("the route-guard invariant", () => {
     ).toEqual([]);
   });
 
-  test("the unguarded list holds exactly the seven public paths", () => {
+  test("the unguarded list holds exactly the six public paths", () => {
     // Every one of these is public on purpose. `/` is the signed-out landing
     // page, which `test/acceptance/00-foundation.test.ts` requires to answer
-    // 200 with no credential. `/app.css` and `/reader.js` are static assets
-    // built from the repo, and they carry no reader's data. `/logout` clears
+    // 200 with no credential. `/app.css` is a static asset built from the
+    // repo, and both login paths must work before authentication. `/logout` clears
     // a cookie, which a session that no longer verifies still deserves.
     // Growing this list must break this test, so that opening another way in
     // is a decision somebody made on the record.
@@ -1028,7 +1028,6 @@ describe("the route-guard invariant", () => {
       "/login",
       "/login/callback",
       "/logout",
-      "/reader.js",
     ]);
   });
 });

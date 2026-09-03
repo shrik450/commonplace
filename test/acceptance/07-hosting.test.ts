@@ -57,14 +57,14 @@ import { parseConfig } from "../../src/contracts/config";
 import { AppError } from "../../src/contracts/errors";
 import { asUserId, newRequestId } from "../../src/contracts/ids";
 import type { UserId } from "../../src/contracts/ids";
-import type { User } from "../../src/contracts/item";
+import type { FetchRequest, User } from "../../src/contracts/item";
 import type { CaptureRequest, CaptureResult } from "../../src/services/acquire";
 import { createApiToken, signPayload } from "../../src/services/auth";
 import { startWorker } from "../../src/services/worker";
 import { buildApp } from "../../src/web/server";
 import { openDatabase } from "../../src/store/db";
 import { listItems } from "../../src/store/items";
-import { enqueueFetch, listFetchRequests } from "../../src/store/queue";
+import { enqueueFetch } from "../../src/store/queue";
 import { insertUser } from "../../src/store/users";
 
 const repoRoot = join(import.meta.dir, "..", "..");
@@ -84,6 +84,14 @@ const roots: string[] = [];
 afterAll(async () => {
   for (const root of roots) await rm(root, { recursive: true, force: true });
 });
+
+function requests(db: Database, userId: UserId): FetchRequest[] {
+  return db
+    .query<FetchRequest, [string]>(
+      "SELECT * FROM fetch_requests WHERE user_id = ? ORDER BY created_at DESC, id DESC",
+    )
+    .all(userId);
+}
 
 function makeUser(id: UserId, subject: string): User {
   return {
@@ -129,6 +137,7 @@ async function freshEnv(name: string): Promise<Env> {
     client_id: "commonplace",
     client_secret: "secret",
     session_secret: SESSION_SECRET,
+    browser_path: "/usr/bin/chromium",
   };
 
   const capture = async (request: CaptureRequest): Promise<CaptureResult> => {
@@ -171,6 +180,7 @@ issuer_url = "https://id.example.com"
 client_id = "commonplace"
 client_secret = "secret"
 session_secret = "a-session-secret-long-enough-to-sign-with"
+browser_path = "/usr/bin/chromium"
 `;
 
   function caught(run: () => unknown): AppError {
@@ -256,7 +266,7 @@ describe("saving a URL from the web", () => {
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe("/library");
 
-    const queued = listFetchRequests(env.db, ALICE, 10);
+    const queued = requests(env.db, ALICE);
     expect(queued).toHaveLength(1);
     expect(queued[0]!.url).toBe("https://example.com/an-article");
     expect(queued[0]!.state).toBe("queued");
@@ -291,7 +301,7 @@ describe("saving a URL from the web", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(listFetchRequests(env.db, ALICE, 10)).toEqual([]);
+    expect(requests(env.db, ALICE)).toEqual([]);
   });
 
   test("a signed-out post saves nothing", async () => {
@@ -304,8 +314,8 @@ describe("saving a URL from the web", () => {
     });
 
     expect([303, 401]).toContain(response.status);
-    expect(listFetchRequests(env.db, ALICE, 10)).toEqual([]);
-    expect(listFetchRequests(env.db, BOB, 10)).toEqual([]);
+    expect(requests(env.db, ALICE)).toEqual([]);
+    expect(requests(env.db, BOB)).toEqual([]);
   });
 
   test("the library page carries the save form", async () => {
@@ -346,7 +356,7 @@ describe("saving a URL with an API token", () => {
     };
     expect(payload.state).toBe("queued");
     expect(payload.request_id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(listFetchRequests(env.db, ALICE, 10)).toHaveLength(1);
+    expect(requests(env.db, ALICE)).toHaveLength(1);
   });
 
   // The bearer token determines ownership even when the request also contains
@@ -365,8 +375,8 @@ describe("saving a URL with an API token", () => {
       },
     });
 
-    expect(listFetchRequests(env.db, BOB, 10)).toHaveLength(1);
-    expect(listFetchRequests(env.db, ALICE, 10)).toEqual([]);
+    expect(requests(env.db, BOB)).toHaveLength(1);
+    expect(requests(env.db, ALICE)).toEqual([]);
   });
 
   test("a rejected token saves nothing", async () => {
@@ -382,7 +392,7 @@ describe("saving a URL with an API token", () => {
     });
 
     expect([303, 401]).toContain(response.status);
-    expect(listFetchRequests(env.db, ALICE, 10)).toEqual([]);
+    expect(requests(env.db, ALICE)).toEqual([]);
   });
 });
 
@@ -519,7 +529,6 @@ describe("the worker runs inside the server process", () => {
       id: newRequestId(),
       item_id: null,
       url: "https://example.com/queued",
-      source_path: null,
       state: "queued",
       lease_expires_at: null,
       attempts: 0,
@@ -533,6 +542,7 @@ describe("the worker runs inside the server process", () => {
       itemsRoot: env.itemsRoot,
       now,
       capture: env.capture,
+      browserPath: env.config.browser_path,
     });
 
     const deadline = Date.now() + 15_000;
@@ -554,6 +564,7 @@ describe("the worker runs inside the server process", () => {
       itemsRoot: env.itemsRoot,
       now,
       capture: env.capture,
+      browserPath: env.config.browser_path,
     });
 
     await worker.stop();
@@ -565,6 +576,21 @@ describe("the worker runs inside the server process", () => {
     const source = await readFile(join(repoRoot, "src", "web", "server.ts"), "utf8");
     expect(source).toContain("startWorker");
     expect(source).toContain("import.meta.main");
+  });
+});
+
+describe("the generated stylesheet", () => {
+  test("keeps the light and dark highlight washes distinct", async () => {
+    const child = Bun.spawn(["bun", "run", "css"], {
+      cwd: repoRoot,
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    expect(await child.exited).toBe(0);
+
+    const css = await readFile(join(repoRoot, "public", "app.css"), "utf8");
+    expect(css).toContain("rgb(214 148 61 / 0.28)");
+    expect(css).toContain("rgb(217 155 78 / 0.24)");
   });
 });
 

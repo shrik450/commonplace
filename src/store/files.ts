@@ -12,15 +12,11 @@ import { join } from "node:path";
 import { AppError } from "../contracts/errors";
 import type { ItemId, UserId } from "../contracts/ids";
 
-export const ITEM_FILES = [
-  "original.html",
-  "sanitized.html",
-  "transcript.txt",
-  "map.json",
-  "source.epub",
-] as const;
-
-export type ItemFile = (typeof ITEM_FILES)[number];
+export type ItemFile =
+  | "original.html"
+  | "sanitized.html"
+  | "transcript.txt"
+  | "map.json";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -103,53 +99,6 @@ export async function readItemFile(
     }
     throw error;
   }
-}
-
-// Read binary item files without UTF-8 decoding, which would corrupt EPUB ZIP
-// data.
-export async function readItemFileBytes(
-  itemsRoot: string,
-  userId: UserId,
-  itemId: ItemId,
-  file: ItemFile,
-): Promise<Uint8Array> {
-  const path = join(itemDir(itemsRoot, userId, itemId), file);
-  try {
-    return new Uint8Array(await readFile(path));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new AppError("STORE_NOT_FOUND", `no such file: ${path}`, {
-        path,
-      });
-    }
-    throw error;
-  }
-}
-
-export async function itemFilesPresent(
-  itemsRoot: string,
-  userId: UserId,
-  itemId: ItemId,
-): Promise<ItemFile[]> {
-  const dir = itemDir(itemsRoot, userId, itemId);
-  let entries: string[];
-  try {
-    entries = await readdir(dir);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
-  }
-  const present = new Set(entries);
-  return ITEM_FILES.filter((file) => present.has(file));
-}
-
-export async function deleteItemDir(
-  itemsRoot: string,
-  userId: UserId,
-  itemId: ItemId,
-): Promise<void> {
-  const dir = itemDir(itemsRoot, userId, itemId);
-  await rm(dir, { recursive: true, force: true });
 }
 
 export async function sweepOrphans(

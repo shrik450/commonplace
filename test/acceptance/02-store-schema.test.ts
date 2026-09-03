@@ -3,7 +3,7 @@
 //
 // What the implementer must create
 // --------------------------------
-// 1. `src/store/db.ts`, with the exact API in `plan/briefs/02-store-spec.md`.
+// 1. `src/store/db.ts`.
 // 2. The six new codes in `src/contracts/errors.ts`.
 // 3. Three exports in `test/invariants/lib.ts`:
 //
@@ -25,7 +25,7 @@
 // The brief leaves these open. This file settles them, so build them this way.
 //
 // - `EXPECTED_COLUMNS` is the one place the column set of each table lives.
-//   Its keys are the seven tables of version 1. Each value is that table's
+//   Its keys are the seven tables of the current schema. Each value is that table's
 //   column names, sorted. The tests below pin the values literally, then
 //   compare the migrated database against the same constant, so a schema
 //   change has exactly one place to land.
@@ -50,10 +50,11 @@
 //   The store never reads the clock.
 // - `openDatabase` migrates before it returns.
 //
-// What the 02f consolidation pass changed
-// ---------------------------------------
-// - `items_fts` is gone. `blocks_fts` replaces it, one row per block, and
-//   migration 1 is rewritten. There is no migration 2.
+// Current schema decisions
+// ------------------------
+// - `items_fts` is gone. `blocks_fts` replaces it, one row per block.
+// - Version 2 rebuilds the legacy item and request tables. It retains only
+//   article rows with non-null URLs and drops old book data.
 // - `translate` and `write` live in `src/store/db.ts`. `translate` returns
 //   `AppError`, so `return error` no longer compiles, and a readonly database
 //   no longer leaks a raw `SQLiteError` out of L2.
@@ -232,8 +233,8 @@ describe("src/contracts/errors ERROR_CODES", () => {
 });
 
 describe("src/store/db MIGRATIONS", () => {
-  test("SCHEMA_VERSION is 1", () => {
-    expect(SCHEMA_VERSION).toBe(1);
+  test("SCHEMA_VERSION is 2", () => {
+    expect(SCHEMA_VERSION).toBe(2);
   });
 
   test("holds one entry per version, ascending, ending at SCHEMA_VERSION", () => {
@@ -252,12 +253,22 @@ describe("src/store/db MIGRATIONS", () => {
     }
   });
 
-  test("version 1 creates the seven tables the brief lists", () => {
+  test("version 1 creates the legacy seven tables", () => {
     const sql = MIGRATIONS[0]!.sql;
     for (const name of SCHEMA_TABLES) {
       expect(sql).toContain(name);
     }
+    expect(sql).toContain("kind");
+    expect(sql).toContain("source_path");
     expect(sql).toContain("USING fts5");
+  });
+
+  test("version 2 rebuilds the legacy tables for web items", () => {
+    const sql = MIGRATIONS[1]!.sql;
+    expect(sql).toContain("CREATE TABLE items_new");
+    expect(sql).toContain("kind = 'article' AND url IS NOT NULL");
+    expect(sql).toContain("CREATE TABLE fetch_requests_new");
+    expect(sql).not.toContain("source_path");
   });
 });
 
@@ -381,7 +392,56 @@ describe("src/store/db openDatabase", () => {
       .all();
     expect(rows).toHaveLength(MIGRATIONS.length);
     expect(rows[0]!.applied_at).toBe("2026-02-01T00:00:00.000Z");
+    expect(rows[1]!.applied_at).toBe("2026-02-01T00:00:00.000Z");
     second.close();
+  });
+
+  test("startup migrates legacy books out of the current schema", async () => {
+    const path = await tempDbPath("legacy.db");
+    const legacy = new Database(path);
+    legacy.exec(MIGRATIONS[0]!.sql);
+    legacy.run(
+      "INSERT INTO migrations (version, applied_at) VALUES (1, ?)",
+      [APPLIED_AT.toISOString()],
+    );
+    legacy.run(
+      "INSERT INTO users (id, subject, email, created_at) VALUES ('u', 'alice', NULL, 'created')",
+    );
+    legacy.run(
+      "INSERT INTO items (id, user_id, kind, url, title, author, created_at, ingested_at) VALUES ('article', 'u', 'article', 'https://example.com/article', 'Article', NULL, 'created', NULL), ('book', 'u', 'book', NULL, 'Book', NULL, 'created', NULL), ('incomplete', 'u', 'article', NULL, 'Incomplete', NULL, 'created', NULL)",
+    );
+    legacy.run(
+      "INSERT INTO annotations (id, user_id, item_id, start_offset, end_offset, quote, note, created_at, updated_at) VALUES ('keep', 'u', 'article', 0, 3, 'one', NULL, 'created', 'created'), ('drop-book', 'u', 'book', 0, 3, 'two', NULL, 'created', 'created')",
+    );
+    legacy.run(
+      "INSERT INTO blocks_fts (text, item_id, user_id, block_index, start_offset, end_offset, is_content) VALUES ('one', 'article', 'u', 0, 0, 3, 1), ('two', 'book', 'u', 0, 0, 3, 1)",
+    );
+    legacy.run(
+      "INSERT INTO fetch_requests (id, user_id, item_id, url, source_path, state, lease_expires_at, attempts, error_code, created_at) VALUES ('web-request', 'u', NULL, 'https://example.com/next', NULL, 'queued', NULL, 0, NULL, 'created'), ('book-request', 'u', NULL, NULL, '/books/book.epub', 'failed', NULL, 1, 'INGEST_UNSUPPORTED_SOURCE', 'created')",
+    );
+    legacy.close();
+
+    const db = openDatabase(path, APPLIED_AT);
+    expect(
+      db.query<{ version: number }, []>(
+        "SELECT version FROM migrations ORDER BY version",
+      ).all().map((row) => row.version),
+    ).toEqual([1, 2]);
+    expect(db.query<{ id: string }, []>("SELECT id FROM items").all()).toEqual([
+      { id: "article" },
+    ]);
+    expect(db.query<{ id: string }, []>("SELECT id FROM annotations").all()).toEqual([
+      { id: "keep" },
+    ]);
+    expect(db.query<{ id: string }, []>("SELECT id FROM fetch_requests").all()).toEqual([
+      { id: "web-request" },
+    ]);
+    expect(
+      db.query<{ item_id: string }, []>("SELECT item_id FROM blocks_fts").all(),
+    ).toEqual([{ item_id: "article" }]);
+    expect(columnsOf(tableInfo(db), "items")).not.toContain("kind");
+    expect(columnsOf(tableInfo(db), "fetch_requests")).not.toContain("source_path");
+    db.close();
   });
 
   test("turns foreign keys on, so deleting a user cascades", async () => {
@@ -394,7 +454,7 @@ describe("src/store/db openDatabase", () => {
       [user, "subject-1", null, "2026-02-01T00:00:00.000Z"],
     );
     db.run(
-      "INSERT INTO items (id, user_id, kind, url, title, author, created_at, ingested_at) VALUES (?, ?, 'article', NULL, 'A title', NULL, ?, NULL)",
+      "INSERT INTO items (id, user_id, url, title, author, created_at, ingested_at) VALUES (?, ?, 'https://example.com', 'A title', NULL, ?, NULL)",
       [item, user, "2026-02-01T00:00:00.000Z"],
     );
     db.run(
@@ -417,7 +477,7 @@ describe("src/store/db openDatabase", () => {
       ],
     );
     db.run(
-      "INSERT INTO fetch_requests (id, user_id, item_id, url, source_path, state, lease_expires_at, attempts, error_code, created_at) VALUES (?, ?, NULL, 'https://example.com', NULL, 'queued', NULL, 0, NULL, ?)",
+      "INSERT INTO fetch_requests (id, user_id, item_id, url, state, lease_expires_at, attempts, error_code, created_at) VALUES (?, ?, NULL, 'https://example.com', 'queued', NULL, 0, NULL, ?)",
       [
         "cccccccc-0000-4000-8000-000000000001",
         user,
@@ -503,7 +563,7 @@ describe("src/store/db tableInfo", () => {
 describe("test/invariants/lib EXPECTED_COLUMNS", () => {
   // These lists are the specification. Adding, renaming, or dropping a column
   // fails here on purpose, and the constant is the one place to change it.
-  test("names the seven tables of version 1", () => {
+  test("names the seven tables of the current schema", () => {
     expect(Object.keys(EXPECTED_COLUMNS).toSorted()).toEqual(SCHEMA_TABLES);
   });
 
@@ -528,7 +588,6 @@ describe("test/invariants/lib EXPECTED_COLUMNS", () => {
       "created_at",
       "id",
       "ingested_at",
-      "kind",
       "title",
       "url",
       "user_id",
@@ -551,7 +610,6 @@ describe("test/invariants/lib EXPECTED_COLUMNS", () => {
       "id",
       "item_id",
       "lease_expires_at",
-      "source_path",
       "state",
       "url",
       "user_id",
@@ -721,10 +779,7 @@ describe("invariant 7: no positions in the database", () => {
     expect(checkNoPositionsInDb(tables)).toEqual([]);
   });
 
-  test("allows source_path and the transcript offsets that the schema holds", () => {
-    // Both names sit in EXPECTED_COLUMNS, and the name pass must not flag
-    // either of them.
-    expect([...EXPECTED_COLUMNS.fetch_requests!]).toContain("source_path");
+  test("allows the transcript offsets that the schema holds", () => {
     expect([...EXPECTED_COLUMNS.annotations!]).toContain("start_offset");
     expect([...EXPECTED_COLUMNS.annotations!]).toContain("end_offset");
     expect(checkNoPositionsInDb(schemaTables())).toEqual([]);
@@ -951,7 +1006,7 @@ describe("src/store/db translate", () => {
           "INSERT INTO users (id, subject, email, created_at) VALUES ('u', 's', NULL, 't')",
         );
         db.run(
-          "INSERT INTO items (id, user_id, kind, url, title, author, created_at, ingested_at) VALUES ('i', 'u', 'video', NULL, 'A title', NULL, 't', NULL)",
+          "INSERT INTO items (id, user_id, url, title, author, created_at, ingested_at) VALUES ('i', 'u', NULL, 'A title', NULL, 't', NULL)",
         );
       }),
       {},

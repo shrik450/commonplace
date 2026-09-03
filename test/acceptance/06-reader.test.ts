@@ -1,11 +1,5 @@
-// Acceptance test for milestone 6. It is the specification for that work.
-// Change it only when the design changes, and say what changed and why.
-//
-// What the implementer must create
-// --------------------------------
-// `src/core/project.ts`, `src/core/anchor.ts`, `src/services/library.ts`,
-// the routes under `src/web/routes/`, the views under `src/web/views/`, and
-// `src/web/client/reader.ts`.
+// Acceptance tests for the reader projection and authenticated item views.
+// Change them only when the product behavior changes.
 //
 // Contract details this file pins down
 // ------------------------------------
@@ -13,8 +7,7 @@
 //   and no text.
 // - Every block element carries `data-cp-block`, `data-cp-start`, and
 //   `data-cp-end`. Every run inside it carries `data-cp-path` and
-//   `data-cp-start`. Those attributes are the only thing the client script
-//   reads, so they are part of the contract.
+//   `data-cp-start`. Those attributes are part of the projection contract.
 // - The text a block renders is `transcript.slice(start, end)`, never the
 //   sanitized document's own text. The sanitized tree decides the tag; the
 //   transcript decides the characters.
@@ -56,9 +49,7 @@ import {
   searchLibrary,
 } from "../../src/services/library";
 import type { LibraryDeps } from "../../src/services/library";
-import { offsetOfPoint } from "../../src/web/client/reader";
 import { buildApp } from "../../src/web/server";
-import { insertAnnotation } from "../../src/store/annotations";
 import { openDatabase } from "../../src/store/db";
 import { writeItemFile } from "../../src/store/files";
 import { indexBlocks } from "../../src/store/fts";
@@ -113,6 +104,7 @@ const CONFIG: Config = {
   client_id: "commonplace",
   client_secret: "secret",
   session_secret: "a-session-secret-long-enough-to-sign-with",
+  browser_path: "/usr/bin/chromium",
 };
 
 function sessionCookie(userId: UserId, at: Date): string {
@@ -155,8 +147,7 @@ async function freshEnv(name: string, owner: UserId = ALICE): Promise<Env> {
   insertItem(db, {
     id: itemId,
     user_id: owner,
-    kind: "article",
-    url: "https://example.com/looms",
+      url: "https://example.com/looms",
     title: "The Analytical Engine",
     author: "Ada Lovelace",
     created_at: toIso(at),
@@ -201,6 +192,38 @@ async function freshEnv(name: string, owner: UserId = ALICE): Promise<Env> {
     map,
     sanitized,
   };
+}
+
+function insertStoredAnnotation(
+  db: Database,
+  annotation: {
+    id: string;
+    user_id: UserId;
+    item_id: ItemId;
+    start_offset: number;
+    end_offset: number;
+    quote: string;
+    note: string | null;
+    created_at: string;
+    updated_at: string;
+  },
+): void {
+  db.run(
+    `INSERT INTO annotations
+       (id, user_id, item_id, start_offset, end_offset, quote, note, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      annotation.id,
+      annotation.user_id,
+      annotation.item_id,
+      annotation.start_offset,
+      annotation.end_offset,
+      annotation.quote,
+      annotation.note,
+      annotation.created_at,
+      annotation.updated_at,
+    ],
+  );
 }
 
 function parse(html: string): Document {
@@ -511,7 +534,7 @@ describe("src/services/library", () => {
     const env = await freshEnv("reader-page");
     const run = env.map.runs.find((candidate) => candidate.is_content)!;
     const id = newAnnotationId();
-    insertAnnotation(env.db, {
+    insertStoredAnnotation(env.db, {
       id,
       user_id: ALICE,
       item_id: env.itemId,
@@ -537,7 +560,7 @@ describe("src/services/library", () => {
     )!;
     const quote = env.transcript.slice(run.start + 2, run.start + 12);
     const id = newAnnotationId();
-    insertAnnotation(env.db, {
+    insertStoredAnnotation(env.db, {
       id,
       user_id: ALICE,
       item_id: env.itemId,
@@ -627,7 +650,7 @@ describe("the web routes", () => {
     expect(response.headers.get("location")).toBe("/login");
   });
 
-  test("the reader page carries the projection and the client script", async () => {
+  test("the reader page carries the projection without application scripts", async () => {
     const { env, app } = await serve("route-reader");
     const response = await get(
       app,
@@ -639,7 +662,7 @@ describe("the web routes", () => {
     const body = await response.text();
     expect(body).toContain("data-cp-block");
     expect(body).toContain("The Analytical Engine");
-    expect(body).toContain("/reader.js");
+    expect(body).not.toContain("<script");
   });
 
   test("another tenant's item is not found", async () => {
@@ -707,29 +730,4 @@ describe("the web routes", () => {
     expect(response.status).toBe(200);
   });
 
-  test("the client script is served as JavaScript", async () => {
-    const { app } = await serve("route-script");
-    const response = await get(app, "/reader.js");
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("javascript");
-  });
-});
-
-describe("src/web/client/reader offsets", () => {
-  test("a point inside a run resolves to a transcript offset", () => {
-    const doc = parse(
-      `<p data-cp-block="0" data-cp-start="0" data-cp-end="11">` +
-        `<span data-cp-path="1/0/0" data-cp-start="0">hello </span>` +
-        `<span data-cp-path="1/0/1" data-cp-start="6">world</span></p>`,
-    );
-    const second = doc.querySelectorAll("[data-cp-path]")[1]!;
-
-    expect(offsetOfPoint(second.firstChild!, 3)).toBe(9);
-  });
-
-  test("a point outside any run resolves to null", () => {
-    const doc = parse(`<p>loose text</p>`);
-    expect(offsetOfPoint(doc.querySelector("p")!.firstChild!, 2)).toBeNull();
-  });
 });

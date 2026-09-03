@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { TranscriptMap } from "../../src/contracts/transcript";
-import { ALLOWED_TAGS, sanitize } from "../../src/core/sanitize";
-import { BLOCK_ELEMENTS, walk } from "../../src/core/walk";
+import { ALLOWED_TAGS, BLOCK_ELEMENTS, sanitize } from "../../src/core/sanitize";
+import { walk } from "../../src/core/walk";
 import { assertGolden } from "../support/goldens";
 
 const syntheticDir = join(import.meta.dir, "..", "fixtures", "synthetic");

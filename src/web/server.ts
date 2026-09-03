@@ -2,7 +2,6 @@ import { Elysia } from "elysia";
 import { join } from "node:path";
 
 import { now } from "../contracts/clock";
-import { AppError } from "../contracts/errors";
 import { capture } from "../services/acquire";
 import { startWorker } from "../services/worker";
 import { defaultConfigPath, loadConfig } from "../store/config";
@@ -20,25 +19,6 @@ export type { WebDeps };
 
 const repoRoot = join(import.meta.dir, "..", "..");
 
-// Cache the reader bundle for the process lifetime. Propagate build failures
-// instead of serving an incomplete script.
-let bundled: Promise<string> | null = null;
-
-function readerScript(): Promise<string> {
-  bundled ??= Bun.build({
-    entrypoints: [join(import.meta.dir, "client", "reader.ts")],
-    target: "browser",
-    minify: true,
-  }).then((result) => {
-    const output = result.outputs[0];
-    if (!output) {
-      throw new AppError("VIEW_SCRIPT_BUILD_FAILED", "Bun produced no reader script output");
-    }
-    return output.text();
-  });
-  return bundled;
-}
-
 // These routes don't expose library data and don't require authentication.
 export function publicRoutes() {
   return new Elysia()
@@ -47,12 +27,7 @@ export function publicRoutes() {
     .get(
       "/app.css",
       () => new Response(Bun.file(join(repoRoot, "public", "app.css"))),
-    )
-    .get("/reader.js", async () => {
-      return new Response(await readerScript(), {
-        headers: { "content-type": "text/javascript; charset=utf-8" },
-      });
-    });
+    );
 }
 
 export function buildApp(deps: WebDeps) {

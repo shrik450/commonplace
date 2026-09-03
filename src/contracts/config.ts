@@ -8,7 +8,7 @@ export type Config = {
   client_id: string;
   client_secret: string;
   session_secret: string;
-  browser_path?: string;
+  browser_path: string;
 };
 
 const REQUIRED_KEYS = [
@@ -19,6 +19,7 @@ const REQUIRED_KEYS = [
   "client_id",
   "client_secret",
   "session_secret",
+  "browser_path",
 ] as const;
 
 export function parseConfig(text: string): Config {
@@ -115,20 +116,6 @@ export function parseConfig(text: string): Config {
       `"session_secret" must hold at least 32 characters, got ${sessionSecret.length}`,
       { key: "session_secret" },
     );
-  }
-
-  if (parsed.browser_path !== undefined) {
-    if (
-      typeof parsed.browser_path !== "string" ||
-      parsed.browser_path === ""
-    ) {
-      throw new AppError(
-        "CONFIG_INVALID_VALUE",
-        '"browser_path" must be a non-empty string when present',
-        { key: "browser_path" },
-      );
-    }
-    config.browser_path = parsed.browser_path;
   }
 
   return config as unknown as Config;

@@ -9,11 +9,6 @@ export type AnnotationId = Branded<"AnnotationId">;
 export type TokenId = Branded<"TokenId">;
 export type RequestId = Branded<"RequestId">;
 
-// Creates an unbranded ID for records that don't represent domain entities.
-export function newId(): string {
-  return Bun.randomUUIDv7();
-}
-
 // Generates secrets for PKCE, OpenID Connect state and nonce values, and API
 // tokens. Keeping random byte generation here makes it auditable.
 export function newSecret(byteLength: number): string {
@@ -35,23 +30,23 @@ function brandOf<K extends string>(kind: K, value: string): Branded<K> {
 }
 
 export function newUserId(): UserId {
-  return newId() as UserId;
+  return Bun.randomUUIDv7() as UserId;
 }
 
 export function newItemId(): ItemId {
-  return newId() as ItemId;
+  return Bun.randomUUIDv7() as ItemId;
 }
 
 export function newAnnotationId(): AnnotationId {
-  return newId() as AnnotationId;
+  return Bun.randomUUIDv7() as AnnotationId;
 }
 
 export function newTokenId(): TokenId {
-  return newId() as TokenId;
+  return Bun.randomUUIDv7() as TokenId;
 }
 
 export function newRequestId(): RequestId {
-  return newId() as RequestId;
+  return Bun.randomUUIDv7() as RequestId;
 }
 
 export function asUserId(value: string): UserId {

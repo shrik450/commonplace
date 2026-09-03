@@ -3,13 +3,12 @@
 //
 // What the implementer must create
 // --------------------------------
-// 1. `src/core/sanitize.ts`, exporting `sanitize(html: string): string`.
-// 2. `src/core/walk.ts`, exporting `walk(html, options?): Transcript` and the
+// 1. `src/core/sanitize.ts`, exporting `sanitize(html: string): string` and the
 //    `BLOCK_ELEMENTS` array.
+// 2. `src/core/walk.ts`, exporting `walk(html): Transcript`.
 // 3. `WALK_UNPARSEABLE` added to `ERROR_CODES` in `src/contracts/errors.ts`.
 //
-// The specification is `plan/briefs/03-walk-spec.md`, revision 2. This file is
-// that specification as assertions. Where the two disagree, this file wins.
+// This file records the transcript and Map behavior as assertions.
 //
 // Facts verified against the real packages before this file was written
 // ---------------------------------------------------------------------
@@ -40,12 +39,6 @@
 // hold a text node between `</head>` and `<body>`. So this file resolves every
 // path against the sanitized document rather than writing one down.
 //
-// `startOffset` and `validateMap`
-// -------------------------------
-// `walk` returns runs already based at `startOffset`. When `startOffset` is
-// greater than 0 the runs do not start at 0, so `validateMap(map, text.length)`
-// is the wrong check and this file tiles by hand instead.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -54,8 +47,8 @@ import { JSDOM } from "jsdom";
 import { AppError, ERROR_CODES } from "../../src/contracts/errors";
 import type { Run, Transcript } from "../../src/contracts/transcript";
 import { validateMap } from "../../src/contracts/transcript";
-import { sanitize } from "../../src/core/sanitize";
-import { BLOCK_ELEMENTS, walk } from "../../src/core/walk";
+import { BLOCK_ELEMENTS, sanitize } from "../../src/core/sanitize";
+import { walk } from "../../src/core/walk";
 
 const repoRoot = join(import.meta.dir, "..", "..");
 const syntheticDir = join(repoRoot, "test", "fixtures", "synthetic");
@@ -602,48 +595,12 @@ describe("block elements", () => {
   });
 });
 
-describe("options", () => {
-  test("all three default to 0", () => {
+describe("walk edge cases", () => {
+  test("starts offsets and block indices at 0", () => {
     const t = transcriptOf("blocks");
     expect(t.map.runs[0]!.start).toBe(0);
     expect(t.map.runs[0]!.block_index).toBe(0);
     expect(t.map.runs[0]!.doc_index).toBe(0);
-  });
-
-  test("docIndex reaches every run", () => {
-    const t = walk(sanitize(fixture("blocks")), { docIndex: 3 });
-    for (const run of t.map.runs) expect(run.doc_index).toBe(3);
-  });
-
-  test("startOffset bases the runs and prepends one separator", () => {
-    const plain = transcriptOf("blocks");
-    const shifted = walk(sanitize(fixture("blocks")), { startOffset: 100 });
-    expect(shifted.text).toBe(`\n${plain.text}`);
-    expect(shifted.map.runs[0]!.start).toBe(100);
-    const last = shifted.map.runs[shifted.map.runs.length - 1]!;
-    expect(last.end).toBe(100 + shifted.text.length);
-  });
-
-  test("the runs still tile when startOffset is not 0", () => {
-    const shifted = walk(sanitize(fixture("blocks")), { startOffset: 100 });
-    let cursor = 100;
-    for (const run of shifted.map.runs) {
-      expect(run.start).toBe(cursor);
-      expect(run.end).toBeGreaterThan(run.start);
-      cursor = run.end;
-    }
-    expect(cursor).toBe(100 + shifted.text.length);
-  });
-
-  test("startBlockIndex numbers the blocks from there", () => {
-    const t = walk(sanitize(fixture("blocks")), { startBlockIndex: 7 });
-    const seen = [...blocksOf(t.map).keys()];
-    expect(seen).toEqual([7, 8, 9, 10]);
-  });
-
-  test("startOffset 0 prepends nothing", () => {
-    const t = walk(sanitize(fixture("blocks")), { startOffset: 0 });
-    expect(t.text.startsWith("\n")).toBe(false);
   });
 
   test("an empty body yields an empty transcript and no runs", () => {

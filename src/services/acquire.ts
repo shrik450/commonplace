@@ -23,7 +23,7 @@ export type CaptureRequest = {
   url: string;
   outputPath: string;
   binaryPath?: string;
-  browserPath?: string;
+  browserPath: string;
   timeoutMs?: number; // Defaults to `DEFAULT_TIMEOUT_MS`.
 };
 
@@ -40,9 +40,7 @@ export function buildArgs(request: CaptureRequest): string[] {
   for (const pattern of BLOCKED_URL_PATTERNS) {
     args.push("--blocked-url-pattern", pattern);
   }
-  if (request.browserPath !== undefined) {
-    args.push("--browser-executable-path", request.browserPath);
-  }
+  args.push("--browser-executable-path", request.browserPath);
   args.push(request.url, request.outputPath);
   return args;
 }

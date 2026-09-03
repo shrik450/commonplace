@@ -3,7 +3,7 @@ import { AppError } from "./errors";
 export type Run = {
   start: number; // Inclusive offset in UTF-16 code units.
   end: number; // Exclusive offset in UTF-16 code units.
-  doc_index: number; // Zero for an article, or the spine index for a book.
+  doc_index: number; // Zero for a web item.
   node_path: string; // Slash-separated child indices, such as `1/0/3`.
   block_index: number; // Groups runs into paragraph-sized blocks.
   is_content: boolean;
@@ -12,6 +12,18 @@ export type Run = {
 export type TranscriptMap = { runs: Run[] };
 
 export type Transcript = { text: string; map: TranscriptMap };
+
+export type TranscriptBlock = { index: number; runs: Run[] };
+
+export function blocksOf(map: TranscriptMap): TranscriptBlock[] {
+  const blocks: TranscriptBlock[] = [];
+  for (const run of map.runs) {
+    const last = blocks.at(-1);
+    if (last?.index === run.block_index) last.runs.push(run);
+    else blocks.push({ index: run.block_index, runs: [run] });
+  }
+  return blocks;
+}
 
 function malformed(message: string, index?: number): AppError {
   return new AppError(

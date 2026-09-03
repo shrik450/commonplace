@@ -1,8 +1,8 @@
 import { JSDOM } from "jsdom";
 
 import type { AnnotationId } from "../contracts/ids";
-import type { Run, TranscriptMap } from "../contracts/transcript";
-import { BLOCK_ELEMENTS } from "./walk";
+import { blocksOf, type Run, type TranscriptMap } from "../contracts/transcript";
+import { BLOCK_ELEMENTS } from "./sanitize";
 
 export type Highlight = { id: AnnotationId; start: number; end: number };
 
@@ -13,7 +13,7 @@ export type ProjectInput = {
   highlights?: Highlight[];
 };
 
-const BLOCK_SET = new Set(BLOCK_ELEMENTS);
+const BLOCK_SET = new Set<string>(BLOCK_ELEMENTS);
 
 // Preserve tags with useful reader semantics. Render other blocks as
 // paragraphs, and retain their source tag in `data-cp-tag` for styling.
@@ -62,18 +62,6 @@ function ownerTag(root: Element, path: string): string {
   return "p";
 }
 
-type Block = { index: number; runs: Run[] };
-
-function contentBlocks(map: TranscriptMap): Block[] {
-  const blocks: Block[] = [];
-  for (const run of map.runs) {
-    if (!run.is_content) continue;
-    const last = blocks[blocks.length - 1];
-    if (last && last.index === run.block_index) last.runs.push(run);
-    else blocks.push({ index: run.block_index, runs: [run] });
-  }
-  return blocks;
-}
 
 function usable(highlights: Highlight[], length: number): Highlight[] {
   return highlights.filter(
@@ -122,18 +110,20 @@ export function project(input: ProjectInput): string {
   const root = new JSDOM(sanitizedHtml).window.document.documentElement;
 
   const parts: string[] = ['<article class="cp-transcript">'];
-  for (const block of contentBlocks(map)) {
-    const start = block.runs[0]!.start;
-    const end = block.runs[block.runs.length - 1]!.end;
-    const tag = ownerTag(root, block.runs[0]!.node_path);
+  for (const transcriptBlock of blocksOf(map).filter(
+    (candidate) => candidate.runs[0]!.is_content,
+  )) {
+    const start = transcriptBlock.runs[0]!.start;
+    const end = transcriptBlock.runs[transcriptBlock.runs.length - 1]!.end;
+    const tag = ownerTag(root, transcriptBlock.runs[0]!.node_path);
     const rendered = KEPT_TAGS.has(tag) ? tag : "p";
 
     parts.push(
       `<${rendered} class="cp-block" data-cp-tag="${escape(tag)}"` +
-        ` data-cp-block="${block.index}"` +
+        ` data-cp-block="${transcriptBlock.index}"` +
         ` data-cp-start="${start}" data-cp-end="${end}">`,
     );
-    for (const run of block.runs) {
+    for (const run of transcriptBlock.runs) {
       parts.push(
         `<span data-cp-path="${escape(run.node_path)}" data-cp-start="${run.start}">`,
       );

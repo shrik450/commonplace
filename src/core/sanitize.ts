@@ -3,47 +3,15 @@ import { JSDOM } from "jsdom";
 
 import { AppError } from "../contracts/errors";
 
-const BLOCK = [
-  "address",
-  "article",
-  "aside",
-  "blockquote",
-  "caption",
-  "dd",
-  "details",
-  "div",
-  "dl",
-  "dt",
-  "fieldset",
-  "figcaption",
-  "figure",
-  "footer",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "header",
-  "hgroup",
-  "hr",
-  "li",
-  "main",
-  "nav",
-  "ol",
-  "p",
-  "pre",
-  "section",
-  "summary",
-  "table",
-  "tbody",
-  "td",
-  "tfoot",
-  "th",
-  "thead",
-  "tr",
-  "ul",
+// The walker and sanitizer must agree on which elements start a block.
+export const BLOCK_ELEMENTS: string[] = [
+  "address", "article", "aside", "blockquote", "caption", "dd", "details",
+  "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "h1",
+  "h2", "h3", "h4", "h5", "h6", "header", "hgroup", "hr", "li", "main",
+  "nav", "ol", "p", "pre", "section", "summary", "table", "tbody", "td",
+  "tfoot", "th", "thead", "tr", "ul",
 ];
+
 const INLINE = [
   "a",
   "em",
@@ -75,7 +43,14 @@ const INLINE = [
   "bdo",
 ];
 
-export const ALLOWED_TAGS = ["html", "head", "title", "body", ...BLOCK, ...INLINE];
+export const ALLOWED_TAGS: string[] = [
+  "html",
+  "head",
+  "title",
+  "body",
+  ...BLOCK_ELEMENTS,
+  ...INLINE,
+];
 
 const CONFIG = {
   ALLOWED_TAGS,

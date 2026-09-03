@@ -1,4 +1,5 @@
-import { access, mkdir, readFile, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { now } from "../contracts/clock";
 import { AppError, toLogLine } from "../contracts/errors";
@@ -27,16 +28,9 @@ async function directoryCheck(name: string, path: string): Promise<Check> {
   }
 }
 
-async function browserPathCheck(path: string | undefined): Promise<Check> {
-  if (!path) {
-    return {
-      name: "browser_path",
-      ok: false,
-      detail: "browser_path is not set in the config",
-    };
-  }
+async function browserPathCheck(path: string): Promise<Check> {
   try {
-    await access(path);
+    await access(path, constants.X_OK);
     return { name: "browser_path", ok: true, detail: `found browser at ${path}` };
   } catch {
     return {
@@ -100,63 +94,6 @@ export async function doctor(
   return { ok: checks.every((check) => check.ok), checks };
 }
 
-const REPO_ROOT = join(import.meta.dir, "..", "..");
-const REAL_FIXTURES_DIR = join(REPO_ROOT, "test", "fixtures", "real");
-
-function captureFilename(url: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new AppError("CLI_BAD_URL", `"${url}" isn't a valid URL`, { url });
-  }
-  const pathPart = parsed.pathname
-    .replace(/^\/+|\/+$/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, "-");
-  return pathPart ? `${parsed.hostname}-${pathPart}.html` : `${parsed.hostname}.html`;
-}
-
-// Captures each URL from `urls.txt` into `test/fixtures/real/`. Failures don't
-// stop later captures, and the return value reports whether any capture failed.
-export async function fixturesCapture(
-  captureFn: (request: CaptureRequest) => Promise<{ path: string; bytes: number }> = capture,
-  dir: string = REAL_FIXTURES_DIR,
-): Promise<number> {
-  const urlsPath = join(dir, "urls.txt");
-  let text: string;
-  try {
-    text = await readFile(urlsPath, "utf8");
-  } catch {
-    throw new AppError("CLI_BAD_ARGUMENT", `cannot read ${urlsPath}`);
-  }
-
-  const urls = text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith("#"));
-
-  await mkdir(dir, { recursive: true });
-
-  let failures = 0;
-  for (const url of urls) {
-    try {
-      const outputPath = join(dir, captureFilename(url));
-      const result = await captureFn({ url, outputPath });
-      console.log(`Captured ${url} to ${result.path} (${result.bytes} bytes)`);
-    } catch (error) {
-      failures += 1;
-      console.error(toLogLine("error", error, { url }));
-    }
-  }
-
-  if (failures > 0) {
-    console.error(
-      `Fixture capture failed for ${failures} of ${urls.length} URLs`,
-    );
-  }
-  return failures > 0 ? 1 : 0;
-}
-
 // Runs one ingest in the foreground. Require an explicit user ID so the
 // command can't select a tenant implicitly.
 export async function ingestCommand(options: {
@@ -191,7 +128,6 @@ export async function ingestCommand(options: {
       id: newRequestId(),
       item_id: null,
       url: options.url,
-      source_path: null,
       state: "queued",
       lease_expires_at: null,
       attempts: 0,
@@ -288,24 +224,8 @@ async function run(argv: string[]): Promise<number> {
   if (command === undefined) {
     throw new AppError(
       "CLI_UNKNOWN_COMMAND",
-      "Enter a command: doctor, fixtures, or ingest",
+      "Enter a command: doctor or ingest",
     );
-  }
-  if (command === "fixtures") {
-    const subcommand = positionals.shift();
-    if (subcommand !== "capture") {
-      throw new AppError(
-        "CLI_UNKNOWN_COMMAND",
-        `Unknown fixtures subcommand "${subcommand ?? ""}". Use capture.`,
-      );
-    }
-    if (positionals.length > 0) {
-      throw new AppError(
-        "CLI_BAD_ARGUMENT",
-        `Command fixtures doesn't accept "${positionals[0]}"`,
-      );
-    }
-    return fixturesCapture();
   }
   if (command === "ingest") {
     const url = positionals.shift();
@@ -333,7 +253,7 @@ async function run(argv: string[]): Promise<number> {
   if (command !== "doctor") {
     throw new AppError(
       "CLI_UNKNOWN_COMMAND",
-      `Unknown command "${command}". Use doctor, fixtures, or ingest.`,
+      `Unknown command "${command}". Use doctor or ingest.`
     );
   }
 

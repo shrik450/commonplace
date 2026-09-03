@@ -58,8 +58,15 @@
   --color-wash: rgb(214 148 61 / 0.28);
 }
 
+/* Keep the highlight contrast distinct from the parchment wash in ink mode. */
 [data-theme="ink"] {
   --color-wash: rgb(217 155 78 / 0.24);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="parchment"]) {
+    --color-wash: rgb(217 155 78 / 0.24);
+  }
 }
 
 body {

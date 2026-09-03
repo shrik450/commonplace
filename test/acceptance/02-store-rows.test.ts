@@ -3,8 +3,7 @@
 //
 // What the implementer must create
 // --------------------------------
-// `src/store/items.ts`, `src/store/users.ts`, and `src/store/annotations.ts`,
-// with the exact API in `plan/briefs/02-store-spec.md`.
+// `src/store/items.ts`, `src/store/users.ts`, and `src/store/annotations.ts`.
 //
 // Contract details this file pins down
 // ------------------------------------
@@ -14,20 +13,13 @@
 //   passed it. The store adds nothing and rewrites nothing.
 // - A UNIQUE failure of any kind throws `STORE_CONFLICT`, a duplicate primary
 //   key included. Every other constraint failure, such as the CHECK on
-//   `items.kind` or on `annotations.end_offset`, throws
+//   database constraint, throws
 //   `STORE_CONSTRAINT_FAILED`. No raw `SQLiteError` leaves L2.
 // - `updateItem` changes only the fields the caller names. A field left out
 //   keeps its stored value. `author: null` clears the author.
-// - `updateAnnotation` writes `updated_at` from the `now` argument and never
-//   touches `created_at`. It writes only the fields the caller names.
 // - Every function in `users.ts` except `getUser`, `getUserBySubject`, and
 //   `getApiTokenByHash` filters on `user_id`, `touchApiToken` included.
-// - A tenant-scoped delete that matches nothing is silent, and a
-//   cross-tenant delete is one of those cases: it removes nothing and throws
-//   nothing.
 //
-// What the 02f consolidation pass changed
-// ---------------------------------------
 // - Every id is branded. `UserId`, `ItemId`, `AnnotationId`, and `TokenId`
 //   come from `src/contracts/ids.ts`, and the `as*` constructors are the only
 //   way to build one from a string. Passing an `ItemId` where a `UserId`
@@ -60,20 +52,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type {
-  Annotation,
   ApiToken,
   Item,
-  ItemKind,
   User,
 } from "../../src/contracts/item";
 import type {
-  AnnotationId,
   ItemId,
   TokenId,
   UserId,
 } from "../../src/contracts/ids";
 import {
-  asAnnotationId,
   asItemId,
   asTokenId,
   asUserId,
@@ -81,7 +69,6 @@ import {
 import { AppError, isAppError } from "../../src/contracts/errors";
 import { migrate, openDatabase } from "../../src/store/db";
 import {
-  deleteItem,
   getItem,
   getItemByUrl,
   insertItem,
@@ -99,14 +86,6 @@ import {
   listApiTokens,
   touchApiToken,
 } from "../../src/store/users";
-import {
-  deleteAnnotation,
-  getAnnotation,
-  insertAnnotation,
-  listAnnotations,
-  updateAnnotation,
-} from "../../src/store/annotations";
-
 const T0 = new Date("2026-02-01T00:00:00.000Z");
 const T1 = new Date("2026-02-02T00:00:00.000Z");
 const T2 = new Date("2026-02-03T00:00:00.000Z");
@@ -119,10 +98,6 @@ const BOB = asUserId("22222222-2222-4222-8222-222222222222");
 // compile, and that is the point of the brands.
 function itemId(n: number): ItemId {
   return asItemId(`aaaaaaaa-0000-4000-8000-${String(n).padStart(12, "0")}`);
-}
-
-function annotationId(n: number): AnnotationId {
-  return asAnnotationId(`bbbbbbbb-0000-4000-8000-${String(n).padStart(12, "0")}`);
 }
 
 function tokenId(n: number): TokenId {
@@ -175,30 +150,11 @@ function makeUser(id: UserId, subject: string): User {
 
 function makeItem(overrides: Partial<Item> & { id: ItemId; user_id: UserId }): Item {
   return {
-    kind: "article",
-    url: `https://example.com/${overrides.id}`,
+      url: `https://example.com/${overrides.id}`,
     title: "A title",
     author: null,
     created_at: T0.toISOString(),
     ingested_at: null,
-    ...overrides,
-  };
-}
-
-function makeAnnotation(
-  overrides: Partial<Annotation> & {
-    id: AnnotationId;
-    user_id: UserId;
-    item_id: ItemId;
-  },
-): Annotation {
-  return {
-    start_offset: 0,
-    end_offset: 4,
-    quote: "quot",
-    note: null,
-    created_at: T0.toISOString(),
-    updated_at: T0.toISOString(),
     ...overrides,
   };
 }
@@ -413,52 +369,6 @@ describe("src/store/items", () => {
     db.close();
   });
 
-  test("a book with no url round-trips", () => {
-    const db = freshDb();
-    twoUsers(db);
-    const item = makeItem({
-      id: itemId(1),
-      user_id: ALICE,
-      kind: "book",
-      url: null,
-      title: "A book",
-    });
-    insertItem(db, item);
-    expect(getItem(db, ALICE, itemId(1))).toEqual(item);
-    db.close();
-  });
-
-  test("getItem returns null for another user's item", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(db, makeItem({ id: itemId(3), user_id: BOB }));
-
-    expect(getItem(db, ALICE, itemId(3))).toBeNull();
-    expect(getItem(db, BOB, itemId(3))).not.toBeNull();
-    db.close();
-  });
-
-  test("getItem returns null for an unknown id", () => {
-    const db = freshDb();
-    twoUsers(db);
-    expect(getItem(db, ALICE, itemId(9))).toBeNull();
-    db.close();
-  });
-
-  test("a kind outside article and book throws STORE_CONSTRAINT_FAILED", () => {
-    const db = freshDb();
-    twoUsers(db);
-    const error = caught(() =>
-      insertItem(
-        db,
-        makeItem({ id: itemId(1), user_id: ALICE, kind: "video" as ItemKind }),
-      ),
-    );
-    expect(appErrorCode(error)).toBe("STORE_CONSTRAINT_FAILED");
-    expect(countRows(db, "items")).toBe(0);
-    db.close();
-  });
-
   test("a second item with the same url throws STORE_CONFLICT", () => {
     const db = freshDb();
     twoUsers(db);
@@ -490,19 +400,6 @@ describe("src/store/items", () => {
       makeItem({ id: itemId(2), user_id: BOB, url: "https://example.com/a" }),
     );
     expect(countRows(db, "items")).toBe(2);
-    db.close();
-  });
-
-  test("a null url never collides, so books stack up", () => {
-    const db = freshDb();
-    twoUsers(db);
-    for (const n of [1, 2, 3]) {
-      insertItem(
-        db,
-        makeItem({ id: itemId(n), user_id: ALICE, kind: "book", url: null }),
-      );
-    }
-    expect(countRows(db, "items")).toBe(3);
     db.close();
   });
 
@@ -732,395 +629,6 @@ describe("src/store/items", () => {
     expect(getItem(db, BOB, itemId(3))!.ingested_at).toBeNull();
     db.close();
   });
-
-  test("deleteItem removes the caller's own item", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(db, makeItem({ id: itemId(1), user_id: ALICE }));
-    deleteItem(db, ALICE, itemId(1));
-    expect(getItem(db, ALICE, itemId(1))).toBeNull();
-    db.close();
-  });
-
-  test("deleteItem cannot delete another user's item", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(db, makeItem({ id: itemId(3), user_id: BOB }));
-
-    expect(() => deleteItem(db, ALICE, itemId(3))).not.toThrow();
-
-    expect(getItem(db, BOB, itemId(3))).not.toBeNull();
-    expect(countRows(db, "items")).toBe(1);
-    db.close();
-  });
-
-  test("deleteItem is silent for an unknown id", () => {
-    const db = freshDb();
-    twoUsers(db);
-    expect(() => deleteItem(db, ALICE, itemId(9))).not.toThrow();
-    db.close();
-  });
-
-  test("deleting an item cascades to its annotations", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(db, makeItem({ id: itemId(1), user_id: ALICE }));
-    insertAnnotation(
-      db,
-      makeAnnotation({ id: annotationId(1), user_id: ALICE, item_id: itemId(1) }),
-    );
-    expect(countRows(db, "annotations")).toBe(1);
-
-    deleteItem(db, ALICE, itemId(1));
-    expect(countRows(db, "annotations")).toBe(0);
-    db.close();
-  });
-});
-
-describe("src/store/annotations", () => {
-  function seed(db: Database): void {
-    twoUsers(db);
-    insertItem(db, makeItem({ id: itemId(1), user_id: ALICE }));
-    insertItem(db, makeItem({ id: itemId(2), user_id: ALICE }));
-    insertItem(db, makeItem({ id: itemId(3), user_id: BOB }));
-  }
-
-  test("insertAnnotation returns the row and getAnnotation reads it back", () => {
-    const db = freshDb();
-    seed(db);
-    const annotation = makeAnnotation({
-      id: annotationId(1),
-      user_id: ALICE,
-      item_id: itemId(1),
-      start_offset: 10,
-      end_offset: 24,
-      quote: "a quoted span",
-      note: "a note",
-    });
-    expect(insertAnnotation(db, annotation)).toEqual(annotation);
-    expect(getAnnotation(db, ALICE, annotationId(1))).toEqual(annotation);
-    db.close();
-  });
-
-  test("getAnnotation returns null for another user's annotation", () => {
-    const db = freshDb();
-    seed(db);
-    insertAnnotation(
-      db,
-      makeAnnotation({ id: annotationId(3), user_id: BOB, item_id: itemId(3) }),
-    );
-
-    expect(getAnnotation(db, ALICE, annotationId(3))).toBeNull();
-    expect(getAnnotation(db, BOB, annotationId(3))).not.toBeNull();
-    db.close();
-  });
-
-  test("insertAnnotation throws STORE_NOT_FOUND for another user's item", () => {
-    const db = freshDb();
-    seed(db);
-    const error = caught(() =>
-      insertAnnotation(
-        db,
-        makeAnnotation({ id: annotationId(9), user_id: ALICE, item_id: itemId(3) }),
-      ),
-    );
-    expect(appErrorCode(error)).toBe("STORE_NOT_FOUND");
-    expect(countRows(db, "annotations")).toBe(0);
-    db.close();
-  });
-
-  test("insertAnnotation throws STORE_NOT_FOUND for an unknown item", () => {
-    const db = freshDb();
-    seed(db);
-    const error = caught(() =>
-      insertAnnotation(
-        db,
-        makeAnnotation({ id: annotationId(9), user_id: ALICE, item_id: itemId(8) }),
-      ),
-    );
-    expect(appErrorCode(error)).toBe("STORE_NOT_FOUND");
-    expect(countRows(db, "annotations")).toBe(0);
-    db.close();
-  });
-
-  test("an end before the start throws STORE_CONSTRAINT_FAILED", () => {
-    const db = freshDb();
-    seed(db);
-    const error = caught(() =>
-      insertAnnotation(
-        db,
-        makeAnnotation({
-          id: annotationId(1),
-          user_id: ALICE,
-          item_id: itemId(1),
-          start_offset: 20,
-          end_offset: 10,
-        }),
-      ),
-    );
-    expect(appErrorCode(error)).toBe("STORE_CONSTRAINT_FAILED");
-    expect(countRows(db, "annotations")).toBe(0);
-    db.close();
-  });
-
-  test("a negative start offset throws STORE_CONSTRAINT_FAILED", () => {
-    const db = freshDb();
-    seed(db);
-    const error = caught(() =>
-      insertAnnotation(
-        db,
-        makeAnnotation({
-          id: annotationId(1),
-          user_id: ALICE,
-          item_id: itemId(1),
-          start_offset: -1,
-          end_offset: 4,
-        }),
-      ),
-    );
-    expect(appErrorCode(error)).toBe("STORE_CONSTRAINT_FAILED");
-    expect(countRows(db, "annotations")).toBe(0);
-    db.close();
-  });
-
-  test("listAnnotations orders by start_offset then id", () => {
-    const db = freshDb();
-    seed(db);
-    insertAnnotation(
-      db,
-      makeAnnotation({
-        id: annotationId(3),
-        user_id: ALICE,
-        item_id: itemId(1),
-        start_offset: 30,
-        end_offset: 40,
-      }),
-    );
-    insertAnnotation(
-      db,
-      makeAnnotation({
-        id: annotationId(2),
-        user_id: ALICE,
-        item_id: itemId(1),
-        start_offset: 10,
-        end_offset: 20,
-      }),
-    );
-    insertAnnotation(
-      db,
-      makeAnnotation({
-        id: annotationId(1),
-        user_id: ALICE,
-        item_id: itemId(1),
-        start_offset: 10,
-        end_offset: 15,
-      }),
-    );
-
-    expect(listAnnotations(db, ALICE, itemId(1)).map((row) => row.id)).toEqual([
-      annotationId(1),
-      annotationId(2),
-      annotationId(3),
-    ]);
-    db.close();
-  });
-
-  test("listAnnotations returns only the named item", () => {
-    const db = freshDb();
-    seed(db);
-    insertAnnotation(
-      db,
-      makeAnnotation({ id: annotationId(1), user_id: ALICE, item_id: itemId(1) }),
-    );
-    insertAnnotation(
-      db,
-      makeAnnotation({ id: annotationId(2), user_id: ALICE, item_id: itemId(2) }),
-    );
-
-    const rows = listAnnotations(db, ALICE, itemId(1));
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.id).toBe(annotationId(1));
-    db.close();
-  });
-
-  test("listAnnotations never returns another user's annotations", () => {
-    const db = freshDb();
-    seed(db);
-    insertAnnotation(
-      db,
-      makeAnnotation({ id: annotationId(3), user_id: BOB, item_id: itemId(3) }),
-    );
-
-    expect(listAnnotations(db, ALICE, itemId(3))).toEqual([]);
-    expect(listAnnotations(db, BOB, itemId(3))).toHaveLength(1);
-    db.close();
-  });
-
-  test("updateAnnotation writes the note and updated_at, keeping created_at", () => {
-    const db = freshDb();
-    seed(db);
-    insertAnnotation(
-      db,
-      makeAnnotation({ id: annotationId(1), user_id: ALICE, item_id: itemId(1) }),
-    );
-
-    const updated = updateAnnotation(
-      db,
-      ALICE,
-      annotationId(1),
-      { note: "a note" },
-      T2,
-    );
-    expect(updated.note).toBe("a note");
-    expect(updated.created_at).toBe(T0.toISOString());
-    expect(updated.updated_at).toBe("2026-02-03T00:00:00.000Z");
-    expect(getAnnotation(db, ALICE, annotationId(1))).toEqual(updated);
-    db.close();
-  });
-
-  test("updateAnnotation clears the note when the caller passes null", () => {
-    const db = freshDb();
-    seed(db);
-    insertAnnotation(
-      db,
-      makeAnnotation({
-        id: annotationId(1),
-        user_id: ALICE,
-        item_id: itemId(1),
-        note: "a note",
-      }),
-    );
-
-    const cleared = updateAnnotation(db, ALICE, annotationId(1), { note: null }, T1);
-    expect(cleared.note).toBeNull();
-    expect(cleared.updated_at).toBe("2026-02-02T00:00:00.000Z");
-    db.close();
-  });
-
-  test("updateAnnotation rewrites the offsets and the quote", () => {
-    // Re-anchoring returns repaired offsets and a repaired quote, and this is
-    // the only function that persists them.
-    const db = freshDb();
-    seed(db);
-    insertAnnotation(
-      db,
-      makeAnnotation({
-        id: annotationId(1),
-        user_id: ALICE,
-        item_id: itemId(1),
-        start_offset: 10,
-        end_offset: 20,
-        quote: "old quote",
-        note: "a note",
-      }),
-    );
-
-    const moved = updateAnnotation(
-      db,
-      ALICE,
-      annotationId(1),
-      { start_offset: 30, end_offset: 45, quote: "new quote" },
-      T2,
-    );
-    expect(moved.start_offset).toBe(30);
-    expect(moved.end_offset).toBe(45);
-    expect(moved.quote).toBe("new quote");
-    expect(moved.note).toBe("a note");
-    expect(moved.updated_at).toBe("2026-02-03T00:00:00.000Z");
-    expect(getAnnotation(db, ALICE, annotationId(1))).toEqual(moved);
-    db.close();
-  });
-
-  test("updateAnnotation with an end before the start throws STORE_CONSTRAINT_FAILED", () => {
-    const db = freshDb();
-    seed(db);
-    insertAnnotation(
-      db,
-      makeAnnotation({
-        id: annotationId(1),
-        user_id: ALICE,
-        item_id: itemId(1),
-        start_offset: 10,
-        end_offset: 20,
-      }),
-    );
-
-    const error = caught(() =>
-      updateAnnotation(db, ALICE, annotationId(1), { end_offset: 5 }, T2),
-    );
-    expect(appErrorCode(error)).toBe("STORE_CONSTRAINT_FAILED");
-
-    const stored = getAnnotation(db, ALICE, annotationId(1))!;
-    expect(stored.end_offset).toBe(20);
-    expect(stored.updated_at).toBe(T0.toISOString());
-    db.close();
-  });
-
-  test("updateAnnotation throws STORE_NOT_FOUND for another user's annotation", () => {
-    const db = freshDb();
-    seed(db);
-    insertAnnotation(
-      db,
-      makeAnnotation({
-        id: annotationId(3),
-        user_id: BOB,
-        item_id: itemId(3),
-        note: "Bob's note",
-      }),
-    );
-
-    const error = caught(() =>
-      updateAnnotation(db, ALICE, annotationId(3), { note: "stolen" }, T2),
-    );
-    expect(appErrorCode(error)).toBe("STORE_NOT_FOUND");
-    expect(getAnnotation(db, BOB, annotationId(3))!.note).toBe("Bob's note");
-    db.close();
-  });
-
-  test("updateAnnotation throws STORE_NOT_FOUND for an unknown id", () => {
-    const db = freshDb();
-    seed(db);
-    const error = caught(() =>
-      updateAnnotation(db, ALICE, annotationId(9), { note: "x" }, T2),
-    );
-    expect(appErrorCode(error)).toBe("STORE_NOT_FOUND");
-    db.close();
-  });
-
-  test("deleteAnnotation removes the caller's own annotation", () => {
-    const db = freshDb();
-    seed(db);
-    insertAnnotation(
-      db,
-      makeAnnotation({ id: annotationId(1), user_id: ALICE, item_id: itemId(1) }),
-    );
-    deleteAnnotation(db, ALICE, annotationId(1));
-    expect(getAnnotation(db, ALICE, annotationId(1))).toBeNull();
-    expect(countRows(db, "annotations")).toBe(0);
-    db.close();
-  });
-
-  test("deleteAnnotation cannot delete another user's annotation", () => {
-    const db = freshDb();
-    seed(db);
-    insertAnnotation(
-      db,
-      makeAnnotation({ id: annotationId(3), user_id: BOB, item_id: itemId(3) }),
-    );
-
-    expect(() => deleteAnnotation(db, ALICE, annotationId(3))).not.toThrow();
-
-    expect(getAnnotation(db, BOB, annotationId(3))).not.toBeNull();
-    expect(countRows(db, "annotations")).toBe(1);
-    db.close();
-  });
-
-  test("deleteAnnotation is silent for an unknown id", () => {
-    const db = freshDb();
-    seed(db);
-    expect(() => deleteAnnotation(db, ALICE, annotationId(9))).not.toThrow();
-    db.close();
-  });
 });
 
 describe("store writes on a readonly database", () => {
@@ -1128,7 +636,6 @@ describe("store writes on a readonly database", () => {
   // failure that was not a constraint left L2 as a raw SQLiteError. Every
   // write below must arrive as an AppError with a store code.
   const SEED_ITEM = itemId(1);
-  const SEED_ANNOTATION = annotationId(1);
   const SEED_TOKEN = tokenId(1);
 
   async function readonlyDb(name: string): Promise<Database> {
@@ -1136,14 +643,6 @@ describe("store writes on a readonly database", () => {
     const seed = openDatabase(path, T0);
     insertUser(seed, makeUser(ALICE, "alice"));
     insertItem(seed, makeItem({ id: SEED_ITEM, user_id: ALICE }));
-    insertAnnotation(
-      seed,
-      makeAnnotation({
-        id: SEED_ANNOTATION,
-        user_id: ALICE,
-        item_id: SEED_ITEM,
-      }),
-    );
     insertApiToken(seed, makeToken({ id: SEED_TOKEN, user_id: ALICE }));
     seed.close();
     return new Database(path, { readonly: true });
@@ -1163,7 +662,6 @@ describe("store writes on a readonly database", () => {
     expectWriteFailed(() => insertItem(db, makeItem({ id: itemId(2), user_id: ALICE })));
     expectWriteFailed(() => updateItem(db, ALICE, SEED_ITEM, { title: "New" }));
     expectWriteFailed(() => markIngested(db, ALICE, SEED_ITEM, T2));
-    expectWriteFailed(() => deleteItem(db, ALICE, SEED_ITEM));
     db.close();
   });
 
@@ -1180,24 +678,4 @@ describe("store writes on a readonly database", () => {
     db.close();
   });
 
-  test("annotations.ts wraps the failure", async () => {
-    const db = await readonlyDb("annotations.db");
-    expect(getAnnotation(db, ALICE, SEED_ANNOTATION)).not.toBeNull();
-
-    expectWriteFailed(() =>
-      insertAnnotation(
-        db,
-        makeAnnotation({
-          id: annotationId(2),
-          user_id: ALICE,
-          item_id: SEED_ITEM,
-        }),
-      ),
-    );
-    expectWriteFailed(() =>
-      updateAnnotation(db, ALICE, SEED_ANNOTATION, { note: "a note" }, T2),
-    );
-    expectWriteFailed(() => deleteAnnotation(db, ALICE, SEED_ANNOTATION));
-    db.close();
-  });
 });

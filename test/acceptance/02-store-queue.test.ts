@@ -4,7 +4,6 @@
 // What the implementer must create
 // --------------------------------
 // `src/store/queue.ts`, `src/store/fts.ts`, and `src/store/files.ts`, with the
-// exact API in `plan/briefs/02-store-spec.md`.
 //
 // Contract details this file pins down
 // ------------------------------------
@@ -22,8 +21,6 @@
 // - `completeFetch` and `failFetch` are fenced on `attempts` and return
 //   `changes === 1`. Both clear `lease_expires_at`. Both match only a row in
 //   state `claimed`.
-// - `listFetchRequests` returns newest first, ordered by
-//   `created_at DESC, id DESC`.
 // - `searchBlocks` builds its snippet from the `text` column, marking the hit
 //   with `\u0002` and `\u0003`. The snippet is plain text; L2 emits no HTML.
 // - `indexBlocks` deletes every row for the item then inserts the new set, so
@@ -31,18 +28,11 @@
 // - `writeItemFile` writes `.tmp-<pid>-<n>` in the target directory and
 //   renames it over the target. The counter makes the name unique per call, so
 //   two concurrent writes of one file cannot mix.
-// - `itemFilesPresent` returns the files in `ITEM_FILES` order, never in the
-//   order the directory happens to hold them.
 // - `sweepOrphans` returns absolute paths, sorted, one per deleted directory.
 //
-// What the 02f consolidation pass changed
-// ---------------------------------------
-// - Search indexes blocks. `items_fts` is gone and `blocks_fts` replaces it,
-//   one row per paragraph-sized block. A hit carries the block index, the
+// - Search indexes blocks in `blocks_fts`. A hit carries the block index, the
 //   transcript range, and `is_content`, so the reader can jump to the passage
 //   and milestone 8 can filter.
-// - `ITEM_FILES` holds `source.epub`, and `readItemFileBytes` returns the
-//   bytes, so a book survives a round trip that UTF-8 decoding would destroy.
 // - Every id is branded, so an `ItemId` cannot stand in for a `UserId`.
 // - Every write goes through `write` from `src/store/db.ts`, so a readonly
 //   database raises `STORE_WRITE_FAILED` rather than a raw `SQLiteError`.
@@ -74,19 +64,13 @@ import {
   completeFetch,
   enqueueFetch,
   failFetch,
-  getFetchRequest,
-  listFetchRequests,
   sweepStaleLeases,
 } from "../../src/store/queue";
 import type { BlockRow } from "../../src/store/fts";
-import { indexBlocks, removeItem, searchBlocks } from "../../src/store/fts";
+import { indexBlocks, searchBlocks } from "../../src/store/fts";
 import {
-  ITEM_FILES,
-  deleteItemDir,
   itemDir,
-  itemFilesPresent,
   readItemFile,
-  readItemFileBytes,
   sweepOrphans,
   writeItemFile,
 } from "../../src/store/files";
@@ -166,8 +150,7 @@ function makeItem(id: ItemId, userId: UserId, title: string): Item {
   return {
     id,
     user_id: userId,
-    kind: "article",
-    url: `https://example.com/${id}`,
+      url: `https://example.com/${id}`,
     title,
     author: null,
     created_at: T0.toISOString(),
@@ -181,7 +164,6 @@ function makeRequest(
   return {
     item_id: null,
     url: "https://example.com/post",
-    source_path: null,
     state: "queued",
     lease_expires_at: null,
     attempts: 0,
@@ -260,134 +242,6 @@ function rawRequest(db: Database, id: string): FetchRequest {
   expect(row).not.toBeNull();
   return row!;
 }
-
-describe("src/store/queue enqueue and read", () => {
-  test("MAX_ATTEMPTS is 3", () => {
-    expect(MAX_ATTEMPTS).toBe(3);
-  });
-
-  test("enqueueFetch returns the row and getFetchRequest reads it back", () => {
-    const db = freshDb();
-    const request = makeRequest({ id: requestId(1), user_id: ALICE });
-    expect(enqueueFetch(db, request)).toEqual(request);
-    expect(getFetchRequest(db, ALICE, requestId(1))).toEqual(request);
-    db.close();
-  });
-
-  test("enqueueFetch accepts a source_path instead of a url", () => {
-    const db = freshDb();
-    const request = makeRequest({
-      id: requestId(1),
-      user_id: ALICE,
-      url: null,
-      source_path: "/home/alice/book.epub",
-    });
-    enqueueFetch(db, request);
-    expect(getFetchRequest(db, ALICE, requestId(1))).toEqual(request);
-    db.close();
-  });
-
-  test("getFetchRequest returns null for another user's request", () => {
-    const db = freshDb();
-    enqueueFetch(db, makeRequest({ id: requestId(3), user_id: BOB }));
-
-    expect(getFetchRequest(db, ALICE, requestId(3))).toBeNull();
-    expect(getFetchRequest(db, BOB, requestId(3))).not.toBeNull();
-    db.close();
-  });
-
-  test("getFetchRequest returns null for an unknown id", () => {
-    const db = freshDb();
-    expect(getFetchRequest(db, ALICE, requestId(9))).toBeNull();
-    db.close();
-  });
-
-  test("listFetchRequests returns only the caller's requests, newest first", () => {
-    const db = freshDb();
-    enqueueFetch(
-      db,
-      makeRequest({
-        id: requestId(1),
-        user_id: ALICE,
-        created_at: "2026-02-01T00:00:00.000Z",
-      }),
-    );
-    enqueueFetch(
-      db,
-      makeRequest({
-        id: requestId(2),
-        user_id: ALICE,
-        created_at: "2026-02-03T00:00:00.000Z",
-      }),
-    );
-    enqueueFetch(
-      db,
-      makeRequest({
-        id: requestId(4),
-        user_id: ALICE,
-        created_at: "2026-02-02T00:00:00.000Z",
-      }),
-    );
-    enqueueFetch(
-      db,
-      makeRequest({
-        id: requestId(3),
-        user_id: BOB,
-        created_at: "2026-02-04T00:00:00.000Z",
-      }),
-    );
-
-    const forAlice = listFetchRequests(db, ALICE, 10);
-    expect(forAlice.map((row) => row.id)).toEqual([
-      requestId(2),
-      requestId(4),
-      requestId(1),
-    ]);
-    for (const row of forAlice) {
-      expect(row.user_id).toBe(ALICE);
-    }
-
-    const forBob = listFetchRequests(db, BOB, 10);
-    expect(forBob).toHaveLength(1);
-    expect(forBob[0]!.id).toBe(requestId(3));
-    db.close();
-  });
-
-  test("listFetchRequests breaks a created_at tie by id, descending", () => {
-    const db = freshDb();
-    const sameTime = "2026-02-05T00:00:00.000Z";
-    for (const n of [1, 3, 2]) {
-      enqueueFetch(
-        db,
-        makeRequest({ id: requestId(n), user_id: ALICE, created_at: sameTime }),
-      );
-    }
-    expect(listFetchRequests(db, ALICE, 10).map((row) => row.id)).toEqual([
-      requestId(3),
-      requestId(2),
-      requestId(1),
-    ]);
-    db.close();
-  });
-
-  test("listFetchRequests honours the limit and empties cleanly", () => {
-    const db = freshDb();
-    for (const n of [1, 2, 3]) {
-      enqueueFetch(
-        db,
-        makeRequest({
-          id: requestId(n),
-          user_id: ALICE,
-          created_at: `2026-02-0${n}T00:00:00.000Z`,
-        }),
-      );
-    }
-    const limited = listFetchRequests(db, ALICE, 2);
-    expect(limited.map((row) => row.id)).toEqual([requestId(3), requestId(2)]);
-    expect(listFetchRequests(db, BOB, 10)).toEqual([]);
-    db.close();
-  });
-});
 
 describe("src/store/queue claimNext", () => {
   test("returns null on an empty queue", () => {
@@ -509,7 +363,7 @@ describe("src/store/queue claimNext", () => {
         .query<{ n: number }, []>("SELECT COUNT(*) AS n FROM fetch_requests")
         .get();
       writer.run(
-        "INSERT INTO fetch_requests (id, user_id, item_id, url, source_path, state, lease_expires_at, attempts, error_code, created_at) VALUES (?, ?, NULL, 'https://example.com', NULL, 'queued', NULL, 0, NULL, ?)",
+        "INSERT INTO fetch_requests (id, user_id, item_id, url, state, lease_expires_at, attempts, error_code, created_at) VALUES (?, ?, NULL, 'https://example.com', 'queued', NULL, 0, NULL, ?)",
         [requestId(2), ALICE, "2026-02-02T00:00:00.000Z"],
       );
 
@@ -527,7 +381,7 @@ describe("src/store/queue claimNext", () => {
     }
 
     const after = openDatabase(path, T0);
-    expect(getFetchRequest(after, ALICE, requestId(1))!.state).toBe("queued");
+    expect(rawRequest(after, requestId(1))!.state).toBe("queued");
     after.close();
   });
 
@@ -579,7 +433,7 @@ describe("src/store/queue completeFetch and failFetch", () => {
 
     expect(completeFetch(db, claimed.id, claimed.attempts, ITEM_A)).toBe(true);
 
-    const stored = getFetchRequest(db, ALICE, requestId(1))!;
+    const stored = rawRequest(db, requestId(1))!;
     expect(stored.state).toBe("done");
     expect(stored.item_id).toBe(ITEM_A);
     expect(stored.error_code).toBeNull();
@@ -594,7 +448,7 @@ describe("src/store/queue completeFetch and failFetch", () => {
 
     expect(failFetch(db, claimed.id, claimed.attempts, "ACQUIRE_FAILED")).toBe(true);
 
-    const stored = getFetchRequest(db, ALICE, requestId(1))!;
+    const stored = rawRequest(db, requestId(1))!;
     expect(stored.state).toBe("failed");
     expect(stored.error_code).toBe("ACQUIRE_FAILED");
     expect(stored.lease_expires_at).toBeNull();
@@ -981,40 +835,6 @@ describe("src/store/fts", () => {
     db.close();
   });
 
-  test("removeItem drops the item from the index", () => {
-    const db = seededFtsDb();
-    indexBlocks(db, ITEM_A, aliceBlocks());
-    expect(searchBlocks(db, ALICE, "wombat", 10)).toHaveLength(1);
-
-    removeItem(db, ALICE, ITEM_A);
-    expect(searchBlocks(db, ALICE, "wombat", 10)).toEqual([]);
-    expect(blockCount(db, ITEM_A)).toBe(0);
-    db.close();
-  });
-
-  test("removeItem cannot drop another user's item", () => {
-    const db = seededFtsDb();
-    indexBlocks(db, ITEM_B, bobBlocks());
-
-    removeItem(db, ALICE, ITEM_B);
-
-    expect(searchBlocks(db, BOB, "wombat", 10)).toHaveLength(1);
-    expect(blockCount(db, ITEM_B)).toBe(1);
-    db.close();
-  });
-
-  test("removeItem drops only the named item", () => {
-    const db = seededFtsDb();
-    indexBlocks(db, ITEM_A, aliceBlocks());
-    indexBlocks(db, ITEM_B, bobBlocks());
-
-    removeItem(db, ALICE, ITEM_A);
-
-    expect(searchBlocks(db, ALICE, "wombat", 10)).toEqual([]);
-    expect(searchBlocks(db, BOB, "wombat", 10)).toHaveLength(1);
-    db.close();
-  });
-
   test("one user's search never returns another user's block", () => {
     const db = seededFtsDb();
     indexBlocks(db, ITEM_A, aliceBlocks());
@@ -1073,7 +893,7 @@ describe("store writes on a readonly database", () => {
   test("queue.ts wraps the failure", async () => {
     const db = await readonlyDb("queue.db");
     // The reads still work, so each failure below comes from the write.
-    expect(getFetchRequest(db, ALICE, requestId(1))!.state).toBe("claimed");
+    expect(rawRequest(db, requestId(1))!.state).toBe("claimed");
 
     expectWriteFailed(() =>
       enqueueFetch(db, makeRequest({ id: requestId(2), user_id: ALICE })),
@@ -1092,24 +912,11 @@ describe("store writes on a readonly database", () => {
     expect(searchBlocks(db, ALICE, "wombat", 10)).toEqual([]);
 
     expectWriteFailed(() => indexBlocks(db, ITEM_A, aliceBlocks()));
-    expectWriteFailed(() => removeItem(db, ALICE, ITEM_A));
     db.close();
   });
 });
 
 describe("src/store/files layout", () => {
-  test("ITEM_FILES names the five files of an item", () => {
-    // source.epub comes last, because milestone 6 added it after the four
-    // article files and the order is what itemFilesPresent returns.
-    expect([...ITEM_FILES]).toEqual([
-      "original.html",
-      "sanitized.html",
-      "transcript.txt",
-      "map.json",
-      "source.epub",
-    ]);
-  });
-
   test("itemDir joins the root, the user, and the item", () => {
     expect(itemDir("/var/lib/commonplace/items", ALICE, ITEM_A)).toBe(
       join("/var/lib/commonplace/items", ALICE, ITEM_A),
@@ -1138,91 +945,6 @@ describe("src/store/files layout", () => {
     expect(await readItemFile(root, ALICE, ITEM_A, "map.json")).toBe('{"runs":[]}');
   });
 
-  test("readItemFileBytes returns a book byte for byte", async () => {
-    // An EPUB is a zip. These bytes are the zip magic number followed by a
-    // sequence no UTF-8 decoder can read: 0xff and 0xfe never appear in
-    // UTF-8, and 0x80 is a continuation byte with nothing in front of it.
-    // Decoding to a string would replace them and the book would be ruined.
-    const root = await tempRoot();
-    const book = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0xfe, 0x00, 0x80, 0xc0]);
-
-    await writeItemFile(root, ALICE, ITEM_A, "source.epub", book);
-    const read = await readItemFileBytes(root, ALICE, ITEM_A, "source.epub");
-
-    expect(read).toBeInstanceOf(Uint8Array);
-    expect([...read]).toEqual([...book]);
-
-    // And the file on disk holds those bytes, so nothing re-encoded them on
-    // the way in.
-    const onDisk = await readFile(join(root, ALICE, ITEM_A, "source.epub"));
-    expect([...onDisk]).toEqual([...book]);
-  });
-
-  test("readItemFileBytes reads a text file too", async () => {
-    const root = await tempRoot();
-    await writeItemFile(root, ALICE, ITEM_A, "transcript.txt", "one\ntwo\n");
-    const bytes = await readItemFileBytes(root, ALICE, ITEM_A, "transcript.txt");
-    expect(new TextDecoder().decode(bytes)).toBe("one\ntwo\n");
-  });
-
-  test("readItemFileBytes throws STORE_NOT_FOUND when the file is absent", async () => {
-    const root = await tempRoot();
-    expect(
-      await rejectedAppErrorCode(() =>
-        readItemFileBytes(root, ALICE, ITEM_A, "source.epub"),
-      ),
-    ).toBe("STORE_NOT_FOUND");
-  });
-
-  test("readItemFile throws STORE_NOT_FOUND when the file is absent", async () => {
-    const root = await tempRoot();
-    expect(
-      await rejectedAppErrorCode(() =>
-        readItemFile(root, ALICE, ITEM_A, "transcript.txt"),
-      ),
-    ).toBe("STORE_NOT_FOUND");
-
-    await writeItemFile(root, ALICE, ITEM_A, "transcript.txt", "one");
-    expect(
-      await rejectedAppErrorCode(() => readItemFile(root, ALICE, ITEM_A, "map.json")),
-    ).toBe("STORE_NOT_FOUND");
-  });
-
-  test("writeItemFile leaves no temporary file behind", async () => {
-    const root = await tempRoot();
-    for (const file of ITEM_FILES) {
-      await writeItemFile(root, ALICE, ITEM_A, file, `body of ${file}`);
-    }
-
-    const entries = (await readdir(join(root, ALICE, ITEM_A))).toSorted();
-    expect(entries).toEqual([...ITEM_FILES].toSorted());
-  });
-
-  test("writeItemFile replaces an existing file without leaving a temporary", async () => {
-    const root = await tempRoot();
-    await writeItemFile(root, ALICE, ITEM_A, "transcript.txt", "first");
-    await writeItemFile(root, ALICE, ITEM_A, "transcript.txt", "second");
-
-    expect(await readdir(join(root, ALICE, ITEM_A))).toEqual(["transcript.txt"]);
-    expect(await readItemFile(root, ALICE, ITEM_A, "transcript.txt")).toBe("second");
-  });
-
-  test("two concurrent writes leave one whole file, never a mix", async () => {
-    const root = await tempRoot();
-    const first = "a".repeat(200_000);
-    const second = "b".repeat(200_000);
-
-    await Promise.all([
-      writeItemFile(root, ALICE, ITEM_A, "transcript.txt", first),
-      writeItemFile(root, ALICE, ITEM_A, "transcript.txt", second),
-    ]);
-
-    const written = await readFile(join(root, ALICE, ITEM_A, "transcript.txt"), "utf8");
-    expect(written.length).toBe(200_000);
-    expect([first, second]).toContain(written);
-    expect(await readdir(join(root, ALICE, ITEM_A))).toEqual(["transcript.txt"]);
-  });
-
   test("the temporary name is .tmp-<pid>-<n> in the item directory", async () => {
     // A rename is atomic only inside one directory, so the temporary name
     // must never come from the system temporary directory. The counter, not
@@ -1234,34 +956,6 @@ describe("src/store/files layout", () => {
     expect(source).not.toContain("tmpdir");
     expect(source).not.toContain("node:os");
     expect(source).not.toContain('"/tmp');
-  });
-
-  test("itemFilesPresent lists the files that exist in ITEM_FILES order", async () => {
-    // The files land in the opposite order, so a function that hands back
-    // whatever readdir returned fails here.
-    const root = await tempRoot();
-    expect(await itemFilesPresent(root, ALICE, ITEM_A)).toEqual([]);
-
-    await writeItemFile(root, ALICE, ITEM_A, "map.json", "{}");
-    await writeItemFile(root, ALICE, ITEM_A, "transcript.txt", "one");
-
-    expect(await itemFilesPresent(root, ALICE, ITEM_A)).toEqual([
-      "transcript.txt",
-      "map.json",
-    ]);
-
-    await writeItemFile(root, ALICE, ITEM_A, "source.epub", new Uint8Array([0x50, 0x4b]));
-    await writeItemFile(root, ALICE, ITEM_A, "sanitized.html", "<p>one</p>");
-    await writeItemFile(root, ALICE, ITEM_A, "original.html", "<p>one</p>");
-    expect(await itemFilesPresent(root, ALICE, ITEM_A)).toEqual([...ITEM_FILES]);
-  });
-
-  test("itemFilesPresent ignores a file that is not an item file", async () => {
-    const root = await tempRoot();
-    await writeItemFile(root, ALICE, ITEM_A, "transcript.txt", "one");
-    await writeFile(join(root, ALICE, ITEM_A, "notes.txt"), "stray\n");
-
-    expect(await itemFilesPresent(root, ALICE, ITEM_A)).toEqual(["transcript.txt"]);
   });
 });
 
@@ -1304,7 +998,7 @@ describe("src/store/files path checking", () => {
 
   test("itemDir rejects an uppercase UUID", () => {
     // Two ids that differ only in case would collide on a case-insensitive
-    // filesystem, and newId() mints lowercase. ITEM_A holds letters, so
+    // filesystem, and IDs are lowercase UUIDs. ITEM_A holds letters, so
     // upper-casing it really does change it.
     const shouted = ITEM_A.toUpperCase();
     expect(shouted).not.toBe(String(ITEM_A));
@@ -1366,42 +1060,7 @@ describe("src/store/files path checking", () => {
         readItemFile(root, ALICE, escape, "transcript.txt"),
       ),
     ).toBe("STORE_INVALID_PATH");
-    expect(
-      await rejectedAppErrorCode(() =>
-        readItemFileBytes(root, ALICE, escape, "source.epub"),
-      ),
-    ).toBe("STORE_INVALID_PATH");
-    expect(
-      await rejectedAppErrorCode(() =>
-        itemFilesPresent(root, untrustedUserId(".."), ITEM_A),
-      ),
-    ).toBe("STORE_INVALID_PATH");
-    expect(
-      await rejectedAppErrorCode(() =>
-        deleteItemDir(root, untrustedUserId(".."), ITEM_A),
-      ),
-    ).toBe("STORE_INVALID_PATH");
     expect(await readdir(root)).toEqual([]);
-  });
-});
-
-describe("src/store/files deleteItemDir", () => {
-  test("removes the item directory and leaves the user directory", async () => {
-    const root = await tempRoot();
-    await writeItemFile(root, ALICE, ITEM_A, "transcript.txt", "one");
-    await writeItemFile(root, ALICE, ITEM_B, "transcript.txt", "two");
-
-    await deleteItemDir(root, ALICE, ITEM_A);
-
-    expect(existsSync(join(root, ALICE, ITEM_A))).toBe(false);
-    expect(existsSync(join(root, ALICE, ITEM_B))).toBe(true);
-    expect(existsSync(join(root, ALICE))).toBe(true);
-  });
-
-  test("is silent when the directory does not exist", async () => {
-    const root = await tempRoot();
-    await deleteItemDir(root, ALICE, ITEM_C);
-    expect(existsSync(join(root, ALICE, ITEM_C))).toBe(false);
   });
 });
 

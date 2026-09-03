@@ -38,7 +38,7 @@ the manual review after the command passes.
 
 Read every file the change touches under `src/web/`. Check each rule in
 `references/web-interface-guidelines.md`. Skip the React rules; this app
-renders JSX to a string on the server and ships one small client script. Map
+renders JSX to a string on the server and ships no application script. Map
 them to their HTML equivalents:
 
 | Guideline says | Here it means |
@@ -46,7 +46,7 @@ them to their HTML equivalents:
 | `onKeyDown` handlers | Use a real `<button>` or `<a>`, which is already keyboard-reachable. |
 | `<Link>` | A plain `<a href>`. |
 | `useState` and URL sync | State already lives in the URL, because every page is a GET. |
-| Hydration safety | No hydration. Check `src/web/client/reader.ts` for the same class of bug. |
+| Hydration safety | No hydration. Check that server-rendered HTML does not depend on client state. |
 | Virtualize long lists | Page the query in the route instead. |
 
 ## Report findings

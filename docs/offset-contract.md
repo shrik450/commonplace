@@ -4,6 +4,11 @@ Every feature anchors to transcript offsets. This document defines the offset
 contract. Changing it can move every stored annotation, so update the related
 migration and tests with any contract change.
 
+Each capture produces the current transcript and Map. They remain stable until
+the next recapture of that URL. A recapture reuses the item ID and replaces the
+capture files. Annotations keep their quote and re-anchor against the current
+transcript before rendering.
+
 ## Units
 
 Offsets count UTF-16 code units, the same unit JavaScript's `String.length`
@@ -22,9 +27,8 @@ The Map is an array of runs. Each run is
    never leave a gap.
 4. The last run's `end` equals `transcript.length`.
 5. `start` is inclusive. `end` is exclusive.
-6. `doc_index` is the index of the source document. A web article has one
-   document, so `doc_index` is always 0. A book has one document per spine
-   entry, numbered in spine order.
+6. `doc_index` is the source document index. Web items have one document, so
+   `doc_index` is always 0.
 7. `block_index` groups runs into paragraph-sized blocks. It starts at 0, never
    decreases, and skips no value. Runs that share a `block_index` are always
    contiguous, which is what lets search store one row per block with one
@@ -78,14 +82,10 @@ After walking, the walker removes trailing newlines and any empty final run. It
 applies these rules before assigning block indices, so empty blocks don't leave
 an index gap.
 
-The one exception is the join between two chapters. When the walker starts at a
-non-zero offset it emits a separator before its first character, so the last
-word of one chapter does not glue to the first word of the next.
-
-The block element list is an explicit array in `src/core/walk.ts`. It is not
-computed from CSS. `body` is not on it, so the body emits no separator of its
-own, but text sitting directly in the body still belongs to the body's block and
-takes an index.
+The block element list is an explicit array shared by `sanitize.ts` and
+`walk.ts`. It is not computed from CSS. `body` is not on it, so the body emits
+no separator of its own, but text sitting directly in the body still belongs to
+the body's block and takes an index.
 
 ## Whitespace
 

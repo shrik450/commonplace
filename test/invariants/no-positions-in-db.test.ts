@@ -108,8 +108,7 @@ describe("no-positions-in-db invariant", () => {
     expect(violations[0]!.detail).toContain("sessions");
   });
 
-  test("the name pass admits source_path and transcript offsets on a pinned table", () => {
-    expect([...EXPECTED_COLUMNS.fetch_requests!]).toContain("source_path");
+  test("the name pass admits transcript offsets on a pinned table", () => {
     expect([...EXPECTED_COLUMNS.annotations!]).toContain("start_offset");
     expect([...EXPECTED_COLUMNS.annotations!]).toContain("end_offset");
     expect(checkNoPositionsInDb(schemaTables())).toEqual([]);

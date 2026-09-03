@@ -40,12 +40,11 @@ That is what makes them testable with a string literal.
 ```
 src/
   contracts/   ids.ts clock.ts errors.ts transcript.ts item.ts config.ts
-  core/        sanitize.ts walk.ts epub.ts project.ts anchor.ts search.ts
+  core/        sanitize.ts walk.ts project.ts anchor.ts
   store/       db.ts config.ts items.ts annotations.ts users.ts queue.ts fts.ts files.ts
-  services/    acquire.ts ingest.ts worker.ts library.ts annotate.ts export.ts auth.ts
-  web/         server.ts routes/ views/ client/reader.ts
+  services/    acquire.ts ingest.ts worker.ts library.ts auth.ts
+  web/         server.ts routes/ views/
   cli/         main.ts
-scripts/       verify.ts               (tooling; the layer rule does not apply)
 ```
 
 `test/invariants/module-list.test.ts` enforces this list. Before you add a file
@@ -56,10 +55,8 @@ under `src/`, propose the module-list change for review.
 | Command | What it does |
 | ------- | ------------ |
 | `bun run verify` | Type check, lint, and test. The one gate. |
-| `bun run verify --json` | The same, as one JSON summary line on stdout. |
-| `bun run verify:browser` | The Playwright tests. Slow. |
-| `bun run cp <sub>` | The operator CLI. See `bun run cp --help`. |
-| `bun run cp doctor` | Check config, roots, browser path, and database health. |
+| `bun run cp doctor` | Check config, roots, browser path, and capture tool. |
+| `bun run cp ingest <url> --user <uuid>` | Capture one URL in the foreground. |
 | `bun run serve` | Run the web app. Reads the config; `PORT` overrides 3000. |
 | `bun run css` | Build `public/app.css`. Add `:watch` for development. |
 | `docker build -t commonplace .` | Build the image. Pins Bun and installs Chromium. |
@@ -67,12 +64,8 @@ under `src/`, propose the module-list change for review.
 
 Run `bun run verify` before you report that a change is complete.
 
-In `--json` mode, stdout holds exactly one line. The raw output of any failing
-tool goes to stderr, so a failure is diagnosable without a second run.
-
-**The gate fails closed.** A step passes only when the tool exits with code 0
-and its output parses correctly. If those results conflict, the step fails.
-Don't ignore an exit code or treat missing output as zero errors.
+The gate passes only when every command exits with code 0. Read the command
+output to diagnose a failure.
 
 ## Hard invariants
 

@@ -11,6 +11,7 @@ import {
 
 const url = "https://example.com/article";
 const outputPath = "/tmp/commonplace-unit/capture.html";
+const browserPath = "/usr/bin/chromium";
 
 async function writeScript(body: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "commonplace-acquire-"));
@@ -23,7 +24,7 @@ async function writeScript(body: string): Promise<string> {
 
 describe("buildArgs", () => {
   test("emits url then outputPath as the only positionals", () => {
-    const args = buildArgs({ url, outputPath });
+    const args = buildArgs({ url, outputPath, browserPath });
     const positionals: string[] = [];
     for (let i = 0; i < args.length; i += 1) {
       if (args[i]!.startsWith("-")) {
@@ -35,14 +36,14 @@ describe("buildArgs", () => {
     expect(positionals).toEqual([url, outputPath]);
   });
 
-  test("omits the browser flag without a browserPath", () => {
-    expect(buildArgs({ url, outputPath })).not.toContain(
-      "--browser-executable-path",
-    );
+  test("passes the configured browser path", () => {
+    const args = buildArgs({ url, outputPath, browserPath });
+    const flagIndex = args.indexOf("--browser-executable-path");
+    expect(args[flagIndex + 1]).toBe(browserPath);
   });
 
   test("emits every blocked pattern", () => {
-    const args = buildArgs({ url, outputPath });
+    const args = buildArgs({ url, outputPath, browserPath });
     for (const pattern of BLOCKED_URL_PATTERNS) {
       expect(args).toContain(pattern);
     }
@@ -57,7 +58,7 @@ describe("capture with an injected binary", () => {
     const started = performance.now();
     let code: string | undefined;
     try {
-      await capture({ url, outputPath, binaryPath, timeoutMs: 500 });
+      await capture({ url, outputPath, binaryPath, browserPath, timeoutMs: 500 });
     } catch (error) {
       if (isAppError(error)) code = error.code;
     }
@@ -84,7 +85,7 @@ describe("capture with an injected binary", () => {
     const binaryPath = await writeScript(`printf 'too small' > "$output"`);
     let code: string | undefined;
     try {
-      await capture({ url, outputPath: tinyFile, binaryPath });
+      await capture({ url, outputPath: tinyFile, binaryPath, browserPath });
     } catch (error) {
       if (isAppError(error)) code = error.code;
     }
@@ -100,7 +101,7 @@ describe("capture with an injected binary", () => {
     let code: string | undefined;
     let context: Record<string, unknown> = {};
     try {
-      await capture({ url, outputPath, binaryPath });
+      await capture({ url, outputPath, binaryPath, browserPath });
     } catch (error) {
       if (isAppError(error)) {
         code = error.code;
@@ -117,7 +118,7 @@ describe("capture with an injected binary", () => {
     const binaryPath = await writeScript(
       `for i in $(seq 1 600); do printf 'x' >> "$output"; done`,
     );
-    const result = await capture({ url, outputPath: goodFile, binaryPath });
+    const result = await capture({ url, outputPath: goodFile, binaryPath, browserPath });
     expect(result.bytes).toBeGreaterThan(512);
     expect(result.path).toBe(goodFile);
   });

@@ -5,15 +5,13 @@ import { AppError, isAppError } from "../../src/contracts/errors";
 import type { ErrorCode } from "../../src/contracts/errors";
 import type { Item } from "../../src/contracts/item";
 import type {
-  Annotation,
   ApiToken,
   FetchRequest,
   User,
 } from "../../src/contracts/item";
-import { asAnnotationId, asItemId, asRequestId, asTokenId, asUserId } from "../../src/contracts/ids";
+import { asItemId, asRequestId, asTokenId, asUserId } from "../../src/contracts/ids";
 import { migrate } from "../../src/store/db";
 import { insertItem } from "../../src/store/items";
-import { insertAnnotation } from "../../src/store/annotations";
 import { insertApiToken, insertUser } from "../../src/store/users";
 import { claimNext, completeFetch, enqueueFetch } from "../../src/store/queue";
 import type { BlockRow } from "../../src/store/fts";
@@ -27,7 +25,6 @@ const USER_1 = asUserId("11111111-1111-4111-8111-111111111111");
 const USER_2 = asUserId("11111111-1111-4111-8111-111111111112");
 const ITEM_1 = asItemId("22222222-2222-4222-8222-222222222221");
 const ITEM_2 = asItemId("22222222-2222-4222-8222-222222222222");
-const ANN_1 = asAnnotationId("33333333-3333-4333-8333-333333333331");
 const TOKEN_1 = asTokenId("44444444-4444-4444-8444-444444444441");
 const FETCH_1 = asRequestId("55555555-5555-4555-8555-555555555551");
 // Lexically valid ids that name no row, so a foreign key still rejects them.
@@ -56,27 +53,11 @@ function makeItem(over: Partial<Item> = {}): Item {
   return {
     id: ITEM_1,
     user_id: USER_1,
-    kind: "article",
-    url: "https://example.test/a",
+      url: "https://example.test/a",
     title: "A title",
     author: null,
     created_at: NOW.toISOString(),
     ingested_at: null,
-    ...over,
-  };
-}
-
-function makeAnnotation(over: Partial<Annotation> = {}): Annotation {
-  return {
-    id: ANN_1,
-    user_id: USER_1,
-    item_id: ITEM_1,
-    start_offset: 0,
-    end_offset: 1,
-    quote: "q",
-    note: null,
-    created_at: NOW.toISOString(),
-    updated_at: NOW.toISOString(),
     ...over,
   };
 }
@@ -99,7 +80,6 @@ function makeFetch(over: Partial<FetchRequest> = {}): FetchRequest {
     user_id: USER_1,
     item_id: null,
     url: "https://example.test/f",
-    source_path: null,
     state: "queued",
     lease_expires_at: null,
     attempts: 0,
@@ -147,23 +127,6 @@ describe("store errors leave as AppError with a STORE_ code", () => {
     expectStoreError(
       () => insertItem(db, makeItem({ id: ITEM_2 })),
       "STORE_CONFLICT",
-    );
-  });
-
-  test("insertItem with a rejected kind is a constraint failure", () => {
-    const db = makeDb();
-    seedUser(db);
-    expectStoreError(
-      () => insertItem(db, makeItem({ kind: "video" as Item["kind"] })),
-      "STORE_CONSTRAINT_FAILED",
-    );
-  });
-
-  test("insertAnnotation with an unknown item_id fails with a STORE_ code", () => {
-    const db = makeDb();
-    seedUser(db);
-    expectStoreError(() =>
-      insertAnnotation(db, makeAnnotation({ item_id: MISSING_ITEM })),
     );
   });
 

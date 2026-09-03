@@ -54,7 +54,7 @@ Follow these color rules:
 - The library is a dense list, one row per item: title, then host and date in
   muted text. No cards, no thumbnails, no grid.
 - Keep the top bar compact and sticky. Include only the app name, search field,
-  settings link, sign-out link, and theme toggle.
+  settings link, and sign-out link.
 - A skip link sits before the top bar. It is invisible until it takes focus.
 - Separate sections with one hairline rule. Do not box them.
 

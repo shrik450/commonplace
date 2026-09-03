@@ -1,10 +1,6 @@
-import { join } from "node:path";
-
-import { addMs, now } from "../contracts/clock";
+import { addMs } from "../contracts/clock";
 import { toLogLine } from "../contracts/errors";
 import type { FetchRequest } from "../contracts/item";
-import { loadConfig } from "../store/config";
-import { openDatabase } from "../store/db";
 import { itemPaths } from "../store/items";
 import {
   MAX_ATTEMPTS,
@@ -15,7 +11,6 @@ import {
   sweepStaleLeases,
 } from "../store/queue";
 import { sweepOrphans } from "../store/files";
-import { capture } from "./acquire";
 import { ingestRequest } from "./ingest";
 import type { IngestDeps, IngestOutcome } from "./ingest";
 
@@ -159,22 +154,4 @@ export function startWorker(deps: WorkerDeps): Worker {
     },
     running: () => alive,
   };
-}
-
-if (import.meta.main) {
-  const config = await loadConfig();
-  const db = openDatabase(join(config.db_root, "db.sqlite"), now());
-  const stop = new AbortController();
-  process.on("SIGTERM", () => stop.abort());
-  process.on("SIGINT", () => stop.abort());
-  await runWorker(
-    {
-      db,
-      itemsRoot: config.items_root,
-      now,
-      capture,
-      browserPath: config.browser_path,
-    },
-    stop.signal,
-  );
 }

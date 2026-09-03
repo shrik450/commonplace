@@ -1,123 +1,95 @@
 # Architecture
 
-This document defines the module layers and helps you place new code.
+Commonplace stores the current transcript for each saved web page. Each
+capture produces the transcript and Map. They remain stable until the next
+recapture of that URL. The transcript is an ordered character stream. The Map
+links each span to the sanitized DOM node that produced it. The reader, search
+results, and highlights project from those two files.
 
 ## Layers
 
-The system has five layers. A module can import its own layer or a lower layer.
-It can't import a higher layer.
+Imports point down through these layers. Web and CLI are siblings.
 
 ```
-L4  web/ , cli/      the two operator surfaces: HTTP and terminal
-L3  services/        use cases; the only layer that composes I/O with logic
-L2  store/           SQLite and the filesystem; no domain logic
-L1  core/            pure functions; the whole domain, no I/O
-L0  contracts/       types, error codes, and the two impure primitives
+L4  web/ , cli/      HTTP and operator surfaces
+L3  services/        use cases and external tools
+L2  store/            SQLite and item files
+L1  core/             pure transcript and HTML functions
+L0  contracts/        types and controlled time and ID primitives
 ```
 
-L1 contains pure domain logic. The sanitizer, walker, projector, and
-re-anchorer accept data and return data without file, database, browser, or
-clock access. Tests can reproduce their behavior with string inputs.
-
-L2 performs database and file I/O but contains no domain logic. Put text
-processing and other domain decisions in `core/`.
+Core functions do not access files, databases, browsers, clocks, or network
+APIs. Store modules own I/O. Services combine store operations with domain
+functions. Routes and commands stay thin.
 
 ## Modules
 
-### L0 `src/contracts/`
+### Contracts
 
-| File | Holds |
-| ---- | ----- |
-| `ids.ts` | UUIDv7 minting through `Bun.randomUUIDv7()`, injectable for tests |
-| `clock.ts` | `now()`, injectable for tests |
-| `errors.ts` | `AppError` and the code union |
-| `transcript.ts` | `Transcript`, `Run`, `TranscriptMap` types and range helpers |
-| `item.ts` | `Item`, `ItemMetadata`, `Annotation`, `User`, `ApiToken` types |
-| `config.ts` | the `Config` type and a pure TOML parser; reading the file is L2 |
+- `ids.ts` defines branded UUID types and creates IDs and secrets.
+- `clock.ts` owns current time and date helpers.
+- `errors.ts` defines stable application error codes and log records.
+- `transcript.ts` defines runs, block grouping, range lookup, and map checks.
+- `item.ts` defines users, web items, annotations, API tokens, and queue rows.
+- `config.ts` parses the application configuration.
 
-Only `ids.ts` and `clock.ts` access nondeterministic values. Other modules
-receive IDs and times as inputs so tests can reproduce failures.
+### Core
 
-### L1 `src/core/`
+- `sanitize.ts` removes unsafe markup and owns the shared block-element list.
+- `walk.ts` extracts metadata and builds the transcript and Map in one pass.
+- `project.ts` renders content runs and highlight marks from the transcript.
+- `anchor.ts` re-anchors a saved quote when its offsets no longer match.
 
-| File | Signature, in words |
-| ---- | ------------------- |
-| `sanitize.ts` | raw HTML → sanitized HTML |
-| `walk.ts` | sanitized documents → `{ transcript, map }` in one pass |
-| `epub.ts` | spine documents in order → the concatenated document list |
-| `project.ts` | sanitized document, map, ranges → view HTML with `data-start` |
-| `anchor.ts` | quote plus stale offsets → repaired offsets |
-| `search.ts` | user query → FTS5 query string; hit rows → snippets |
+### Store
 
-### L2 `src/store/`
+- `db.ts` opens SQLite, applies migrations, and translates write errors.
+- `config.ts` reads the config file and calls the contract parser.
+- `items.ts` reads and updates item metadata.
+- `annotations.ts` reads annotations for rendering.
+- `users.ts` stores users and hashed API tokens.
+- `queue.ts` owns URL ingest jobs, leases, and cleanup state.
+- `fts.ts` indexes one searchable row per transcript block.
+- `files.ts` atomically stores the four item files:
+  `original.html`, `sanitized.html`, `transcript.txt`, and `map.json`.
 
-| File | Owns |
-| ---- | ---- |
-| `db.ts` | the connection, WAL mode, `busy_timeout`, and migrations |
-| `config.ts` | reads the config file from disk and hands the text to L0 to parse |
-| `items.ts` | the `items` table |
-| `annotations.ts` | the `annotations` table |
-| `users.ts` | the `users` and `api_tokens` tables |
-| `queue.ts` | `fetch_requests`: claim, complete, and sweep by lease |
-| `fts.ts` | FTS5 writes and reads |
-| `files.ts` | the item directory layout, atomic writes, and the orphan sweep |
+### Services
 
-### L3 `src/services/`
+- `acquire.ts` invokes `single-file-cli` and checks its output.
+- `ingest.ts` acquires, sanitizes, walks, stores, and indexes a URL.
+- `library.ts` loads reader data and search results.
+- `auth.ts` handles OIDC, signed sessions, and API tokens.
+- `worker.ts` provides queue draining, lease cleanup, and worker lifecycle.
 
-| File | Use case |
-| ---- | -------- |
-| `acquire.ts` | the `single-file-cli` adapter; spawns the tool, files in, files out |
-| `ingest.ts` | the worker: acquire, sanitize, walk, write files, commit the row |
-| `library.ts` | item create, read, update, delete |
-| `annotate.ts` | annotation create, read, update, delete |
-| `export.ts` | vault stubs and the symlink tree |
-| `auth.ts` | OIDC with PKCE, session cookies, API tokens |
-| `worker.ts` | the ingest worker thread entry point; owns its own connection |
+`worker.ts` is a reusable service. It has no executable entry point. The web
+server starts it in the same process because the queue is intentionally local.
 
-### L4 `src/web/` and `src/cli/`
+### Web and CLI
 
-`web/` is Elysia with server-rendered TSX. `cli/` is the `cp` operator command.
-Both are thin. Neither holds logic that a service could hold. Neither imports
-the other.
+The web layer renders server-side HTML for the home page, library, search,
+reader, saved capture, raw transcript, sign-in, and token settings. It serves
+no application JavaScript. The saved capture route remains authenticated and
+uses `script-src 'none'`.
 
-## The operator CLI
+The CLI has two operator commands:
 
-The `cp` command lets operators and automation inspect the system without a
-browser. Every subcommand supports `--json`.
+- `cp doctor` checks configuration, storage roots, the browser, and the capture
+  executable.
+- `cp ingest <url> --user <uuid>` captures one URL in the foreground.
 
-| Command | Prints |
-| ------- | ------ |
-| `cp doctor` | config, both roots, browser path, `single-file-cli`, database health |
-| `cp ingest <url or file>` | runs one ingest in the foreground, prints the item id |
-| `cp items` | the item list |
-| `cp transcript <item> [--range A:B]` | transcript text, whole or sliced |
-| `cp map <item> [--offset N]` | the runs, or the one run covering an offset |
-| `cp search <query>` | hits with their transcript ranges |
-| `cp check <item>` | runs every invariant against one real item |
-| `cp fixtures capture` | refreshes the real-page corpus under `test/fixtures/real/` |
+## Durable data
 
-Use these commands instead of writing scripts to inspect system state.
+Each item directory lives at `items/<user_id>/<item_id>/`. Each capture produces
+the current transcript and Map. They remain stable until the next recapture of
+that URL. A recapture reuses the item ID and replaces the four capture files.
+The database stores metadata, users, tokens, annotations, and queue state.
+Ingest writes files before committing the item row. A lease-aware sweep removes
+abandoned directories but protects active queue reservations.
 
-## Errors and logs
+Annotations retain transcript offsets and their quote in SQLite. Rendering
+re-anchors the quote against the current transcript and projects it through the
+current Map. No DOM path or document position enters the database.
 
-`AppError` includes a stable machine-readable code and context object. Write
-one JSON log object per line: `{ level, code, msg, ...context }`. Use the code
-to search for related failures. A test rejects bare `throw new Error(...)`
-statements.
-
-## Fixtures
-
-All fixtures live under `test/fixtures/` and belong to one of these groups:
-
-- `test/fixtures/synthetic/` is committed. The files are small HTML fixtures
-  documents that cover the hard cases: nested inline elements, tables,
-  `<pre>`, HTML entities, astral-plane characters that occupy two UTF-16 code
-  units, and right-to-left text. Golden transcript and map files sit beside
-  each source file. These fixtures form the primary walker test suite.
-- `test/fixtures/real/` is not committed and is rebuildable with
-  `cp fixtures capture`. It holds a few real captures for spot checks. Real
-  captures inline every resource, so they are megabytes each. Keeping them out
-  of git keeps the repo small.
-
-Golden-file differences show which fixture transcripts changed without
-requiring you to inspect the walker implementation first.
+Schema version 2 migrates old databases by retaining only article rows with a
+non-null URL. It discards book rows, incomplete article rows, their annotations
+and search blocks, and legacy non-URL requests. Orphaned old item directories
+are removed by the normal cleanup sweep.

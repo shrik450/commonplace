@@ -5,7 +5,6 @@
 // --------------------------------
 // 1. `src/contracts/transcript.ts`, `src/contracts/item.ts`, and
 //    `src/services/acquire.ts`, with the exact API in
-//    `plan/briefs/01b-contracts-fixtures.md`.
 // 2. `test/support/goldens.ts`, with the four functions in that brief.
 // 3. Eight HTML files under `test/fixtures/synthetic/`: `blocks.html`,
 //    `inline.html`, `pre.html`, `entities.html`, `astral.html`, `rtl.html`,
@@ -87,7 +86,6 @@ import {
   asTokenId,
   asUserId,
   newAnnotationId,
-  newId,
   newItemId,
   newRequestId,
   newTokenId,
@@ -111,7 +109,6 @@ import type {
   FetchRequest,
   FetchState,
   Item,
-  ItemKind,
   User,
 } from "../../src/contracts/item";
 import { BLOCKED_URL_PATTERNS, buildArgs, capture } from "../../src/services/acquire";
@@ -147,14 +144,14 @@ function makeRun(
   start: number,
   end: number,
   isContent = true,
-  docIndex = 0,
+  documentIndex = 0,
   nodePath = "1/0",
   blockIndex = 0,
 ): Run {
   return {
     start,
     end,
-    doc_index: docIndex,
+    doc_index: documentIndex,
     node_path: nodePath,
     block_index: blockIndex,
     is_content: isContent,
@@ -496,33 +493,16 @@ describe("src/contracts/transcript sliceText", () => {
 // These tests use `satisfies` so the type checker proves the shape. There are
 // no runtime assertions about the types beyond reading one field back.
 describe("src/contracts/item", () => {
-  test("ItemKind holds article and book", () => {
-    const kinds = ["article", "book"] satisfies ItemKind[];
-    expect(kinds).toHaveLength(2);
-  });
-
-  test("FetchState holds queued, claimed, done, and failed", () => {
-    const states = [
-      "queued",
-      "claimed",
-      "done",
-      "failed",
-    ] satisfies FetchState[];
-    expect(states).toHaveLength(4);
-  });
-
   test("Item accepts a full record", () => {
     const item = {
       id: asItemId(ITEM_ID),
       user_id: asUserId(USER_ID),
-      kind: "article",
-      url: "https://example.com/post",
+          url: "https://example.com/post",
       title: "A post",
       author: null,
       created_at: "2026-01-01T00:00:00.000Z",
       ingested_at: "2026-01-01T00:01:00.000Z",
     } satisfies Item;
-    expect(item.kind).toBe("article");
   });
 
   test("Annotation accepts a full record", () => {
@@ -568,7 +548,6 @@ describe("src/contracts/item", () => {
       user_id: asUserId(USER_ID),
       item_id: null,
       url: "https://example.com/post",
-      source_path: null,
       state: "queued",
       lease_expires_at: null,
       attempts: 0,
@@ -628,7 +607,6 @@ describe("src/contracts/ids", () => {
       newAnnotationId(),
       newTokenId(),
       newRequestId(),
-      newId(),
     ];
     for (const value of minted) {
       expect(value).toMatch(UUID_PATTERN);
@@ -732,16 +710,17 @@ describe("src/services/acquire BLOCKED_URL_PATTERNS", () => {
 describe("src/services/acquire buildArgs", () => {
   const url = "https://example.com/article";
   const outputPath = "/tmp/commonplace-test/capture.html";
+  const browserPath = "/usr/bin/chromium";
 
   test("puts the url before the output path", () => {
-    const args = buildArgs({ url, outputPath });
+    const args = buildArgs({ url, outputPath, browserPath });
     expect(args).toContain(url);
     expect(args).toContain(outputPath);
     expect(args.indexOf(url)).toBeLessThan(args.indexOf(outputPath));
   });
 
   test("passes the output path as a positional argument, not a flag value", () => {
-    const args = buildArgs({ url, outputPath });
+    const args = buildArgs({ url, outputPath, browserPath });
     const outputIndex = args.indexOf(outputPath);
     expect(outputIndex).toBeGreaterThan(0);
 
@@ -756,21 +735,18 @@ describe("src/services/acquire buildArgs", () => {
     expect(args).not.toContain("--filename-template");
   });
 
-  test("adds --browser-executable-path only when browserPath is given", () => {
-    const without = buildArgs({ url, outputPath });
-    expect(without).not.toContain("--browser-executable-path");
-
-    const withBrowser = buildArgs({ url, outputPath, browserPath: "/usr/bin/chromium" });
-    const flagIndex = withBrowser.indexOf("--browser-executable-path");
+  test("always passes the configured browser path", () => {
+    const args = buildArgs({ url, outputPath, browserPath });
+    const flagIndex = args.indexOf("--browser-executable-path");
     expect(flagIndex).toBeGreaterThanOrEqual(0);
-    expect(withBrowser[flagIndex + 1]).toBe("/usr/bin/chromium");
+    expect(args[flagIndex + 1]).toBe(browserPath);
     expect(
-      withBrowser.filter((arg) => arg === "--browser-executable-path"),
+      args.filter((arg) => arg === "--browser-executable-path"),
     ).toHaveLength(1);
   });
 
   test("repeats --blocked-url-pattern once per pattern with its value", () => {
-    const args = buildArgs({ url, outputPath });
+    const args = buildArgs({ url, outputPath, browserPath });
     const flags = args.filter((arg) => arg === "--blocked-url-pattern");
     expect(flags).toHaveLength(BLOCKED_URL_PATTERNS.length);
 
@@ -782,13 +758,13 @@ describe("src/services/acquire buildArgs", () => {
   });
 
   test("uses the exact lowercase flag spellings", () => {
-    const args = buildArgs({ url, outputPath, browserPath: "/usr/bin/chromium" });
+    const args = buildArgs({ url, outputPath, browserPath });
     const joined = args.join(" ");
 
     expect(joined).toContain("--blocked-url-pattern");
     expect(joined).toContain("--browser-executable-path");
 
-    // These spellings are wrong. The audit in `plan/audits/01-single-file-cli.md`
+    // These spellings are wrong according to the capture tool's interface.
     // read them from the tool's own `options.js` at version 2.1.3.
     expect(joined).not.toContain("--blocked-URL-pattern");
     expect(joined).not.toContain("--blocked-url-patterns");
@@ -816,6 +792,7 @@ describe("src/services/acquire capture", () => {
         capture({
           url: "https://example.com/article",
           outputPath: join(emptyDir, "capture.html"),
+          browserPath: "/usr/bin/chromium",
           timeoutMs: 5_000,
         }),
       );
@@ -947,7 +924,7 @@ describe("test/fixtures/synthetic", () => {
     "void.html",
   ];
 
-  // The walker arrives in milestone 3, so nothing here checks fixture content.
+  // Fixture content is checked by the walker tests.
   for (const name of fixtures) {
     test(`${name} exists and parses as HTML with a non-empty body`, async () => {
       const path = join(syntheticDir, name);

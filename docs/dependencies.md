@@ -112,7 +112,7 @@ Audit `playwright` before adding it.
 
 `dompurify`, `jsdom`, and `@mozilla/readability` were audited on 2026-09-01 and
 are pinned above. `linkedom` was audited at the same time and rejected. See
-`plan/audits/03-dom-stack.md` and the Rejected section.
+the Rejected section above.
 
 ## single-file-cli flags, confirmed from its source
 
@@ -140,5 +140,3 @@ code mitigates two issues.
 
 Keep the output-file check after upgrading. It verifies the capture result
 independently of the process exit code.
-
-See `plan/audits/01b-single-file-cli-versions.md` for the full comparison.

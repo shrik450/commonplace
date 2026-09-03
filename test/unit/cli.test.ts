@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ingestCommand, fixturesCapture } from "../../src/cli/main";
+import { ingestCommand } from "../../src/cli/main";
 import { now } from "../../src/contracts/clock";
 import { asUserId } from "../../src/contracts/ids";
 import { openDatabase } from "../../src/store/db";
@@ -23,7 +23,7 @@ async function configFor(root: string): Promise<string> {
   const path = join(root, "config.toml");
   await writeFile(
     path,
-    `db_root = "${dbRoot}"\nitems_root = "${itemsRoot}"\nbase_url = "https://reader.example.com"\nissuer_url = "https://accounts.example.com"\nclient_id = "cli"\nclient_secret = "secret"\nsession_secret = "${"x".repeat(32)}"\n`,
+    `db_root = "${dbRoot}"\nitems_root = "${itemsRoot}"\nbase_url = "https://reader.example.com"\nissuer_url = "https://accounts.example.com"\nclient_id = "cli"\nclient_secret = "secret"\nsession_secret = "${"x".repeat(32)}"\nbrowser_path = "/usr/bin/chromium"\n`,
   );
   return path;
 }
@@ -45,29 +45,6 @@ async function seedUser(root: string): Promise<void> {
   });
   db.close();
 }
-
-describe("fixturesCapture", () => {
-  test("one malformed URL does not abort the rest", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "commonplace-cli-"));
-    await writeFile(
-      join(dir, "urls.txt"),
-      "https://example.com/first\nnot a url\nhttps://example.com/second\n",
-    );
-
-    const captured: string[] = [];
-    const captureFn = async (request: CaptureRequest) => {
-      captured.push(request.url);
-      return { path: request.outputPath, bytes: 1024 };
-    };
-
-    const exitCode = await fixturesCapture(captureFn, dir);
-    expect(captured).toEqual([
-      "https://example.com/first",
-      "https://example.com/second",
-    ]);
-    expect(exitCode).toBe(1);
-  });
-});
 
 describe("ingestCommand", () => {
   test("fails with CLI_BAD_ARGUMENT when --user is missing", async () => {

@@ -9,5 +9,3 @@ test/fixtures/real
 *.db
 *.db-wal
 *.db-shm
-Dockerfile
-.dockerignore

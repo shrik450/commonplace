@@ -47,11 +47,9 @@ export function ReaderPageView({
             <a class={LINK} href={`/items/${item.id}/capture`}>
               Saved copy
             </a>
-            {item.url === null ? null : (
-              <a class={LINK} href={item.url} rel="noreferrer">
-                Original page
-              </a>
-            )}
+            <a class={LINK} href={item.url} rel="noreferrer">
+              Original page
+            </a>
             <span>{noteCount(annotations.length)}</span>
           </nav>
         </header>

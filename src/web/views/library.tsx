@@ -2,8 +2,7 @@ import { parseIso } from "../../contracts/clock";
 import type { Item } from "../../contracts/item";
 import { FIELD, Layout, PageHeading, SUBMIT } from "./layout";
 
-export function hostOf(url: string | null): string | null {
-  if (url === null) return null;
+export function hostOf(url: string): string | null {
   try {
     return new URL(url).host.replace(/^www\./, "");
   } catch {

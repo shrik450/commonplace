@@ -21,7 +21,6 @@ const itemId = asItemId("8c7f2a11-5d3e-4b6a-8f21-9b0c4d5e6f70");
 const item: Item = {
   id: itemId,
   user_id: userId,
-  kind: "article",
   url: "https://example.com/on-reading",
   title: "On reading slowly",
   author: "A Writer",

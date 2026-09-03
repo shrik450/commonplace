@@ -1,23 +1,20 @@
 import { Database } from "bun:sqlite";
 
 import { AppError } from "../contracts/errors";
-import type { Item, ItemKind } from "../contracts/item";
+import type { Item } from "../contracts/item";
 import type { ItemId, UserId } from "../contracts/ids";
 import { write } from "./db";
 
 export type Cursor = { created_at: string; id: ItemId };
 
 const ITEM_COLUMNS = `
-  id, user_id, kind, url, title, author, created_at, ingested_at
+  id, user_id, url, title, author, created_at, ingested_at
 `;
 
-// SQLite returns IDs as strings. Apply their compile-time brands at this
-// storage boundary.
 type ItemRow = {
   id: ItemId;
   user_id: UserId;
-  kind: ItemKind;
-  url: string | null;
+  url: string;
   title: string;
   author: string | null;
   created_at: string;
@@ -40,12 +37,11 @@ function requireRow(changes: number, userId: UserId, id: ItemId): void {
 export function insertItem(db: Database, item: Item): Item {
   write(
     db,
-    `INSERT INTO items (id, user_id, kind, url, title, author, created_at, ingested_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO items (id, user_id, url, title, author, created_at, ingested_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       item.id,
       item.user_id,
-      item.kind,
       item.url,
       item.title,
       item.author,
@@ -94,8 +90,6 @@ export function listItems(
       .all(userId, limit)
       .map(itemOf);
   }
-  // Include the ID in the cursor so pagination remains stable when items share
-  // a creation timestamp.
   return db
     .query<ItemRow, [string, string, string, number]>(
       `SELECT ${ITEM_COLUMNS} FROM items
@@ -106,8 +100,7 @@ export function listItems(
     .map(itemOf);
 }
 
-// Returns item paths across all tenants for the orphan sweep. Don't use this
-// unscoped query in request handling.
+// This unscoped query is used only by the orphan sweep.
 export function itemPaths(db: Database): string[] {
   return db
     .query<{ user_id: UserId; id: ItemId }, []>(
@@ -143,9 +136,7 @@ export function updateItem(
     requireRow(changes, userId, id);
   }
   const row = getItem(db, userId, id);
-  if (row === null) {
-    requireRow(0, userId, id);
-  }
+  if (row === null) requireRow(0, userId, id);
   return row!;
 }
 
@@ -163,13 +154,4 @@ export function markIngested(
   );
   requireRow(changes, userId, id);
   return getItem(db, userId, id)!;
-}
-
-export function deleteItem(db: Database, userId: UserId, id: ItemId): void {
-  write(
-    db,
-    "DELETE FROM items WHERE user_id = ? AND id = ?",
-    [userId, id],
-    { user_id: userId, id },
-  );
 }
