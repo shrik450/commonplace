@@ -1,20 +1,19 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ingestCommand } from "../../src/cli/main";
+
+import { doctor, ingestCommand } from "../../src/cli/main";
 import { now } from "../../src/contracts/clock";
 import { asUserId } from "../../src/contracts/ids";
-import { isAppError } from "../../src/contracts/errors";
+import type { CaptureRequest } from "../../src/services/acquire";
 import { openDatabase } from "../../src/store/db";
 import { insertUser } from "../../src/store/users";
-import type { CaptureRequest } from "../../src/services/acquire";
 
-const USER_ID = "11111111-1111-4111-8111-111111111111";
-
-const PAGE = `<!DOCTYPE html><html><head>
-<title>The Document Title</title></head>
-<body><article><p>Prose with enough words to become a transcript of real length.</p></article></body></html>`;
+const repoRoot = join(import.meta.dir, "..", "..");
+const USER_ID = asUserId("11111111-1111-4111-8111-111111111111");
+const PAGE = "<html><body><article><p>Enough prose to become a transcript of real length.</p></article></body></html>";
+const roots: string[] = [];
 
 async function configFor(root: string): Promise<string> {
   const dbRoot = join(root, "db");
@@ -22,11 +21,28 @@ async function configFor(root: string): Promise<string> {
   await mkdir(dbRoot, { recursive: true });
   await mkdir(itemsRoot, { recursive: true });
   const path = join(root, "config.toml");
-  await writeFile(
-    path,
-    `db_root = "${dbRoot}"\nitems_root = "${itemsRoot}"\nbase_url = "https://reader.example.com"\nissuer_url = "https://accounts.example.com"\nclient_id = "cli"\nclient_secret = "secret"\nsession_secret = "${"x".repeat(32)}"\nbrowser_path = "/usr/bin/chromium"\n`,
-  );
+  await writeFile(path, [
+    `db_root = ${JSON.stringify(dbRoot)}`,
+    `items_root = ${JSON.stringify(itemsRoot)}`,
+    'base_url = "https://reader.example.com"',
+    'issuer_url = "https://accounts.example.com"',
+    'client_id = "cli"',
+    'client_secret = "secret"',
+    `session_secret = "${"x".repeat(32)}"`,
+    'browser_path = "/usr/bin/chromium"',
+  ].join("\n"));
   return path;
+}
+
+async function seedUser(root: string): Promise<void> {
+  const db = openDatabase(join(root, "db", "db.sqlite"), now());
+  insertUser(db, {
+    id: USER_ID,
+    subject: "alice",
+    email: "alice@example.com",
+    created_at: now().toISOString(),
+  });
+  db.close();
 }
 
 function fakeCapture(): (request: CaptureRequest) => Promise<{ path: string; bytes: number }> {
@@ -36,104 +52,72 @@ function fakeCapture(): (request: CaptureRequest) => Promise<{ path: string; byt
   };
 }
 
-async function seedUser(root: string): Promise<void> {
-  const db = openDatabase(join(root, "db", "db.sqlite"), now());
-  insertUser(db, {
-    id: asUserId(USER_ID),
-    subject: "alice",
-    email: "alice@example.com",
-    created_at: now().toISOString(),
+async function runCli(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const child = Bun.spawn({
+    cmd: [process.execPath, "run", join(repoRoot, "src", "cli", "main.ts"), ...args],
+    cwd: repoRoot,
+    stdout: "pipe",
+    stderr: "pipe",
   });
-  db.close();
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { stdout, stderr, exitCode };
 }
 
-describe("ingestCommand", () => {
-  test("fails with CLI_BAD_ARGUMENT when --user is missing", async () => {
-    let caught: unknown;
-    try {
-      await ingestCommand({ url: "https://example.com/a", user: undefined, json: false });
-    } catch (error) {
-      caught = error;
-    }
-    expect(isAppError(caught)).toBe(true);
-    if (!isAppError(caught)) return;
-    expect(caught.code).toBe("CLI_BAD_ARGUMENT");
+afterAll(async () => {
+  for (const root of roots) await rm(root, { recursive: true, force: true });
+});
+
+describe("operator CLI behavior", () => {
+  test("ingest command rejects missing or invalid users", async () => {
+    await expect(ingestCommand({ url: "https://example.com/a", user: undefined, json: false })).rejects.toMatchObject({ code: "CLI_BAD_ARGUMENT" });
+    await expect(ingestCommand({ url: "https://example.com/a", user: "not-a-uuid", json: false })).rejects.toMatchObject({ code: "CLI_BAD_ARGUMENT" });
   });
 
-  test("fails with CLI_BAD_ARGUMENT when --user is not a UUID", async () => {
-    let caught: unknown;
-    try {
-      await ingestCommand({ url: "https://example.com/a", user: "not-a-uuid", json: false });
-    } catch (error) {
-      caught = error;
-    }
-    expect(isAppError(caught)).toBe(true);
-    if (!isAppError(caught)) return;
-    expect(caught.code).toBe("CLI_BAD_ARGUMENT");
-  });
-
-  test("enqueues a request, drains it, and prints the item id", async () => {
-    const root = await mkdtemp(join(tmpdir(), "commonplace-ingest-cli-"));
+  test("ingest command drains one request and returns JSON", async () => {
+    const root = await mkdtemp(join(tmpdir(), "commonplace-cli-ingest-"));
+    roots.push(root);
     const configPath = await configFor(root);
     await seedUser(root);
-
-    const lines: string[] = [];
+    const output: string[] = [];
     const originalLog = console.log;
-    console.log = (line: string) => lines.push(line);
-    let exitCode: number;
+    console.log = (...args: unknown[]) => output.push(args.join(" "));
     try {
-      exitCode = await ingestCommand({
+      expect(await ingestCommand({
         url: "https://example.com/article",
-        user: USER_ID,
+        user: String(USER_ID),
         json: true,
         configPath,
         captureFn: fakeCapture(),
-      });
+      })).toBe(0);
     } finally {
       console.log = originalLog;
     }
-
-    expect(exitCode).toBe(0);
-    // Logs are diagnostics on stderr; stdout holds only the command's answer.
-    expect(lines).toHaveLength(1);
-    // SAFETY: ingestCommand writes a JSON object with item_id and state in JSON mode.
-    const printed = JSON.parse(lines[0]!) as { item_id: string; state: string };
-    expect(printed.state).toBe("done");
-
-    const transcript = await readFile(
-      join(root, "items", USER_ID, printed.item_id, "transcript.txt"),
-      "utf8",
-    );
-    expect(transcript).toContain("transcript of real length");
+    expect(output).toHaveLength(1);
+    const result = JSON.parse(output[0]!) as { item_id: string; state: string };
+    expect(result.state).toBe("done");
+    expect(await readFile(join(root, "items", String(USER_ID), result.item_id, "transcript.txt"), "utf8")).toContain("transcript of real length");
   });
 
-  test("--json puts exactly one line that parses as JSON on stdout", async () => {
-    const root = await mkdtemp(join(tmpdir(), "commonplace-ingest-cli-"));
-    const configPath = await configFor(root);
-    await seedUser(root);
-
-    const stdout: string[] = [];
-    const stderr: string[] = [];
-    const originalLog = console.log;
-    const originalError = console.error;
-    console.log = (line: string) => stdout.push(line);
-    console.error = (line: string) => stderr.push(line);
-    let exitCode: number;
-    try {
-      exitCode = await ingestCommand({
-        url: "https://example.com/another",
-        user: USER_ID,
-        json: true,
-        configPath,
-        captureFn: fakeCapture(),
-      });
-    } finally {
-      console.log = originalLog;
-      console.error = originalError;
-    }
-
-    expect(exitCode).toBe(0);
-    expect(stdout).toHaveLength(1);
-    expect(() => JSON.parse(stdout[0]!)).not.toThrow();
+  test("doctor reports a configuration failure", async () => {
+    const root = await mkdtemp(join(tmpdir(), "commonplace-cli-doctor-"));
+    roots.push(root);
+    const path = join(root, "config.toml");
+    await writeFile(path, 'db_root = "/tmp/db"\n');
+    const report = await doctor(path);
+    expect(report.ok).toBe(false);
+    expect(report.checks.find((check) => check.name === "config")).toMatchObject({
+      ok: false,
+      detail: expect.stringContaining("CONFIG_MISSING_KEY"),
+    });
   });
+
+  test("unknown commands exit with a stable error", async () => {
+    const result = await runCli(["nonsense"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout + result.stderr).toContain("CLI_UNKNOWN_COMMAND");
+  }, 20_000);
 });

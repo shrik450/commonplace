@@ -1,6 +1,0 @@
-Preformatted
-    def greet(name):
-        print(f"hello   {name}")
-          return 0
-    
-The paragraph before and after collapses whitespace.

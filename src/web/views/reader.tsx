@@ -53,8 +53,8 @@ export function ReaderPageView({
             <span>{noteCount(annotations.length)}</span>
           </nav>
         </header>
-        {/* The UI invariant skips projected markup because it comes from the
-            archived page rather than this interface. */}
+        {/* The projection comes from the archived page rather than this
+            interface. */}
         <div class="mt-8" data-cp-projected>
           {raw(html)}
         </div>

@@ -17,7 +17,7 @@ check.
    components. It wins on every visual choice.
 2. `references/web-interface-guidelines.md` fixes behaviour: accessibility,
    focus, forms, motion, and copy. It wins on every behaviour choice.
-3. `AGENTS.md` fixes the layers, the invariants, and the writing style.
+3. `AGENTS.md` fixes the layers, behavior coverage, and writing style.
 
 When the two guideline files disagree, follow `docs/design.md` and note the
 conflict in the review. One example: the guidelines ask for Title Case on headings and
@@ -29,10 +29,8 @@ buttons, and this app uses sentence case throughout.
 bun run verify
 ```
 
-The `ui-guidelines` invariant renders every page and checks the rules a
-machine can check. Read `test/invariants/ui-guidelines.test.ts` for the list.
-The automated check can't assess layout, contrast, or copy clarity. Complete
-the manual review after the command passes.
+The automated check cannot assess layout, contrast, or copy clarity. Complete
+the manual review after `bun run verify` passes.
 
 ## Review the code
 

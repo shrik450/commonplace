@@ -1,4 +1,0 @@
-Attributes are dropped and this text stays.
-A scheme link is stripped. A tab-obfuscated scheme link. A fragment link survives.
-Form text survives the unwrap.
-A ping link.

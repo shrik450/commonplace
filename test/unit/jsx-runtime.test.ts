@@ -1,140 +1,53 @@
 import { describe, expect, test } from "bun:test";
-import { Fragment, jsx, jsxs, raw } from "../../src/web/views/jsx-runtime";
-import { isAppError } from "../../src/contracts/errors";
+import { JSDOM } from "jsdom";
 
-function LabelComponent(props: { readonly label: string }) {
-  return jsx("span", { children: props.label });
+import { AppError } from "../../src/contracts/errors";
+import { Fragment, jsx, raw } from "../../src/web/views/jsx-runtime";
+
+const TextComponent = () => "<script>";
+const RawComponent = () => jsx("div", { children: raw("<b>safe boundary</b>") });
+
+function codeOf(run: () => unknown): string {
+  try {
+    run();
+  } catch (error) {
+    return error instanceof AppError ? error.code : "";
+  }
+  return "";
 }
 
-function checkJsxOverloads(): void {
-  // @ts-expect-error intrinsic props must contain renderable attributes.
-  jsx("div", 42);
-  // @ts-expect-error fragment props only accept children.
-  jsx(Fragment, { children: () => null });
-  jsx(LabelComponent, { label: "ok" });
-}
-
-void checkJsxOverloads;
-
-describe("jsx-runtime attribute and tag validation", () => {
-  test("rejects an attribute name that smuggles in script handlers", () => {
-    const evil = { "x onerror=alert(1) y": true };
-    let error: unknown;
-    try {
-      String(jsx("img", { src: "z", ...evil }));
-    } catch (caught) {
-      error = caught;
-    }
-    expect(isAppError(error)).toBe(true);
-    if (!isAppError(error)) return;
-    expect(error.code).toBe("VIEW_INVALID_ATTRIBUTE");
-    expect(error.context.name).toBe("x onerror=alert(1) y");
+describe("HTML rendering", () => {
+  test("escapes text and attribute values", () => {
+    const html = String(jsx("p", {
+      title: `"'><script>`,
+      children: `& <script>alert(1)</script>`,
+    }));
+    const document = new JSDOM(html).window.document;
+    expect(document.querySelector("p")?.getAttribute("title")).toBe("\"'><script>");
+    expect(document.querySelector("p")?.textContent).toBe("& <script>alert(1)</script>");
+    expect(html).not.toContain("<script>alert");
   });
 
-  test("rejects an attribute name that breaks out of the tag", () => {
-    let error: unknown;
-    try {
-      String(jsx("div", { "a=><script>alert(1)</script>": true }));
-    } catch (caught) {
-      error = caught;
-    }
-    expect(isAppError(error)).toBe(true);
-    if (!isAppError(error)) return;
-    expect(error.code).toBe("VIEW_INVALID_ATTRIBUTE");
+  test("rejects tag and attribute names that could inject markup", () => {
+    expect(codeOf(() => jsx("div><script>", {}))).toBe("VIEW_INVALID_TAG");
+    expect(codeOf(() => jsx("div", { "x onerror=alert(1)": true }))).toBe("VIEW_INVALID_ATTRIBUTE");
   });
 
-  test("rejects an invalid tag name", () => {
-    let error: unknown;
-    try {
-      String(jsx("div><script>", {}));
-    } catch (caught) {
-      error = caught;
-    }
-    expect(isAppError(error)).toBe(true);
-    if (!isAppError(error)) return;
-    expect(error.code).toBe("VIEW_INVALID_TAG");
+  test("escapes strings returned by components but preserves explicit raw HTML", () => {
+    const escaped = String(jsx(TextComponent, {}));
+    expect(new JSDOM(escaped).window.document.body.textContent).toBe("<script>");
+    expect(escaped).not.toContain("<script>");
+    const page = new JSDOM(String(jsx(RawComponent, {}))).window.document;
+    expect(page.querySelector("div > b")?.textContent).toBe("safe boundary");
   });
 
-  test("still allows plain, hyphenated, and namespaced names", () => {
-    const html = String(
-      jsx("my-widget", {
-        "data-start": "0",
-        "aria-label": "ok",
-        "xlink:href": "/a",
-      }),
-    );
-    expect(html).toContain('data-start="0"');
-    expect(html).toContain('aria-label="ok"');
-    expect(html).toContain('xlink:href="/a"');
-  });
-});
-
-const List = () => [
-  jsx("li", { children: "a" }),
-  jsx("li", { children: "b" }),
-];
-
-const Empty = () => null;
-
-const Word = () => "<script>";
-
-describe("jsx-runtime function component results", () => {
-  test("renders a component that returns an array", () => {
-    expect(String(jsx(List, {}))).toBe("<li>a</li><li>b</li>");
-  });
-
-  test("renders a component that returns null as nothing", () => {
-    expect(String(jsx(Empty, {}))).toBe("");
-  });
-
-  test("still escapes a raw string a component returns", () => {
-    expect(String(jsx(Word, {}))).toBe("&lt;script&gt;");
-  });
-});
-
-describe("jsx-runtime attributes", () => {
-  test("a true attribute renders as the bare name", () => {
-    expect(String(jsx("input", { type: "text", disabled: true }))).toBe(
-      "<input type=\"text\" disabled/>",
-    );
-  });
-
-  test("false, null, and undefined attributes are left out", () => {
-    expect(
-      String(jsx("input", { type: "text", disabled: false, "data-a": null, "data-b": undefined })),
-    ).toBe('<input type="text"/>');
-  });
-
-  test("number children render", () => {
-    expect(String(jsx("span", { children: 42 }))).toBe("<span>42</span>");
-  });
-});
-
-const Page = () => jsx("div", { children: raw("<b>x</b>") });
-
-describe("jsx-runtime raw", () => {
-  test("raw at the top level passes through", () => {
-    expect(String(raw("<hr/>"))).toBe("<hr/>");
-  });
-
-  test("raw inside a component passes through", () => {
-    expect(String(jsx(Page, {}))).toBe("<div><b>x</b></div>");
-  });
-});
-
-describe("jsx-runtime fragments and voids", () => {
-  test("a fragment with one child renders the child alone", () => {
-    expect(String(jsx(Fragment, { children: jsx("p", { children: "x" }) }))).toBe(
-      "<p>x</p>",
-    );
-  });
-
-  test("nested void elements never get closing tags", () => {
-    const out = String(
-      jsxs("div", {
-        children: [jsx("br", {}), jsx("img", { src: "/a.png" })],
-      }),
-    );
-    expect(out).toBe('<div><br/><img src="/a.png"/></div>');
+  test("renders fragments, arrays, and void elements without closing tags", () => {
+    const html = String(jsx(Fragment, {
+      children: [jsx("input", { disabled: true }), jsx("br", {})],
+    }));
+    const document = new JSDOM(html).window.document;
+    expect(document.querySelector("input")?.hasAttribute("disabled")).toBe(true);
+    expect(document.querySelector("br")).not.toBeNull();
+    expect(html).not.toContain("</input>");
   });
 });

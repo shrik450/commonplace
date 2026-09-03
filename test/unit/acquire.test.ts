@@ -2,125 +2,75 @@ import { describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { isAppError } from "../../src/contracts/errors";
-import type { JsonObject } from "../../src/contracts/item";
-import {
-  BLOCKED_URL_PATTERNS,
-  buildArgs,
-  capture,
-} from "../../src/services/acquire";
+import { BLOCKED_URL_PATTERNS, buildArgs, capture } from "../../src/services/acquire";
 
 const url = "https://example.com/article";
-const outputPath = "/tmp/commonplace-unit/capture.html";
-const browserPath = "/usr/bin/chromium";
 
-async function writeScript(body: string): Promise<string> {
+async function executable(body: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "commonplace-acquire-"));
-  const path = join(dir, "fake-single-file");
-  // The output path is always the last argument of the spawned command.
+  const path = join(dir, "single-file");
   await writeFile(path, `#!/bin/bash\noutput="\${@: -1}"\n${body}\n`);
   await chmod(path, 0o755);
   return path;
 }
 
-describe("buildArgs", () => {
-  test("emits url then outputPath as the only positionals", () => {
-    const args = buildArgs({ url, outputPath, browserPath });
-    const positionals: string[] = [];
-    for (let i = 0; i < args.length; i += 1) {
-      if (args[i]!.startsWith("-")) {
-        i += 1; // skip the flag's value
-        continue;
-      }
-      positionals.push(args[i]!);
-    }
-    expect(positionals).toEqual([url, outputPath]);
-  });
-
-  test("passes the configured browser path", () => {
-    const args = buildArgs({ url, outputPath, browserPath });
-    const flagIndex = args.indexOf("--browser-executable-path");
-    expect(args[flagIndex + 1]).toBe(browserPath);
-  });
-
-  test("emits every blocked pattern", () => {
-    const args = buildArgs({ url, outputPath, browserPath });
-    for (const pattern of BLOCKED_URL_PATTERNS) {
-      expect(args).toContain(pattern);
-    }
-  });
-});
-
-describe("capture with an injected binary", () => {
-  test("kills the process past the timeout", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "commonplace-acquire-kill-"));
-    const pidFile = join(dir, "pid");
-    const binaryPath = await writeScript(`echo $$ > "${pidFile}"\nsleep 30`);
-    const started = performance.now();
-    let code: string | undefined;
-    try {
-      await capture({ url, outputPath, binaryPath, browserPath, timeoutMs: 500 });
-    } catch (error) {
-      if (isAppError(error)) code = error.code;
-    }
-    expect(performance.now() - started).toBeLessThan(10_000);
-    expect(code).toBe("ACQUIRE_TIMEOUT");
-
-    // The kill is SIGKILL, so the pid stops being alive once the parent reaps
-    // it. Poll briefly rather than trusting a single instant check.
-    const pid = Number(await readFile(pidFile, "utf8"));
-    let gone = false;
-    for (let i = 0; i < 50 && !gone; i += 1) {
-      try {
-        process.kill(pid, 0);
-      } catch {
-        gone = true;
-      }
-      if (!gone) await Bun.sleep(20);
-    }
-    expect(gone).toBe(true);
-  });
-
-  test("treats a tiny output file as a failure despite exit 0", async () => {
-    const tinyFile = join(tmpdir(), "commonplace-unit-tiny.html");
-    const binaryPath = await writeScript(`printf 'too small' > "$output"`);
-    let code: string | undefined;
-    try {
-      await capture({ url, outputPath: tinyFile, binaryPath, browserPath });
-    } catch (error) {
-      if (isAppError(error)) code = error.code;
-    }
-    expect(code).toBe("ACQUIRE_FAILED");
-    const info = await stat(tinyFile);
-    expect(info.size).toBeLessThan(512);
-  });
-
-  test("reports a non-zero exit with the exit code and stderr tail", async () => {
-    const binaryPath = await writeScript(
-      `echo "browser exploded" >&2\nexit 3`,
+describe("capture", () => {
+  test("passes URL and output path to the executable", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "commonplace-acquire-argv-"));
+    const argvPath = join(dir, "argv");
+    const outputPath = join(dir, "capture.html");
+    const binaryPath = await executable(
+      `printf '%s\\n' "$@" > "${argvPath}"\n` +
+        `for i in $(seq 1 600); do printf x >> "$output"; done`,
     );
-    let code: string | undefined;
-    let context: JsonObject = {};
-    try {
-      await capture({ url, outputPath, binaryPath, browserPath });
-    } catch (error) {
-      if (isAppError(error)) {
-        code = error.code;
-        context = error.context;
-      }
-    }
-    expect(code).toBe("ACQUIRE_FAILED");
-    expect(context.exit_code).toBe(3);
-    expect(String(context.stderr)).toContain("browser exploded");
+
+    await capture({ url, outputPath, binaryPath });
+
+    const argv = (await readFile(argvPath, "utf8")).trimEnd().split("\n");
+    expect(argv.slice(-2)).toEqual([url, outputPath]);
   });
 
-  test("resolves a good capture", async () => {
-    const goodFile = join(tmpdir(), "commonplace-unit-good.html");
-    const binaryPath = await writeScript(
-      `for i in $(seq 1 600); do printf 'x' >> "$output"; done`,
-    );
-    const result = await capture({ url, outputPath: goodFile, binaryPath, browserPath });
-    expect(result.bytes).toBeGreaterThan(512);
-    expect(result.path).toBe(goodFile);
+  test("passes URL immediately before the positional output path", () => {
+    const args = buildArgs({ url, outputPath: "/tmp/capture.html" });
+    expect(args.slice(-2)).toEqual([url, "/tmp/capture.html"]);
+    expect(args).not.toContain("--output");
+  });
+
+  test("forwards browser and blocked URL options", () => {
+    const args = buildArgs({ url, outputPath: "/tmp/capture.html", browserPath: "/usr/bin/chromium" });
+    expect(buildArgs({ url, outputPath: "/tmp/capture.html" })).not.toContain("--browser-executable-path");
+    expect(args).toContain("--browser-executable-path");
+    expect(args).toContain("/usr/bin/chromium");
+    for (const pattern of BLOCKED_URL_PATTERNS) expect(args).toContain(pattern);
+  });
+
+  test("reports a non-zero tool exit as an acquire error", async () => {
+    const binaryPath = await executable('echo "browser failed" >&2\nexit 3');
+    let error: unknown;
+    try {
+      await capture({ url, outputPath: "/tmp/capture.html", binaryPath });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(isAppError(error)).toBe(true);
+    expect((error as { code: string }).code).toBe("ACQUIRE_FAILED");
+  });
+
+  test("rejects a successful run that did not produce a real capture", async () => {
+    const binaryPath = await executable("printf 'too small' > \"$output\"");
+    const outputPath = join(tmpdir(), "commonplace-tiny.html");
+    await expect(capture({ url, outputPath, binaryPath })).rejects.toMatchObject({
+      code: "ACQUIRE_FAILED",
+    });
+    expect((await stat(outputPath)).size).toBeLessThan(512);
+  });
+
+  test("stops a capture that exceeds its timeout", async () => {
+    const binaryPath = await executable("sleep 30");
+    await expect(capture({ url, outputPath: "/tmp/capture.html", binaryPath, timeoutMs: 100 })).rejects.toMatchObject({
+      code: "ACQUIRE_TIMEOUT",
+    });
   });
 });

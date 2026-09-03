@@ -1,8 +1,0 @@
-Prices
-Name
-Price
-Tea
-3.50
-Coffee
-4.00
-A table caption after the grid.

@@ -1,4 +1,0 @@
-First heading
-First paragraph with several words in it.
-Second paragraph follows the first with one newline between blocks.
-A quoted block sits between paragraphs.

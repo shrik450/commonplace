@@ -34,8 +34,8 @@ The Map is an array of runs. Each run is
    contiguous, which is what lets search store one row per block with one
    `(start, end)` range.
 
-Rules 1 through 4 require the runs to cover the transcript exactly. Tests check
-this behavior for fixtures and generated documents.
+Rules 1 through 4 require the runs to cover the transcript exactly. Behavior
+tests check this contract with representative documents.
 
 ## Node paths
 
@@ -146,7 +146,7 @@ when the flags change.
 
 ## The round trip
 
-The acceptance test enforces this property:
+The reader behavior tests cover this property:
 
 > Take any range `(a, b)` that lies inside content runs. Project the reader
 > view with that range highlighted. Read the text inside the highlight

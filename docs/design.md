@@ -76,8 +76,8 @@ Follow these color rules:
 - `src/web/views/layout.tsx` exports the four class strings that carry these
   states: `LINK` for a quiet link, `ACTION` for a normal action, `SUBMIT` for
   the one primary action on a page, and `FIELD` for a text input. Use them.
-  They stay in the `class` attribute so the `ui-guidelines` invariant can read
-  them.
+  They stay in the `class` attribute so the interface states remain easy to
+  review.
 
 ## Words
 

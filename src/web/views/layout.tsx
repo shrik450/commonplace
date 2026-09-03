@@ -1,6 +1,5 @@
 import type { Child } from "./jsx-runtime";
-// Keep interactive state in these class strings so the UI invariant can check
-// the rendered markup.
+// Keep interactive state in these shared class strings for consistent controls.
 const FOCUS =
   "rounded-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 

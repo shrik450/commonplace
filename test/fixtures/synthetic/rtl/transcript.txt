@@ -1,3 +1,0 @@
-هذا نص من اليمين إلى اليسار.
-Left-to-right sentence then نص عربي then more.
-Mixed bidirectional: مرحبا world مرحبا.

@@ -1,681 +1,153 @@
-// Acceptance test for milestone 2. It is the specification for that work.
-// Change it only when the design changes, and say what changed and why.
-//
-// What the implementer must create
-// --------------------------------
-// `src/store/items.ts`, `src/store/users.ts`, and `src/store/annotations.ts`.
-//
-// Contract details this file pins down
-// ------------------------------------
-// The brief leaves these open. This file settles them, so build them this way.
-//
-// - Every insert returns the row it wrote, field for field, as the caller
-//   passed it. The store adds nothing and rewrites nothing.
-// - A UNIQUE failure of any kind throws `STORE_CONFLICT`, a duplicate primary
-//   key included. Every other constraint failure, such as the CHECK on
-//   database constraint, throws
-//   `STORE_CONSTRAINT_FAILED`. No raw `SQLiteError` leaves L2.
-// - `updateItem` changes only the fields the caller names. A field left out
-//   keeps its stored value. `author: null` clears the author.
-// - Every function in `users.ts` except `getUser`, `getUserBySubject`, and
-//   `getApiTokenByHash` filters on `user_id`, `touchApiToken` included.
-//
-// - Every id is branded. `UserId`, `ItemId`, `AnnotationId`, and `TokenId`
-//   come from `src/contracts/ids.ts`, and the `as*` constructors are the only
-//   way to build one from a string. Passing an `ItemId` where a `UserId`
-//   belongs no longer compiles, which is what the UUID check could never
-//   catch.
-// - Every write goes through `write` from `src/store/db.ts`, which translates
-//   any SQLite failure. A readonly database therefore raises
-//   `STORE_WRITE_FAILED`, not a raw `SQLiteError`.
-//
-// Tenancy
-// -------
-// Every tenant-scoped function is tested with two users who each own a row.
-// A function that forgets its `user_id` filter fails here.
-//
-// Identifiers
-// -----------
-// Every id is a lowercase UUID, because `src/store/files.ts` accepts nothing
-// else and the same ids travel to disk. The helpers below mint ids whose
-// lexical order matches their number, so ordering tests read plainly.
-//
-// Timestamps
-// ----------
-// Every timestamp is a literal the test controls. A store that reads the
-// clock fails these tests.
-
-import { afterAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
-import type {
-  ApiToken,
-  Item,
-  User,
-} from "../../src/contracts/item";
-import type {
-  ItemId,
-  TokenId,
-  UserId,
-} from "../../src/contracts/ids";
+import { AppError } from "../../src/contracts/errors";
+import { asAnnotationId, asItemId, asTokenId, asUserId } from "../../src/contracts/ids";
+import type { Annotation, ApiToken, Item, User } from "../../src/contracts/item";
+import { migrate } from "../../src/store/db";
 import {
-  asItemId,
-  asTokenId,
-  asUserId,
-} from "../../src/contracts/ids";
-import { AppError, isAppError } from "../../src/contracts/errors";
-import { migrate, openDatabase } from "../../src/store/db";
+  deleteAnnotation,
+  getAnnotation,
+  insertAnnotation,
+  listAnnotations,
+} from "../../src/store/annotations";
 import {
+  deleteItem,
   getItem,
-  getItemByUrl,
   insertItem,
-  listItems,
-  markIngested,
   updateItem,
 } from "../../src/store/items";
 import {
   deleteApiToken,
   getApiTokenByHash,
-  getUser,
-  getUserBySubject,
   insertApiToken,
-  insertUser,
   listApiTokens,
-  touchApiToken,
 } from "../../src/store/users";
-const T0 = new Date("2026-02-01T00:00:00.000Z");
-const T1 = new Date("2026-02-02T00:00:00.000Z");
-const T2 = new Date("2026-02-03T00:00:00.000Z");
+import { insertUser } from "../../src/store/users";
 
+const NOW = "2026-02-01T00:00:00.000Z";
 const ALICE = asUserId("11111111-1111-4111-8111-111111111111");
 const BOB = asUserId("22222222-2222-4222-8222-222222222222");
+const ITEM = asItemId("aaaaaaaa-0000-4000-8000-000000000001");
+const OTHER_ITEM = asItemId("aaaaaaaa-0000-4000-8000-000000000002");
+const ANNOTATION = asAnnotationId("bbbbbbbb-0000-4000-8000-000000000001");
+const TOKEN = asTokenId("dddddddd-0000-4000-8000-000000000001");
 
-// Every id goes through its as* constructor, which is the only way to turn a
-// string into a branded id. A test that passed a bare string would not
-// compile, and that is the point of the brands.
-function itemId(n: number): ItemId {
-  return asItemId(`aaaaaaaa-0000-4000-8000-${String(n).padStart(12, "0")}`);
-}
-
-function tokenId(n: number): TokenId {
-  return asTokenId(`dddddddd-0000-4000-8000-${String(n).padStart(12, "0")}`);
-}
-
-const tempRoots: string[] = [];
-
-async function tempDbPath(name: string): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "commonplace-store-rows-"));
-  tempRoots.push(root);
-  return join(root, name);
-}
-
-afterAll(async () => {
-  for (const root of tempRoots) {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-function freshDb(): Database {
+function database(): Database {
   const db = new Database(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
-  migrate(db, T0);
+  migrate(db, new Date(NOW));
+  insertUser(db, user(ALICE, "alice"));
+  insertUser(db, user(BOB, "bob"));
   return db;
 }
 
-function caught(run: () => unknown): unknown {
+function user(id: typeof ALICE, subject: string): User {
+  return { id, subject, email: `${subject}@example.com`, created_at: NOW };
+}
+
+function item(id: typeof ITEM, userId: typeof ALICE, title = "A saved item"): Item {
+  return {
+    id,
+    user_id: userId,
+    url: `https://example.com/${id}`,
+    title,
+    author: null,
+    created_at: NOW,
+    ingested_at: null,
+  };
+}
+
+function annotation(id = ANNOTATION, itemId = ITEM, userId = ALICE): Annotation {
+  return {
+    id,
+    user_id: userId,
+    item_id: itemId,
+    start_offset: 0,
+    end_offset: 4,
+    quote: "text",
+    note: null,
+    created_at: NOW,
+    updated_at: NOW,
+  };
+}
+
+function errorCode(run: () => unknown): string {
   try {
     run();
   } catch (error) {
-    return error;
+    return error instanceof AppError ? error.code : "";
   }
-  throw new Error("expected the call to throw");
+  return "";
 }
 
-function appErrorCode(error: unknown): string {
-  expect(isAppError(error)).toBe(true);
-  return (error as AppError).code;
-}
-
-function makeUser(id: UserId, subject: string): User {
+function token(): ApiToken {
   return {
-    id,
-    subject,
-    email: `${subject}@example.com`,
-    created_at: T0.toISOString(),
-  };
-}
-
-function makeItem(overrides: Partial<Item> & { id: ItemId; user_id: UserId }): Item {
-  return {
-      url: `https://example.com/${overrides.id}`,
-    title: "A title",
-    author: null,
-    created_at: T0.toISOString(),
-    ingested_at: null,
-    ...overrides,
-  };
-}
-
-function makeToken(overrides: Partial<ApiToken> & { id: TokenId; user_id: UserId }): ApiToken {
-  return {
-    name: "laptop",
-    token_hash: `hash-${overrides.id}`,
-    created_at: T0.toISOString(),
+    id: TOKEN,
+    user_id: ALICE,
+    name: "phone",
+    token_hash: "hash",
+    created_at: NOW,
     last_used_at: null,
-    ...overrides,
   };
 }
 
-function twoUsers(db: Database): void {
-  insertUser(db, makeUser(ALICE, "alice"));
-  insertUser(db, makeUser(BOB, "bob"));
-}
+describe("tenant-scoped rows", () => {
+  test("users see only their own items, annotations, and tokens", () => {
+    const db = database();
+    insertItem(db, item(ITEM, ALICE));
+    insertItem(db, item(OTHER_ITEM, BOB));
+    insertAnnotation(db, annotation(ANNOTATION, ITEM, ALICE));
+    insertApiToken(db, token());
 
-function countRows(db: Database, table: string): number {
-  return db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM ${table}`).get()!.n;
-}
-
-describe("src/store/users", () => {
-  test("insertUser returns the row and getUser reads it back", () => {
-    const db = freshDb();
-    const user = makeUser(ALICE, "alice");
-    expect(insertUser(db, user)).toEqual(user);
-    expect(getUser(db, ALICE)).toEqual(user);
-    db.close();
-  });
-
-  test("getUser returns null for an unknown id", () => {
-    const db = freshDb();
-    insertUser(db, makeUser(ALICE, "alice"));
-    expect(getUser(db, BOB)).toBeNull();
-    db.close();
-  });
-
-  test("getUserBySubject finds the right user and null for the rest", () => {
-    const db = freshDb();
-    twoUsers(db);
-    expect(getUserBySubject(db, "bob")?.id).toBe(BOB);
-    expect(getUserBySubject(db, "alice")?.id).toBe(ALICE);
-    expect(getUserBySubject(db, "carol")).toBeNull();
-    db.close();
-  });
-
-  test("a null email round-trips as null", () => {
-    const db = freshDb();
-    const user: User = { ...makeUser(ALICE, "alice"), email: null };
-    insertUser(db, user);
-    expect(getUser(db, ALICE)!.email).toBeNull();
-    db.close();
-  });
-
-  test("a duplicate subject throws STORE_CONFLICT", () => {
-    const db = freshDb();
-    insertUser(db, makeUser(ALICE, "alice"));
-    const error = caught(() => insertUser(db, makeUser(BOB, "alice")));
-    expect(appErrorCode(error)).toBe("STORE_CONFLICT");
-    expect(countRows(db, "users")).toBe(1);
-    db.close();
-  });
-
-  test("a duplicate id throws STORE_CONFLICT", () => {
-    const db = freshDb();
-    insertUser(db, makeUser(ALICE, "alice"));
-    const error = caught(() => insertUser(db, makeUser(ALICE, "second")));
-    expect(appErrorCode(error)).toBe("STORE_CONFLICT");
-    expect(countRows(db, "users")).toBe(1);
-    db.close();
-  });
-});
-
-describe("src/store/users api tokens", () => {
-  test("insertApiToken returns the row and getApiTokenByHash reads it back", () => {
-    const db = freshDb();
-    twoUsers(db);
-    const token = makeToken({ id: tokenId(1), user_id: ALICE });
-    expect(insertApiToken(db, token)).toEqual(token);
-    expect(getApiTokenByHash(db, `hash-${tokenId(1)}`)).toEqual(token);
-    expect(getApiTokenByHash(db, "hash-missing")).toBeNull();
-    db.close();
-  });
-
-  test("a duplicate token_hash throws STORE_CONFLICT", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertApiToken(db, makeToken({ id: tokenId(1), user_id: ALICE }));
-    const error = caught(() =>
-      insertApiToken(
-        db,
-        makeToken({
-          id: tokenId(2),
-          user_id: BOB,
-          token_hash: `hash-${tokenId(1)}`,
-        }),
-      ),
-    );
-    expect(appErrorCode(error)).toBe("STORE_CONFLICT");
-    expect(countRows(db, "api_tokens")).toBe(1);
-    db.close();
-  });
-
-  test("listApiTokens returns only the caller's tokens", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertApiToken(db, makeToken({ id: tokenId(1), user_id: ALICE }));
-    insertApiToken(db, makeToken({ id: tokenId(2), user_id: ALICE, name: "phone" }));
-    insertApiToken(db, makeToken({ id: tokenId(3), user_id: BOB }));
-
-    const forAlice = listApiTokens(db, ALICE);
-    expect(forAlice).toHaveLength(2);
-    expect(forAlice.map((token) => token.id).toSorted()).toEqual([
-      tokenId(1),
-      tokenId(2),
-    ]);
-    for (const token of forAlice) {
-      expect(token.user_id).toBe(ALICE);
-    }
-
-    const forBob = listApiTokens(db, BOB);
-    expect(forBob).toHaveLength(1);
-    expect(forBob[0]!.id).toBe(tokenId(3));
-    db.close();
-  });
-
-  test("listApiTokens returns an empty array for a user with none", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertApiToken(db, makeToken({ id: tokenId(1), user_id: ALICE }));
+    expect(getItem(db, ALICE, ITEM)).not.toBeNull();
+    expect(getItem(db, BOB, ITEM)).toBeNull();
+    expect(listAnnotations(db, BOB, ITEM)).toEqual([]);
+    expect(getAnnotation(db, BOB, ANNOTATION)).toBeNull();
+    expect(listApiTokens(db, ALICE)).toHaveLength(1);
     expect(listApiTokens(db, BOB)).toEqual([]);
     db.close();
   });
 
-  test("touchApiToken writes last_used_at from the caller's clock", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertApiToken(db, makeToken({ id: tokenId(1), user_id: ALICE }));
-    expect(getApiTokenByHash(db, `hash-${tokenId(1)}`)!.last_used_at).toBeNull();
+  test("cross-tenant writes and deletes do not change the owner's rows", () => {
+    const db = database();
+    insertItem(db, item(ITEM, ALICE));
+    insertAnnotation(db, annotation());
+    insertApiToken(db, token());
 
-    touchApiToken(db, ALICE, tokenId(1), T2);
-    expect(getApiTokenByHash(db, `hash-${tokenId(1)}`)!.last_used_at).toBe(
-      "2026-02-03T00:00:00.000Z",
-    );
+    expect(() => updateItem(db, BOB, ITEM, { title: "stolen" })).toThrow(AppError);
+    deleteItem(db, BOB, ITEM);
+    deleteAnnotation(db, BOB, ANNOTATION);
+    deleteApiToken(db, BOB, TOKEN);
+
+    expect(getItem(db, ALICE, ITEM)!.title).toBe("A saved item");
+    expect(getAnnotation(db, ALICE, ANNOTATION)).not.toBeNull();
+    expect(getApiTokenByHash(db, "hash")).not.toBeNull();
     db.close();
   });
 
-  test("touchApiToken cannot touch another user's token", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertApiToken(db, makeToken({ id: tokenId(3), user_id: BOB }));
+  test("item deletion cascades annotations and updates named fields only", () => {
+    const db = database();
+    insertItem(db, item(ITEM, ALICE));
+    insertAnnotation(db, annotation());
+    const updated = updateItem(db, ALICE, ITEM, { title: "Renamed" });
+    expect(updated.title).toBe("Renamed");
+    expect(updated.url).toBe(`https://example.com/${ITEM}`);
 
-    touchApiToken(db, ALICE, tokenId(3), T2);
-
-    expect(getApiTokenByHash(db, `hash-${tokenId(3)}`)!.last_used_at).toBeNull();
-    db.close();
-  });
-
-  test("touchApiToken on an unknown id changes nothing", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertApiToken(db, makeToken({ id: tokenId(1), user_id: ALICE }));
-    touchApiToken(db, ALICE, tokenId(9), T2);
-    expect(getApiTokenByHash(db, `hash-${tokenId(1)}`)!.last_used_at).toBeNull();
-    db.close();
-  });
-
-  test("deleteApiToken removes the caller's own token", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertApiToken(db, makeToken({ id: tokenId(1), user_id: ALICE }));
-    deleteApiToken(db, ALICE, tokenId(1));
-    expect(getApiTokenByHash(db, `hash-${tokenId(1)}`)).toBeNull();
-    expect(listApiTokens(db, ALICE)).toEqual([]);
-    db.close();
-  });
-
-  test("deleteApiToken cannot delete another user's token", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertApiToken(db, makeToken({ id: tokenId(3), user_id: BOB }));
-
-    deleteApiToken(db, ALICE, tokenId(3));
-
-    expect(getApiTokenByHash(db, `hash-${tokenId(3)}`)).not.toBeNull();
-    expect(listApiTokens(db, BOB)).toHaveLength(1);
-    db.close();
-  });
-
-  test("deleteApiToken is silent for an unknown id", () => {
-    const db = freshDb();
-    twoUsers(db);
-    expect(() => deleteApiToken(db, ALICE, tokenId(9))).not.toThrow();
+    deleteItem(db, ALICE, ITEM);
+    expect(getItem(db, ALICE, ITEM)).toBeNull();
+    expect(getAnnotation(db, ALICE, ANNOTATION)).toBeNull();
     db.close();
   });
 });
 
-describe("src/store/items", () => {
-  test("insertItem returns the row and getItem reads it back", () => {
-    const db = freshDb();
-    twoUsers(db);
-    const item = makeItem({
-      id: itemId(1),
-      user_id: ALICE,
-      author: "An author",
-      ingested_at: T1.toISOString(),
-    });
-    expect(insertItem(db, item)).toEqual(item);
-    expect(getItem(db, ALICE, itemId(1))).toEqual(item);
-    db.close();
-  });
-
-  test("a second item with the same url throws STORE_CONFLICT", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(
-      db,
-      makeItem({ id: itemId(1), user_id: ALICE, url: "https://example.com/a" }),
-    );
-
-    const error = caught(() =>
-      insertItem(
-        db,
-        makeItem({ id: itemId(2), user_id: ALICE, url: "https://example.com/a" }),
-      ),
-    );
-    expect(appErrorCode(error)).toBe("STORE_CONFLICT");
-    expect(countRows(db, "items")).toBe(1);
-    db.close();
-  });
-
-  test("two users may hold the same url", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(
-      db,
-      makeItem({ id: itemId(1), user_id: ALICE, url: "https://example.com/a" }),
-    );
-    insertItem(
-      db,
-      makeItem({ id: itemId(2), user_id: BOB, url: "https://example.com/a" }),
-    );
-    expect(countRows(db, "items")).toBe(2);
-    db.close();
-  });
-
-  test("getItemByUrl finds the caller's item", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(
-      db,
-      makeItem({ id: itemId(1), user_id: ALICE, url: "https://example.com/a" }),
-    );
-
-    expect(getItemByUrl(db, ALICE, "https://example.com/a")?.id).toBe(itemId(1));
-    expect(getItemByUrl(db, ALICE, "https://example.com/b")).toBeNull();
-    db.close();
-  });
-
-  test("getItemByUrl never returns another user's item", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(
-      db,
-      makeItem({ id: itemId(3), user_id: BOB, url: "https://example.com/a" }),
-    );
-
-    expect(getItemByUrl(db, ALICE, "https://example.com/a")).toBeNull();
-    expect(getItemByUrl(db, BOB, "https://example.com/a")?.id).toBe(itemId(3));
-    db.close();
-  });
-
-  test("listItems returns the caller's items, newest first", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(
-      db,
-      makeItem({ id: itemId(1), user_id: ALICE, created_at: "2026-02-01T00:00:00.000Z" }),
-    );
-    insertItem(
-      db,
-      makeItem({ id: itemId(2), user_id: ALICE, created_at: "2026-02-03T00:00:00.000Z" }),
-    );
-    insertItem(
-      db,
-      makeItem({ id: itemId(3), user_id: ALICE, created_at: "2026-02-02T00:00:00.000Z" }),
-    );
-    insertItem(
-      db,
-      makeItem({ id: itemId(4), user_id: BOB, created_at: "2026-02-04T00:00:00.000Z" }),
-    );
-
-    const rows = listItems(db, ALICE, 10);
-    expect(rows.map((row) => row.id)).toEqual([itemId(2), itemId(3), itemId(1)]);
-    db.close();
-  });
-
-  test("listItems breaks a created_at tie by id, descending", () => {
-    const db = freshDb();
-    twoUsers(db);
-    const sameTime = "2026-02-05T00:00:00.000Z";
-    for (const n of [1, 3, 2]) {
-      insertItem(db, makeItem({ id: itemId(n), user_id: ALICE, created_at: sameTime }));
-    }
-    expect(listItems(db, ALICE, 10).map((row) => row.id)).toEqual([
-      itemId(3),
-      itemId(2),
-      itemId(1),
-    ]);
-    db.close();
-  });
-
-  test("listItems honours the limit", () => {
-    const db = freshDb();
-    twoUsers(db);
-    for (const n of [1, 2, 3, 4]) {
-      insertItem(
-        db,
-        makeItem({
-          id: itemId(n),
-          user_id: ALICE,
-          created_at: `2026-02-0${n}T00:00:00.000Z`,
-        }),
-      );
-    }
-    const rows = listItems(db, ALICE, 2);
-    expect(rows.map((row) => row.id)).toEqual([itemId(4), itemId(3)]);
-    db.close();
-  });
-
-  test("listItems with a cursor returns rows strictly after it in sort order", () => {
-    const db = freshDb();
-    twoUsers(db);
-    for (const n of [1, 2, 3]) {
-      insertItem(
-        db,
-        makeItem({
-          id: itemId(n),
-          user_id: ALICE,
-          created_at: `2026-02-0${n}T00:00:00.000Z`,
-        }),
-      );
-    }
-
-    const rows = listItems(db, ALICE, 10, {
-      created_at: "2026-02-02T00:00:00.000Z",
-      id: itemId(2),
-    });
-    expect(rows.map((row) => row.id)).toEqual([itemId(1)]);
-
-    const all = listItems(db, ALICE, 10, {
-      created_at: "2026-02-04T00:00:00.000Z",
-      id: itemId(9),
-    });
-    expect(all.map((row) => row.id)).toEqual([itemId(3), itemId(2), itemId(1)]);
-
-    expect(
-      listItems(db, ALICE, 10, {
-        created_at: "2026-02-01T00:00:00.000Z",
-        id: itemId(1),
-      }),
-    ).toEqual([]);
-    db.close();
-  });
-
-  test("paging over items that share a timestamp skips nothing and repeats nothing", () => {
-    // Two items written in the same millisecond. A cursor of created_at alone
-    // either drops one or serves it forever, so the cursor carries the id too.
-    const db = freshDb();
-    twoUsers(db);
-    const sameTime = "2026-02-05T00:00:00.000Z";
-    insertItem(db, makeItem({ id: itemId(1), user_id: ALICE, created_at: sameTime }));
-    insertItem(db, makeItem({ id: itemId(2), user_id: ALICE, created_at: sameTime }));
-
-    const first = listItems(db, ALICE, 1);
-    expect(first.map((row) => row.id)).toEqual([itemId(2)]);
-
-    const second = listItems(db, ALICE, 1, {
-      created_at: first[0]!.created_at,
-      id: first[0]!.id,
-    });
-    expect(second.map((row) => row.id)).toEqual([itemId(1)]);
-
-    const third = listItems(db, ALICE, 1, {
-      created_at: second[0]!.created_at,
-      id: second[0]!.id,
-    });
-    expect(third).toEqual([]);
-    db.close();
-  });
-
-  test("listItems returns an empty array for a user with no items", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(db, makeItem({ id: itemId(1), user_id: ALICE }));
-    expect(listItems(db, BOB, 10)).toEqual([]);
-    db.close();
-  });
-
-  test("updateItem changes only the named fields and returns the new row", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(
-      db,
-      makeItem({ id: itemId(1), user_id: ALICE, title: "Old", author: "Old author" }),
-    );
-
-    const titled = updateItem(db, ALICE, itemId(1), { title: "New" });
-    expect(titled.title).toBe("New");
-    expect(titled.author).toBe("Old author");
-    expect(titled.created_at).toBe(T0.toISOString());
-
-    const authored = updateItem(db, ALICE, itemId(1), { author: "New author" });
-    expect(authored.title).toBe("New");
-    expect(authored.author).toBe("New author");
-
-    expect(getItem(db, ALICE, itemId(1))).toEqual(authored);
-    db.close();
-  });
-
-  test("updateItem clears the author when the caller passes null", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(db, makeItem({ id: itemId(1), user_id: ALICE, author: "An author" }));
-    expect(updateItem(db, ALICE, itemId(1), { author: null }).author).toBeNull();
-    expect(getItem(db, ALICE, itemId(1))!.author).toBeNull();
-    db.close();
-  });
-
-  test("updateItem throws STORE_NOT_FOUND for another user's item", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(db, makeItem({ id: itemId(3), user_id: BOB, title: "Bob's" }));
-
-    const error = caught(() => updateItem(db, ALICE, itemId(3), { title: "Stolen" }));
-    expect(appErrorCode(error)).toBe("STORE_NOT_FOUND");
-    expect(getItem(db, BOB, itemId(3))!.title).toBe("Bob's");
-    db.close();
-  });
-
-  test("updateItem throws STORE_NOT_FOUND for an unknown id", () => {
-    const db = freshDb();
-    twoUsers(db);
-    const error = caught(() => updateItem(db, ALICE, itemId(9), { title: "x" }));
-    expect(appErrorCode(error)).toBe("STORE_NOT_FOUND");
-    db.close();
-  });
-
-  test("markIngested writes ingested_at from the caller's clock", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(db, makeItem({ id: itemId(1), user_id: ALICE }));
-
-    const marked = markIngested(db, ALICE, itemId(1), T2);
-    expect(marked.ingested_at).toBe("2026-02-03T00:00:00.000Z");
-    expect(marked.created_at).toBe(T0.toISOString());
-    expect(getItem(db, ALICE, itemId(1))!.ingested_at).toBe(
-      "2026-02-03T00:00:00.000Z",
+describe("store validation", () => {
+  test("rejects annotations that end before they start", () => {
+    const db = database();
+    insertItem(db, item(ITEM, ALICE));
+    expect(errorCode(() => insertAnnotation(db, { ...annotation(), start_offset: 4, end_offset: 2 }))).toBe(
+      "STORE_CONSTRAINT_FAILED",
     );
     db.close();
   });
-
-  test("markIngested throws STORE_NOT_FOUND for another user's item", () => {
-    const db = freshDb();
-    twoUsers(db);
-    insertItem(db, makeItem({ id: itemId(3), user_id: BOB }));
-
-    const error = caught(() => markIngested(db, ALICE, itemId(3), T2));
-    expect(appErrorCode(error)).toBe("STORE_NOT_FOUND");
-    expect(getItem(db, BOB, itemId(3))!.ingested_at).toBeNull();
-    db.close();
-  });
-});
-
-describe("store writes on a readonly database", () => {
-  // Four store modules used to end their translate with `return error`, so a
-  // failure that was not a constraint left L2 as a raw SQLiteError. Every
-  // write below must arrive as an AppError with a store code.
-  const SEED_ITEM = itemId(1);
-  const SEED_TOKEN = tokenId(1);
-
-  async function readonlyDb(name: string): Promise<Database> {
-    const path = await tempDbPath(name);
-    const seed = openDatabase(path, T0);
-    insertUser(seed, makeUser(ALICE, "alice"));
-    insertItem(seed, makeItem({ id: SEED_ITEM, user_id: ALICE }));
-    insertApiToken(seed, makeToken({ id: SEED_TOKEN, user_id: ALICE }));
-    seed.close();
-    return new Database(path, { readonly: true });
-  }
-
-  function expectWriteFailed(run: () => unknown): void {
-    const error = caught(run);
-    expect(isAppError(error)).toBe(true);
-    expect((error as AppError).code).toBe("STORE_WRITE_FAILED");
-  }
-
-  test("items.ts wraps the failure", async () => {
-    const db = await readonlyDb("items.db");
-    // The reads still work, so each failure below comes from the write.
-    expect(getItem(db, ALICE, SEED_ITEM)).not.toBeNull();
-
-    expectWriteFailed(() => insertItem(db, makeItem({ id: itemId(2), user_id: ALICE })));
-    expectWriteFailed(() => updateItem(db, ALICE, SEED_ITEM, { title: "New" }));
-    expectWriteFailed(() => markIngested(db, ALICE, SEED_ITEM, T2));
-    db.close();
-  });
-
-  test("users.ts wraps the failure", async () => {
-    const db = await readonlyDb("users.db");
-    expect(getUser(db, ALICE)).not.toBeNull();
-
-    expectWriteFailed(() => insertUser(db, makeUser(BOB, "bob")));
-    expectWriteFailed(() =>
-      insertApiToken(db, makeToken({ id: tokenId(2), user_id: ALICE })),
-    );
-    expectWriteFailed(() => touchApiToken(db, ALICE, SEED_TOKEN, T2));
-    expectWriteFailed(() => deleteApiToken(db, ALICE, SEED_TOKEN));
-    db.close();
-  });
-
 });

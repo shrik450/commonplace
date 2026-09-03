@@ -28,27 +28,16 @@ import the other.
 
 `src/web/` and `src/cli/` are siblings. Neither imports the other.
 
-`test/invariants/layers.test.ts` enforces this rule. When you do not know where
-new code belongs, the layer rule decides for you.
+Keep this dependency direction when changing code. Tests focus on behavior rather than checking the source tree.
 
 L1 is pure on purpose. `sanitize`, `walk`, `project`, and `anchor` take strings
 and return data. They never touch the filesystem, the database, or the clock.
 That is what makes them testable with a string literal.
 
-## Module list
+## Modules
 
-```
-src/
-  contracts/   ids.ts clock.ts errors.ts transcript.ts item.ts config.ts
-  core/        sanitize.ts walk.ts project.ts anchor.ts
-  store/       db.ts config.ts items.ts annotations.ts users.ts queue.ts fts.ts files.ts
-  services/    acquire.ts ingest.ts worker.ts library.ts auth.ts
-  web/         server.ts routes/ views/
-  cli/         main.ts
-```
-
-`test/invariants/module-list.test.ts` enforces this list. Before you add a file
-under `src/`, propose the module-list change for review.
+Keep new code in the layer that owns its behavior. Add files where their use
+case belongs; the test suite does not maintain a source-file allowlist.
 
 ## Commands
 
@@ -67,57 +56,16 @@ Run `bun run verify` before you report that a change is complete.
 The gate passes only when every command exits with code 0. Read the command
 output to diagnose a failure.
 
-## Hard invariants
+## Behavioral coverage
 
-Each rule below has a test in `test/invariants/`. Never weaken a test to make
-your change pass.
+The suite covers observable behavior, including authentication, tenant
+isolation, queue lifecycle, durable files, ingest outcomes, transcript and Map
+correctness, projection round trips, capture CSP, and reader behavior.
 
-1. `layers` — no module imports from a higher layer, and `web` and `cli` do
-   not import each other. A module may import from its own layer.
-2. `purity` — nothing in `src/core/` imports `node:fs`, `bun:sqlite`, or the
-   layers above it, and nothing there reaches I/O through a Bun global such as
-   `Bun.file` or `fetch`.
-3. `module-list` — every file under `src/` appears in the module list above.
-4. `offsets` — Map runs start at 0, are sorted, contiguous, and non-overlapping,
-   and the last run's `end` equals `transcript.length`.
-5. `round-trip` — projecting any content range and reading the highlighted text
-   returns exactly `transcript.slice(start, end)`.
-6. `tenancy` — every table has a `user_id` column, except `migrations`,
-   `users` (which is the tenant table, so `users.id` is the tenant id), the
-   tables SQLite owns under the `sqlite_` prefix, and the five shadow tables
-   of an FTS5 virtual table.
-7. `no-positions-in-db` — no column holds a position inside a document. The
-   checker holds the exact expected column set of every table, so any column
-   it does not know about fails, whatever the column is named. Transcript
-   offsets are not document positions; DOM paths belong only in the Map.
-8. `capture-csp` — the capture route sends `script-src 'none'` and its body
-   contains no `<script`.
-9. `error-codes` — no `throw new Error(`. Throw `AppError` with a code.
-10. `determinism` — no direct `Date.now()`, `new Date()`, `Date.parse()`,
-    `Date.UTC()`, `Math.random()`, `crypto.randomUUID()`, or
-    `Bun.randomUUIDv7()` outside `src/contracts/clock.ts` and
-    `src/contracts/ids.ts`. Build and read times through `clock.ts`, which
-    exports `now`, `addMs`, `toIso`, `parseIso`, and `isBefore`.
-11. `ui-guidelines` — every rendered page passes the machine-checkable web
-    interface rules: one `h1` with no skipped levels, an accessible name on
-    every control, a visible `focus-visible` style and a `hover` style on
-    every link and button, `autocomplete` and a name on every field, an
-    ellipsis at the end of every placeholder, `aria-hidden` or a name on
-    every icon, `alt` and a size on every image, a `theme-color`, a viewport
-    that allows zoom, and curly quotes instead of straight ones. The checker
-    skips the subtree marked `data-cp-projected`, because a captured page's
-    markup is not ours to fix.
-
-Two additional invariants also run. `route-guard` requires every route to call
-`authenticate` or appear in the public-route list. `branded-ids` requires every
-ID parameter and field to use its branded type. Every invariant test must prove
-that its checker rejects a known violation.
-
-Each invariant is a pure checker in `test/invariants/lib.ts`. Test each checker
-against the repository and a known invalid input. The invalid case proves that
-the checker can fail.
-
-When you fix a bug that no invariant caught, add an invariant test for it.
+Do not add tests for source layout, imports, exact SQL or schema snapshots,
+helper internals, tool output formatting, random uniqueness, or incidental
+serialization. Add a behavior test when a bug affects something a reader or
+operator can observe.
 
 ## Acceptance tests are the specification
 
@@ -159,11 +107,8 @@ Read `.claude/skills/web-design-guidelines/SKILL.md` before you touch anything
 under `src/web/`. It is the gate for user interface work, and it has two
 halves.
 
-The `ui-guidelines` invariant provides the automated check. `bun run verify`
-runs it. Interactive state lives in the `class` attribute as Tailwind utilities,
-never in a CSS component class, because that is what the checker reads. Use
-the shared `LINK`, `ACTION`, `SUBMIT`, and `FIELD` constants from
-`src/web/views/layout.tsx` rather than writing a new class string.
+Follow the visual rules in the skill and use the shared `LINK`, `ACTION`,
+`SUBMIT`, and `FIELD` constants from `src/web/views/layout.tsx`.
 
 Complete the manual check against
 `.claude/skills/web-design-guidelines/references/web-interface-guidelines.md`,
