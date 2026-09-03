@@ -7,7 +7,7 @@ import { isAppError } from "../../src/contracts/errors";
 import { BLOCKED_URL_PATTERNS, buildArgs, capture } from "../../src/services/acquire";
 
 const url = "https://example.com/article";
-const browserPath = "/usr/bin/chromium";
+const browserPath = process.execPath;
 
 async function executable(body: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "commonplace-acquire-"));
@@ -31,6 +31,14 @@ describe("capture", () => {
 
     const argv = (await readFile(argvPath, "utf8")).trimEnd().split("\n");
     expect(argv.slice(-2)).toEqual([url, outputPath]);
+  });
+
+  test("rejects a browser directory before starting capture", async () => {
+    const browserDirectory = await mkdtemp(join(tmpdir(), "commonplace-browser-directory-"));
+    const binaryPath = await executable("exit 0");
+    await expect(capture({ url, browserPath: browserDirectory, outputPath: "/tmp/capture.html", binaryPath })).rejects.toMatchObject({
+      code: "ACQUIRE_FAILED",
+    });
   });
 
   test("passes URL immediately before the positional output path", () => {

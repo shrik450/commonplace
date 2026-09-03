@@ -5,9 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { addMs, now, toIso } from "../../src/contracts/clock";
+import { AppError } from "../../src/contracts/errors";
 import type { Config } from "../../src/contracts/config";
 import { parseConfig } from "../../src/contracts/config";
 import { asUserId, newRequestId } from "../../src/contracts/ids";
+import { isJsonObject, isStringValue, parseJsonValue } from "../../src/contracts/item";
 import type { User } from "../../src/contracts/item";
 import type { CaptureRequest, CaptureResult } from "../../src/services/acquire";
 import { authenticate, createApiToken, signPayload } from "../../src/services/auth";
@@ -75,7 +77,7 @@ function post(app: ReturnType<typeof buildApp>, path: string, body: BodyInit, he
   return app.handle(new Request(`http://localhost${path}`, { method: "POST", body, headers }));
 }
 
-function form(value: string): { body: string; headers: Record<string, string> } {
+function form(value: string) {
   return { body: new URLSearchParams({ url: value }).toString(), headers: { "content-type": "application/x-www-form-urlencoded" } };
 }
 
@@ -110,7 +112,11 @@ describe("save endpoint", () => {
       cookie: session(ALICE),
     });
     expect(response.status).toBe(201);
-    expect((await response.json() as { state: string }).state).toBe("queued");
+    const payload = parseJsonValue(await response.text());
+    if (!isJsonObject(payload) || !isStringValue(payload.state)) {
+      throw new AppError("VIEW_MISSING_FIELD", "save response did not contain a state");
+    }
+    expect(payload.state).toBe("queued");
     expect(queuedCount(env.db, BOB)).toBe(1);
     expect(queuedCount(env.db, ALICE)).toBe(0);
   });

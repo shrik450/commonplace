@@ -9,13 +9,17 @@ import { walk } from "../../src/core/walk";
 const HOSTILE = `<html><body><script>alert(1)</script><p onclick="bad">Attributes are dropped and this text stays.</p><a href="javascript:bad">bad</a><a href="#fragment">fragment</a><img src="pictures/dot.png"><form>Form text survives the unwrap.</form><noscript><img src="pictures/lazy.png"></noscript></body></html>`;
 const ARTICLE = "<html><body><article><p>Article text has enough prose to remain content.</p></article><nav>Navigation text</nav></body></html>";
 
+function isElement(node: Node): node is Element {
+  return node.nodeType === 1;
+}
+
 function ancestors(html: string, path: string): string[] {
   const document = new JSDOM(html).window.document;
   let node: Node | null = document.documentElement;
   for (const part of path.split("/")) node = node?.childNodes[Number(part)] ?? null;
   const tags: string[] = [];
   while (node) {
-    if (node.nodeType === 1) tags.push((node as Element).tagName.toLowerCase());
+    if (isElement(node)) tags.push(node.tagName.toLowerCase());
     node = node.parentNode;
   }
   return tags;

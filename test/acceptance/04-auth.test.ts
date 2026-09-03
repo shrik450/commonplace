@@ -8,7 +8,6 @@ import { migrate } from "../../src/store/db";
 import { insertUser } from "../../src/store/users";
 import { buildApp } from "../../src/web/server";
 import {
-  SESSION_COOKIE,
   authenticate,
   completeLogin,
   createApiToken,
@@ -18,6 +17,7 @@ import {
   startLogin,
   verifyPayload,
 } from "../../src/services/auth";
+import type { FetchImplementation } from "../../src/services/auth";
 
 const SECRET = "0123456789abcdef0123456789abcdef";
 const ISSUER = "https://issuer.example.com";
@@ -45,17 +45,24 @@ function user(id: typeof ALICE, subject: string): User {
   return { id, subject, email: `${subject}@example.com`, created_at: NOW.toISOString() };
 }
 
-function signedSession(userId: typeof ALICE): string {
-  return `${SESSION_COOKIE}=${signPayload(SECRET, {
-    user_id: userId,
-    exp: new Date(NOW.getTime() + 60_000).toISOString(),
-  })}`;
+type TokenClaims = {
+  iss?: string;
+  aud?: string | string[];
+  sub?: string;
+  nonce?: string;
+  exp?: number;
+};
+
+function requestUrl(input: string | URL | Request): URL {
+  if (input instanceof URL) return input;
+  if (input instanceof Request) return new URL(input.url);
+  return new URL(input);
 }
 
-function issuer(nonceHolder: { value: string } = { value: "" }): typeof fetch {
-  return (async (input: string | URL | Request, init?: RequestInit) => {
+function issuer(nonceHolder: { value: string } = { value: "" }): FetchImplementation {
+  const fetchImpl: FetchImplementation = async (input, init) => {
     void init;
-    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input : input.url);
+    const url = requestUrl(input);
     if (url.pathname === "/.well-known/openid-configuration") {
       return Response.json({
         issuer: ISSUER,
@@ -74,17 +81,21 @@ function issuer(nonceHolder: { value: string } = { value: "" }): typeof fetch {
       return Response.json({ id_token: `${btoa("{}")}.${btoa(JSON.stringify(claims))}.ignored` });
     }
     return new Response("not found", { status: 404 });
-  }) as unknown as typeof fetch;
+  };
+  return fetchImpl;
 }
 
-function token(claims: Record<string, unknown>): string {
+function token(claims: TokenClaims): string {
   return `${btoa("{}")}.${btoa(JSON.stringify(claims))}.ignored`;
 }
 
+const failedFetch: FetchImplementation = async () => new Response("down", { status: 503 });
+const malformedFetch: FetchImplementation = async () => new Response("not json");
+
 async function callbackWith(
-  claims: Record<string, unknown> = {},
+  claims: TokenClaims = {},
   status = 200,
-): Promise<unknown> {
+): Promise<Awaited<ReturnType<typeof completeLogin>>> {
   const database = db();
   const nonceHolder = { value: "" };
   const endpoints = await discover(CONFIG, issuer(nonceHolder));
@@ -93,9 +104,9 @@ async function callbackWith(
   const attempt = verifyPayload(SECRET, cookie.slice(cookie.indexOf("=") + 1), NOW)!;
   nonceHolder.value = String(attempt.nonce);
   const base = issuer(nonceHolder);
-  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+  const fetchImpl: FetchImplementation = async (input, init) => {
     const response = await base(input, init);
-    const path = new URL(typeof input === "string" ? input : input instanceof URL ? input : input.url).pathname;
+    const path = requestUrl(input).pathname;
     if (path !== "/token") return response;
     if (status !== 200) return new Response("rejected", { status });
     return Response.json({
@@ -103,12 +114,12 @@ async function callbackWith(
         iss: ISSUER,
         aud: CONFIG.client_id,
         sub: "callback-subject",
-        nonce: attempt.nonce,
+        nonce: String(attempt.nonce),
         exp: Math.floor(NOW.getTime() / 1000) + 300,
         ...claims,
       }),
     });
-  }) as unknown as typeof fetch;
+  };
   return completeLogin({
     config: CONFIG,
     db: database,
@@ -149,26 +160,24 @@ describe("signed credentials", () => {
 describe("OIDC login", () => {
   test("pins discovery to the configured HTTPS issuer", async () => {
     await expect(discover(CONFIG, issuer())).resolves.toMatchObject({ issuer: ISSUER });
-    const foreign = (async (): Promise<Response> => Response.json({
+    const foreign: FetchImplementation = async () => Response.json({
       issuer: ISSUER,
       authorization_endpoint: "https://evil.example/authorize",
       token_endpoint: `${ISSUER}/token`,
-    })) as unknown as typeof fetch;
+    });
     await expect(discover(CONFIG, foreign)).rejects.toMatchObject({ code: "AUTH_ISSUER_MISMATCH" });
-    const foreignToken = (async (): Promise<Response> => Response.json({
+    const foreignToken: FetchImplementation = async () => Response.json({
       issuer: ISSUER,
       authorization_endpoint: `${ISSUER}/authorize`,
       token_endpoint: "https://evil.example/token",
-    })) as unknown as typeof fetch;
+    });
     await expect(discover(CONFIG, foreignToken)).rejects.toMatchObject({ code: "AUTH_ISSUER_MISMATCH" });
   });
 
   test("rejects failed, malformed, and incomplete discovery responses", async () => {
-    const failed = (async (): Promise<Response> => new Response("down", { status: 503 })) as unknown as typeof fetch;
-    await expect(discover(CONFIG, failed)).rejects.toMatchObject({ code: "AUTH_DISCOVERY_FAILED" });
-    const malformed = (async (): Promise<Response> => new Response("not json")) as unknown as typeof fetch;
-    await expect(discover(CONFIG, malformed)).rejects.toMatchObject({ code: "AUTH_DISCOVERY_FAILED" });
-    const incomplete = (async (): Promise<Response> => Response.json({ issuer: ISSUER, authorization_endpoint: `${ISSUER}/authorize` })) as unknown as typeof fetch;
+    await expect(discover(CONFIG, failedFetch)).rejects.toMatchObject({ code: "AUTH_DISCOVERY_FAILED" });
+    await expect(discover(CONFIG, malformedFetch)).rejects.toMatchObject({ code: "AUTH_DISCOVERY_FAILED" });
+    const incomplete: FetchImplementation = async () => Response.json({ issuer: ISSUER, authorization_endpoint: `${ISSUER}/authorize` });
     await expect(discover(CONFIG, incomplete)).rejects.toMatchObject({ code: "AUTH_ISSUER_MISMATCH" });
   });
 
@@ -177,14 +186,18 @@ describe("OIDC login", () => {
     const app = buildApp({ db: database, config: CONFIG, now: () => NOW });
     const discoveryCalls: string[] = [];
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: string | URL | Request) => {
-      discoveryCalls.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
-      return Response.json({
-        issuer: ISSUER,
-        authorization_endpoint: `${ISSUER}/oidc/authorize`,
-        token_endpoint: `${ISSUER}/token`,
-      });
-    }) as typeof fetch;
+    const mockedFetch: typeof fetch = Object.assign(
+      async (input: string | URL | Request) => {
+        discoveryCalls.push(requestUrl(input).href);
+        return Response.json({
+          issuer: ISSUER,
+          authorization_endpoint: `${ISSUER}/oidc/authorize`,
+          token_endpoint: `${ISSUER}/token`,
+        });
+      },
+      { preconnect: originalFetch.preconnect },
+    );
+    globalThis.fetch = mockedFetch;
 
     try {
       const response = await app.handle(new Request("https://reader.example.com/login"));
@@ -277,10 +290,10 @@ describe("OIDC login", () => {
     const started = startLogin(CONFIG, endpoints, "https://reader.example.com/login/callback", NOW);
     const cookie = started.setCookie.split(";")[0]!;
     const attempt = verifyPayload(SECRET, cookie.slice(cookie.indexOf("=") + 1), NOW)!;
-    const badIssuer = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const response = await (issuer()(input, init));
-      if (new URL(typeof input === "string" ? input : input instanceof URL ? input : input.url).pathname !== "/token") return response;
-      return Response.json({ id_token: token({ iss: "https://evil.example", aud: CONFIG.client_id, sub: "x", nonce: attempt.nonce, exp: 2_000_000_000 }) });
+    const badIssuer: FetchImplementation = async (input, init) => {
+      const response = await issuer()(input, init);
+      if (requestUrl(input).pathname !== "/token") return response;
+      return Response.json({ id_token: token({ iss: "https://evil.example", aud: CONFIG.client_id, sub: "x", nonce: String(attempt.nonce), exp: 2_000_000_000 }) });
     };
     await expect(completeLogin({
       config: CONFIG,
@@ -289,7 +302,7 @@ describe("OIDC login", () => {
       cookieHeader: cookie,
       redirectUri: "https://reader.example.com/login/callback",
       now: NOW,
-      fetchImpl: badIssuer as unknown as typeof fetch,
+      fetchImpl: badIssuer,
     })).rejects.toMatchObject({ code: "AUTH_ISSUER_MISMATCH" });
     database.close();
   });

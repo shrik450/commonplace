@@ -1,5 +1,4 @@
-import { constants } from "node:fs";
-import { access, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { now } from "../contracts/clock";
 import { AppError, toLogLine } from "../contracts/errors";
@@ -9,7 +8,11 @@ import type { Config } from "../contracts/config";
 import { defaultConfigPath, loadConfig } from "../store/config";
 import { openDatabase } from "../store/db";
 import { enqueueFetch, claimRequest } from "../store/queue";
-import { capture, SINGLE_FILE_BINARY } from "../services/acquire";
+import {
+  capture,
+  isExecutableFile,
+  SINGLE_FILE_BINARY,
+} from "../services/acquire";
 import type { CaptureRequest, CaptureResult } from "../services/acquire";
 import { ingestRequest } from "../services/ingest";
 import { LEASE_MS, applyOutcome } from "../services/worker";
@@ -29,16 +32,14 @@ async function directoryCheck(name: string, path: string): Promise<Check> {
 }
 
 async function browserPathCheck(path: string): Promise<Check> {
-  try {
-    await access(path, constants.X_OK);
+  if (await isExecutableFile(path)) {
     return { name: "browser_path", ok: true, detail: `found browser at ${path}` };
-  } catch {
-    return {
-      name: "browser_path",
-      ok: false,
-      detail: `${path} does not exist or is not executable`,
-    };
   }
+  return {
+    name: "browser_path",
+    ok: false,
+    detail: `${path} does not exist or is not a regular executable file`,
+  };
 }
 
 function singleFileCliCheck(): Check {

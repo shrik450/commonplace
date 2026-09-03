@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,7 +15,7 @@ const USER_ID = asUserId("11111111-1111-4111-8111-111111111111");
 const PAGE = "<html><body><article><p>Enough prose to become a transcript of real length.</p></article></body></html>";
 const roots: string[] = [];
 
-async function configFor(root: string): Promise<string> {
+async function configFor(root: string, browserPath = process.execPath): Promise<string> {
   const dbRoot = join(root, "db");
   const itemsRoot = join(root, "items");
   await mkdir(dbRoot, { recursive: true });
@@ -29,7 +29,7 @@ async function configFor(root: string): Promise<string> {
     'client_id = "cli"',
     'client_secret = "secret"',
     `session_secret = "${"x".repeat(32)}"`,
-    'browser_path = "/usr/bin/chromium"',
+    `browser_path = ${JSON.stringify(browserPath)}`,
   ].join("\n"));
   return path;
 }
@@ -113,6 +113,30 @@ describe("operator CLI behavior", () => {
     expect(report.checks.find((check) => check.name === "config")).toMatchObject({
       ok: false,
       detail: expect.stringContaining("CONFIG_MISSING_KEY"),
+    });
+  });
+
+  test("doctor accepts an executable browser file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "commonplace-cli-browser-file-"));
+    roots.push(root);
+    const browserPath = join(root, "browser");
+    await writeFile(browserPath, "#!/bin/sh\n");
+    await chmod(browserPath, 0o755);
+
+    const report = await doctor(await configFor(root, browserPath));
+    expect(report.checks.find((check) => check.name === "browser_path")).toMatchObject({
+      ok: true,
+    });
+  });
+
+  test("doctor rejects an executable browser directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "commonplace-cli-browser-directory-"));
+    roots.push(root);
+
+    const report = await doctor(await configFor(root, root));
+    expect(report.ok).toBe(false);
+    expect(report.checks.find((check) => check.name === "browser_path")).toMatchObject({
+      ok: false,
     });
   });
 

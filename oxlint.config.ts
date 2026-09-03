@@ -8,7 +8,6 @@ export default defineConfig({
   ignorePatterns: [
     "node_modules/**",
     "public/**",
-    "test/acceptance/**",
     "tools/oxlint/anti-slop/**",
   ],
   jsPlugins: [

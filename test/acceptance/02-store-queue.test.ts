@@ -80,8 +80,8 @@ function db(): Database {
   return value;
 }
 
-function fetchRequest(db: Database, userId: ReturnType<typeof asUserId>, id: ReturnType<typeof asRequestId>): FetchRequest | null {
-  return db.query<FetchRequest, [string, string]>(
+function fetchRequest(database: Database, userId: ReturnType<typeof asUserId>, id: ReturnType<typeof asRequestId>): FetchRequest | null {
+  return database.query<FetchRequest, [string, string]>(
     "SELECT id, user_id, item_id, url, state, lease_expires_at, attempts, error_code, created_at FROM fetch_requests WHERE user_id = ? AND id = ?",
   ).get(userId, id) ?? null;
 }
@@ -179,7 +179,7 @@ describe("search behavior", () => {
     const limited = searchBlocks(database, ALICE, "needle", 1);
     expect(limited).toHaveLength(1);
     const ranked = searchBlocks(database, ALICE, "needle", 10);
-    expect(ranked.map((hit) => hit.rank)).toEqual([...ranked.map((hit) => hit.rank)].toSorted((a, b) => a - b));
+    expect(ranked.map((hit) => hit.rank)).toEqual(ranked.map((hit) => hit.rank).toSorted((a, b) => a - b));
     expect(ranked.some((hit) => !hit.is_content)).toBe(true);
 
     indexBlocks(database, ITEM_A, [{ ...blocks(ITEM_A, ALICE)[0]!, text: "replacement" }]);
@@ -236,9 +236,13 @@ describe("durable item files", () => {
     await writeItemFile(root, ALICE, ITEM_A, "transcript.txt", "second");
     expect(await readItemFile(root, ALICE, ITEM_A, "transcript.txt")).toBe("second");
     expect((await readdir(join(root, ALICE, ITEM_A)).then((entries) => entries.toSorted()))).toEqual(["original.html", "transcript.txt"]);
-    await expect(writeItemFile(root, ALICE, "../../escape" as never, "map.json", "x")).rejects.toMatchObject({
-      code: "STORE_INVALID_PATH",
-    });
+    let error: unknown;
+    try {
+      asItemId("../../escape");
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toMatchObject({ code: "STORE_INVALID_PATH" });
   });
 
   test("sweeps only old unknown item directories and keeps pending work", async () => {

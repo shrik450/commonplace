@@ -8,6 +8,7 @@ import { addMs, now } from "../../src/contracts/clock";
 import { AppError } from "../../src/contracts/errors";
 import { asUserId, newItemId, newRequestId } from "../../src/contracts/ids";
 import type { ItemId } from "../../src/contracts/ids";
+import { parseJsonValue } from "../../src/contracts/item";
 import type { FetchRequest, User } from "../../src/contracts/item";
 import { validateMap } from "../../src/contracts/transcript";
 import type { CaptureRequest, CaptureResult } from "../../src/services/acquire";
@@ -55,6 +56,10 @@ function capture(html: string): (request: CaptureRequest) => Promise<CaptureResu
   };
 }
 
+async function captureTimeout(): Promise<CaptureResult> {
+  throw new AppError("ACQUIRE_TIMEOUT", "capture timed out");
+}
+
 function fetchRequest(db: Database, userId: typeof ALICE, id: ReturnType<typeof newRequestId>): FetchRequest | null {
   return db.query<FetchRequest, [string, string]>(
     "SELECT id, user_id, item_id, url, state, lease_expires_at, attempts, error_code, created_at FROM fetch_requests WHERE user_id = ? AND id = ?",
@@ -93,14 +98,17 @@ describe("ingest outcomes", () => {
     const request = queue(env, ALICE);
     const outcome = await drainOnce(deps(env, capture(PAGE)));
     expect(outcome?.state).toBe("done");
-    const itemId = (outcome as { itemId: ItemId }).itemId;
+    if (outcome?.state !== "done") {
+      throw new Error("expected the ingest to complete");
+    }
+    const itemId = outcome.itemId;
     expect(fetchRequest(env.db, ALICE, request.id)).toMatchObject({ state: "done", item_id: itemId });
     expect(getItem(env.db, ALICE, itemId)).toMatchObject({ title: "Saved title", author: "Ada Lovelace" });
     expect(await files(env, ALICE, itemId)).toEqual([
       "map.json", "original.html", "sanitized.html", "transcript.txt",
     ]);
     const transcript = await readItemFile(env.itemsRoot, ALICE, itemId, "transcript.txt");
-    const map = JSON.parse(await readItemFile(env.itemsRoot, ALICE, itemId, "map.json"));
+    const map = parseJsonValue(await readItemFile(env.itemsRoot, ALICE, itemId, "map.json"));
     expect(transcript).toContain("durable transcripts");
     expect(() => validateMap(map, transcript.length)).not.toThrow();
     expect(searchBlocks(env.db, ALICE, "durable", 10)).toHaveLength(1);
@@ -128,11 +136,8 @@ describe("ingest outcomes", () => {
   test("retries temporary capture failures and then exhausts the request", async () => {
     const env = await environment("retry");
     const request = queue(env, ALICE);
-    const failing = async (): Promise<CaptureResult> => {
-      throw new AppError("ACQUIRE_TIMEOUT", "capture timed out");
-    };
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-      const outcome = await drainOnce(deps(env, failing));
+      const outcome = await drainOnce(deps(env, captureTimeout));
       expect(outcome?.state).toBe("retry");
       expect(fetchRequest(env.db, ALICE, request.id)!.attempts).toBe(attempt);
     }
@@ -257,7 +262,10 @@ await drainOnce({
     const env = await environment("recapture");
     const first = queue(env, ALICE);
     const saved = await drainOnce(deps(env, capture(PAGE)));
-    const itemId = (saved as { itemId: ItemId }).itemId;
+    if (saved?.state !== "done") {
+      throw new Error("expected the initial ingest to complete");
+    }
+    const itemId = saved.itemId;
     expect(fetchRequest(env.db, ALICE, first.id)!.item_id).toBe(itemId);
 
     const second = queue(env, ALICE);

@@ -30,6 +30,10 @@ export const LOGIN_COOKIE = "cp_login";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_TTL_MS = 10 * 60 * 1000;
 
+export type FetchImplementation = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
 export type Principal = { user: User; via: "session" | "token" };
 export type Endpoints = {
   issuer: string;
@@ -117,7 +121,7 @@ export function verifyPayload(
 
 export async function discover(
   config: Config,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: FetchImplementation = fetch,
 ): Promise<Endpoints> {
   const url = `${config.issuer_url}/.well-known/openid-configuration`;
   let document: JsonValue;
@@ -255,7 +259,7 @@ export async function completeLogin(params: {
   cookieHeader: string | null;
   redirectUri: string;
   now: Date;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: FetchImplementation;
 }): Promise<{ user: User; setCookie: string; clearCookie: string }> {
   const { config, db, url, cookieHeader, redirectUri, now } = params;
   const fetchImpl = params.fetchImpl ?? fetch;

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
 import { parseConfig } from "../../src/contracts/config";
-import { AppError } from "../../src/contracts/errors";
+import { AppError, isAppError } from "../../src/contracts/errors";
 import { defaultConfigPath, loadConfig } from "../../src/store/config";
 import { publicRoutes } from "../../src/web/server";
 
@@ -51,7 +51,9 @@ describe("configuration", () => {
     })();
 
     expect(error).toBeInstanceOf(AppError);
-    expect((error as AppError).code).toBe("CONFIG_MISSING_KEY");
+    expect(isAppError(error)).toBe(true);
+    if (!isAppError(error)) return;
+    expect(error.code).toBe("CONFIG_MISSING_KEY");
   });
 
   test("rejects unsafe origins, roots, and secrets", () => {

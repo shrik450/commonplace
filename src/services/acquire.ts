@@ -1,4 +1,5 @@
-import { stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
 import { AppError } from "../contracts/errors";
 
 // Regular expressions for hosts that serve ads or consent dialogs. Add a
@@ -34,6 +35,17 @@ const MIN_CAPTURE_BYTES = 512;
 
 // The `single-file-cli` package installs the `single-file` executable.
 export const SINGLE_FILE_BINARY = "single-file";
+
+export async function isExecutableFile(path: string): Promise<boolean> {
+  try {
+    const info = await stat(path);
+    if (!info.isFile()) return false;
+    await access(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function buildArgs(request: CaptureRequest): string[] {
   const args: string[] = [];
@@ -71,6 +83,13 @@ function killProcessTree(pid: number): void {
 }
 
 export async function capture(request: CaptureRequest): Promise<CaptureResult> {
+  if (!(await isExecutableFile(request.browserPath))) {
+    throw new AppError(
+      "ACQUIRE_FAILED",
+      `${request.browserPath} does not exist or is not a regular executable file`,
+    );
+  }
+
   // Pass the current `PATH` because `Bun.which` otherwise reuses the value from
   // its first call. Tests replace `PATH` to provide a fake executable.
   const binaryPath =

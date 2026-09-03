@@ -9,7 +9,7 @@ import { addMs, now, toIso } from "../../src/contracts/clock";
 import type { Config } from "../../src/contracts/config";
 import { asUserId, newAnnotationId, newItemId } from "../../src/contracts/ids";
 import type { ItemId, UserId } from "../../src/contracts/ids";
-import type { Annotation, Item, User } from "../../src/contracts/item";
+import type { Item, User } from "../../src/contracts/item";
 import { anchorQuote, reanchor } from "../../src/core/anchor";
 import { project } from "../../src/core/project";
 import { sanitize } from "../../src/core/sanitize";
