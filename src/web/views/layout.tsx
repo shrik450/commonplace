@@ -1,4 +1,6 @@
+import type { UserSettings } from "../../contracts/settings";
 import type { Child } from "./jsx-runtime";
+
 // Keep interactive state in these shared class strings for consistent controls.
 const FOCUS =
   "rounded-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -17,6 +19,8 @@ export const SUBMIT = `bg-primary text-primary-content hover:bg-primary/85 activ
 // Styles text fields and their focus state.
 export const FIELD = `bg-transparent py-1 text-sm outline-none placeholder:text-secondary ${FOCUS}`;
 
+export const SELECT_FIELD = `border border-base-300 bg-base-100 text-base-content px-2 py-1 text-sm outline-none ${FOCUS}`;
+
 // Renders the standard page heading. The home and reader views use larger
 // headings.
 export function PageHeading({ children }: { children?: Child }) {
@@ -32,6 +36,8 @@ export type LayoutProps = {
   query?: string;
   refreshSeconds?: number;
   children?: Child;
+  settings?: UserSettings;
+  settingsScript?: boolean;
 };
 
 function SearchIcon() {
@@ -52,27 +58,28 @@ function SearchIcon() {
   );
 }
 
-export function Layout({ title, query, refreshSeconds, children }: LayoutProps) {
+export function Layout({ title, query, refreshSeconds, children, settings, settingsScript = false }: LayoutProps) {
+  const theme = settings?.theme === "light" ? "parchment" : settings?.theme === "dark" ? "ink" : undefined;
+  const themeColor = theme === "ink" ? "#14151a" : "#f7f3ec";
   return (
-    <html lang="en">
+    <html lang="en" data-theme={theme}>
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta
-          name="theme-color"
-          content="#f7f3ec"
-          media="(prefers-color-scheme: light)"
-        />
-        <meta
-          name="theme-color"
-          content="#14151a"
-          media="(prefers-color-scheme: dark)"
-        />
+        {theme === undefined ? (
+          <>
+            <meta name="theme-color" content="#f7f3ec" media="(prefers-color-scheme: light)" />
+            <meta name="theme-color" content="#14151a" media="(prefers-color-scheme: dark)" />
+          </>
+        ) : (
+          <meta name="theme-color" content={themeColor} />
+        )}
         <title>{`${title} — Commonplace`}</title>
         {refreshSeconds === undefined ? null : (
           <meta http-equiv="refresh" content={String(refreshSeconds)} />
         )}
         <link rel="stylesheet" href="/app.css" />
+        {settingsScript ? <script src="/reader-settings.js" defer /> : null}
       </head>
       <body class="bg-base-200 text-base-content min-h-screen">
         <a
@@ -132,7 +139,9 @@ export function ErrorPage({
   code,
   href = "/library",
   linkLabel = "Go to your library",
+  settings,
 }: {
+  settings?: UserSettings;
   title: string;
   message: string;
   code?: string;
@@ -140,7 +149,7 @@ export function ErrorPage({
   linkLabel?: string;
 }) {
   return (
-    <Layout title={title}>
+    <Layout title={title} settings={settings}>
       <h1 class="font-reading text-3xl leading-tight text-pretty">{title}</h1>
       <p class="mt-4 max-w-prose text-sm leading-relaxed">{message}</p>
       <p class="mt-8">

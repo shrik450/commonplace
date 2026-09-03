@@ -3,8 +3,10 @@ import { Database } from "bun:sqlite";
 
 import { AppError } from "../../src/contracts/errors";
 import { asItemId, asTokenId, asUserId } from "../../src/contracts/ids";
+import { parseSettings } from "../../src/contracts/settings";
 import type { ApiToken, Item, User } from "../../src/contracts/item";
 import { migrate } from "../../src/store/db";
+import { getUserSettings, updateUserSettings } from "../../src/store/settings";
 import { getItem, insertItem, updateItem } from "../../src/store/items";
 import {
   deleteApiToken,
@@ -81,6 +83,20 @@ describe("tenant-scoped rows", () => {
 
     expect(getItem(db, ALICE, ITEM)!.title).toBe("A saved item");
     expect(getApiTokenByHash(db, "hash")).not.toBeNull();
+    db.close();
+  });
+
+  test("stores settings per tenant and rejects invalid values", () => {
+    const db = database();
+    const alice = getUserSettings(db, ALICE);
+    updateUserSettings(db, { ...alice, theme: "dark", text_size: "large" });
+    expect(getUserSettings(db, ALICE)).toMatchObject({ theme: "dark", text_size: "large" });
+    expect(getUserSettings(db, BOB).theme).toBe("auto");
+    db.run("DELETE FROM user_settings WHERE user_id = ?", [BOB]);
+    expect(() => getUserSettings(db, BOB)).toThrow(
+      expect.objectContaining({ code: "STORE_NOT_FOUND" }),
+    );
+    expect(() => parseSettings(ALICE, { theme: "blue", font: "serif", text_size: "medium", line_spacing: "comfortable", paragraph_spacing: "comfortable", text_width: "comfortable" })).toThrow(AppError);
     db.close();
   });
 

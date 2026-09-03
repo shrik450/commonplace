@@ -1,6 +1,7 @@
 import type { FetchRequest } from "../../contracts/item";
 import { MAX_ATTEMPTS } from "../../store/queue";
 import { ACTION, CONTENT_LINK, Layout, PageHeading } from "./layout";
+import type { UserSettings } from "../../contracts/settings";
 
 export function saveStateLabel(request: FetchRequest): string {
   if (request.state === "queued") return "Waiting to save…";
@@ -40,11 +41,11 @@ export function SaveRequestRow({ request }: { request: FetchRequest }) {
   );
 }
 
-export function SaveStatusPage({ request }: { request: FetchRequest }) {
+export function SaveStatusPage({ request, settings }: { request: FetchRequest; settings: UserSettings }) {
   const active = request.state === "queued" || request.state === "claimed";
   const detail = attemptDetail(request);
   return (
-    <Layout title="Save status" refreshSeconds={active ? 2 : undefined}>
+    <Layout title="Save status" refreshSeconds={active ? 2 : undefined} settings={settings}>
       <PageHeading>Save status</PageHeading>
       <section class="cp-rule pb-6">
         <h2 class="text-base font-semibold">{saveStateLabel(request)}</h2>

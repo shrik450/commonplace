@@ -2,6 +2,7 @@ import { parseIso } from "../../contracts/clock";
 import type { FetchRequest, Item } from "../../contracts/item";
 import { SaveRequestRow } from "./save";
 import { FIELD, Layout, PageHeading, SUBMIT } from "./layout";
+import type { UserSettings } from "../../contracts/settings";
 
 export function hostOf(url: string): string | null {
   try {
@@ -46,13 +47,15 @@ export function LibraryPage({
   items,
   saveRequests,
   locale,
+  settings,
 }: {
   items: Item[];
   saveRequests: FetchRequest[];
   locale: string;
+  settings?: UserSettings;
 }) {
   return (
-    <Layout title="Library">
+    <Layout title="Library" settings={settings}>
       <PageHeading>Your library</PageHeading>
       <form
         action="/items"

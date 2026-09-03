@@ -40,13 +40,15 @@ Ingest writes these four files under
 - `transcript.txt` — the current text stream.
 - `map.json` — the current transcript-to-DOM Map.
 
-SQLite stores users, item metadata, annotations, API token hashes, and the
-queue. The database and item files can live on separate configured roots.
+SQLite stores users, per-user settings, item metadata, annotations, API token
+hashes, and the queue. The database and item files can live on separate
+configured roots.
 Ingest writes files before it commits the item row. A lease-aware sweep removes
 abandoned directories while protecting active work.
 
-Schema version 2 migrates old databases by retaining only article rows with a
-non-null URL. It discards book rows, incomplete article rows, their annotations
+Schema version 3 adds per-user settings. Schema version 2 migrates old databases
+by retaining only article rows with a non-null URL. It discards book rows,
+incomplete article rows, their annotations
 and search blocks, and legacy non-URL requests. Orphaned old item directories
 are removed by the normal cleanup sweep.
 
@@ -59,10 +61,12 @@ The web app provides:
 - a library and full-text search;
 - URL saving from the library or an API token;
 - a reader, structured text view, and authenticated saved copy;
-- API token creation and revocation.
+- API token creation and revocation;
+- per-account appearance and reading settings.
 
-The reader and structured text view use server-rendered HTML. They ship no
-application JavaScript. The saved copy serves the captured page with a strict
+The reader and structured text view use server-rendered HTML. A small same-origin script previews settings live and saves them without a reload,
+with a normal form fallback.
+The saved copy serves the captured page with a strict
 policy that allows inline CSS and embedded data images and fonts, while
 blocking scripts and network resources.
 

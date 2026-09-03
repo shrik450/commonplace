@@ -1,5 +1,6 @@
 import type { SearchResult } from "../../services/library";
 import { LINK, Layout, PageHeading } from "./layout";
+import type { UserSettings } from "../../contracts/settings";
 
 function Snippet({ result }: { result: SearchResult }) {
   return (
@@ -33,12 +34,14 @@ function Hit({ result }: { result: SearchResult }) {
 export function SearchPage({
   query,
   results,
+  settings,
 }: {
   query: string;
   results: SearchResult[];
+  settings?: UserSettings;
 }) {
   return (
-    <Layout title="Search" query={query}>
+    <Layout title="Search" query={query} settings={settings}>
       <PageHeading>
         {query === "" ? "Search" : `Results for “${query}”`}
       </PageHeading>

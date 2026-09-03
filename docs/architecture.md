@@ -31,6 +31,7 @@ functions. Routes and commands stay thin.
 - `errors.ts` defines stable application error codes and log records.
 - `transcript.ts` defines runs, block grouping, range lookup, and map checks.
 - `item.ts` defines users, web items, annotations, API tokens, and queue rows.
+- `settings.ts` defines the typed account appearance and reading settings.
 - `config.ts` parses the application configuration.
 
 ### Core
@@ -47,6 +48,7 @@ functions. Routes and commands stay thin.
 - `items.ts` reads and updates item metadata.
 - `annotations.ts` reads annotations for rendering.
 - `users.ts` stores users and hashed API tokens.
+- `settings.ts` stores validated settings with a user-owned primary key.
 - `queue.ts` owns URL ingest jobs, leases, and cleanup state.
 - `fts.ts` indexes one searchable row per transcript block.
 - `files.ts` atomically stores the four item files:
@@ -66,8 +68,9 @@ server starts it in the same process because the queue is intentionally local.
 ### Web and CLI
 
 The web layer renders server-side HTML for the home page, library, search,
-reader, structured text, saved copy, sign-in, and token settings. It serves no
-application JavaScript. The structured text view retains safe HTML semantics
+reader, structured text, saved copy, sign-in, and settings. A same-origin
+first-party script provides reader previews and serialized saving; forms remain
+usable without it. The structured text view retains safe HTML semantics
 and uses the transcript and Map for ordered text. The saved copy remains
 authenticated, serves `original.html`, and uses a strict policy with inline CSS
 and embedded data images and fonts only.
@@ -91,7 +94,8 @@ Annotations retain transcript offsets and their quote in SQLite. Rendering
 re-anchors the quote against the current transcript and projects it through the
 current Map. No DOM path or document position enters the database.
 
-Schema version 2 migrates old databases by retaining only article rows with a
-non-null URL. It discards book rows, incomplete article rows, their annotations
-and search blocks, and legacy non-URL requests. Orphaned old item directories
+Schema version 3 adds durable per-user settings. Schema version 2 migrates old
+databases by retaining only article rows with a non-null URL. It discards book
+rows, incomplete article rows, their annotations and search blocks, and legacy
+non-URL requests. Orphaned old item directories
 are removed by the normal cleanup sweep.

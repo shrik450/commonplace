@@ -28,6 +28,10 @@ export function publicRoutes() {
     .get(
       "/app.css",
       () => new Response(Bun.file(join(repoRoot, "public", "app.css"))),
+    )
+    .get(
+      "/reader-settings.js",
+      () => new Response(Bun.file(join(repoRoot, "public", "reader-settings.js")), { headers: { "content-type": "text/javascript; charset=utf-8" } }),
     );
 }
 

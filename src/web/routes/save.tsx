@@ -10,6 +10,7 @@ import {
   authDeps,
   libraryDeps,
   toLogin,
+  userSettings,
   type WebDeps,
 } from "./deps";
 
@@ -21,21 +22,23 @@ function readRequestId(raw: string): RequestId | null {
   }
 }
 
-function notFound(): Response {
+function notFound(settings: ReturnType<typeof userSettings>): Response {
   return page(
     <ErrorPage
       title="Commonplace cannot find that save"
       message="Your library has no save at this address. The save may have been removed, or the link may be outdated."
+      settings={settings}
     />,
     404,
   );
 }
 
-function badRequest(): Response {
+function badRequest(settings: ReturnType<typeof userSettings>): Response {
   return page(
     <ErrorPage
       title="That save address is invalid"
       message="A valid save address ends with a save request ID. Open your library, and select the save again."
+      settings={settings}
     />,
     400,
   );
@@ -84,7 +87,7 @@ export function saveRoutes(deps: WebDeps) {
 
       const requestId = readRequestId(params.requestId);
       if (requestId === null) {
-        return apiClient ? apiError("STORE_INVALID_PATH", 400) : badRequest();
+        return apiClient ? apiError("STORE_INVALID_PATH", 400) : badRequest(userSettings(deps, principal.user.id));
       }
 
       const save = getSaveRequest(
@@ -93,20 +96,20 @@ export function saveRoutes(deps: WebDeps) {
         requestId,
       );
       if (save === null) {
-        return apiClient ? apiError("STORE_NOT_FOUND", 404) : notFound();
+        return apiClient ? apiError("STORE_NOT_FOUND", 404) : notFound(userSettings(deps, principal.user.id));
       }
 
       if (apiClient) return apiStatus(save);
 
       if (save.state === "done") {
-        if (save.item_id === null) return notFound();
+        if (save.item_id === null) return notFound(userSettings(deps, principal.user.id));
         return new Response(null, {
           status: 303,
           headers: { location: `/items/${save.item_id}` },
         });
       }
 
-      const response = page(<SaveStatusPage request={save} />);
+      const response = page(<SaveStatusPage request={save} settings={userSettings(deps, principal.user.id)} />);
       response.headers.set("cache-control", "no-store");
       return response;
     },

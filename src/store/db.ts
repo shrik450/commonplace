@@ -46,7 +46,7 @@ export type Migration = { version: number; sql: string };
 
 export type TableInfo = { name: string; sql: string; columns: string[] };
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const MIGRATIONS: readonly Migration[] = [
   {
@@ -205,6 +205,23 @@ export const MIGRATIONS: readonly Migration[] = [
       DROP TABLE fetch_requests;
       ALTER TABLE fetch_requests_new RENAME TO fetch_requests;
       CREATE INDEX fetch_requests_claimable ON fetch_requests(state, created_at, id);
+    `,
+  },
+  {
+    version: 3,
+    sql: `
+      CREATE TABLE user_settings (
+        user_id            TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        theme              TEXT NOT NULL CHECK (theme IN ('auto', 'light', 'dark')),
+        font               TEXT NOT NULL CHECK (font IN ('serif', 'sans')),
+        text_size          TEXT NOT NULL CHECK (text_size IN ('small', 'medium', 'large')),
+        line_spacing       TEXT NOT NULL CHECK (line_spacing IN ('compact', 'comfortable', 'loose')),
+        paragraph_spacing  TEXT NOT NULL CHECK (paragraph_spacing IN ('compact', 'comfortable', 'loose')),
+        text_width         TEXT NOT NULL CHECK (text_width IN ('narrow', 'comfortable', 'wide'))
+      );
+      INSERT INTO user_settings (user_id, theme, font, text_size, line_spacing, paragraph_spacing, text_width)
+        SELECT id, 'auto', 'serif', 'medium', 'comfortable', 'comfortable', 'comfortable'
+        FROM users;
     `,
   },
 ];

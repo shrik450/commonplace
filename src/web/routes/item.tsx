@@ -13,6 +13,7 @@ import {
   libraryDeps,
   preferredLocale,
   toLogin,
+  userSettings,
   type WebDeps,
 } from "./deps";
 
@@ -24,21 +25,23 @@ function readItemId(raw: string): ItemId | null {
   }
 }
 
-function notFound(): Response {
+function notFound(settings: ReturnType<typeof userSettings>): Response {
   return page(
     <ErrorPage
       title="Commonplace cannot find that page"
       message="Your library has no item at this address. The item may have been deleted, or the link may be outdated."
+      settings={settings}
     />,
     404,
   );
 }
 
-function badRequest(): Response {
+function badRequest(settings: ReturnType<typeof userSettings>): Response {
   return page(
     <ErrorPage
       title="That item address is invalid"
       message="A valid item address ends with an item ID. Open your library, and select the page again."
+      settings={settings}
     />,
     400,
   );
@@ -58,7 +61,7 @@ async function itemPageResponse(
   if (principal === null) return toLogin();
 
   const itemId = readItemId(rawItemId);
-  if (itemId === null) return badRequest();
+  if (itemId === null) return badRequest(userSettings(deps, principal.user.id));
 
   try {
     const view = await readerPage(
@@ -73,10 +76,12 @@ async function itemPageResponse(
         html={view.html}
         annotations={view.annotations}
         locale={preferredLocale(request)}
+        settings={userSettings(deps, principal.user.id)}
+        interactive={mode === "reader"}
       />,
     );
   } catch (error) {
-    if (error instanceof Error && missing(error)) return notFound();
+    if (error instanceof Error && missing(error)) return notFound(userSettings(deps, principal.user.id));
     throw error;
   }
 }
@@ -96,7 +101,7 @@ export function itemRoutes(deps: WebDeps) {
       if (principal === null) return toLogin();
 
       const itemId = readItemId(params.id);
-      if (itemId === null) return badRequest();
+      if (itemId === null) return badRequest(userSettings(deps, principal.user.id));
 
       try {
         const html = await captureFile(
@@ -115,7 +120,7 @@ export function itemRoutes(deps: WebDeps) {
           },
         });
       } catch (error) {
-        if (error instanceof Error && missing(error)) return notFound();
+        if (error instanceof Error && missing(error)) return notFound(userSettings(deps, principal.user.id));
         throw error;
       }
     });

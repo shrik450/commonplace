@@ -457,6 +457,58 @@ describe("token management", () => {
     await expect(authenticate(new Request("https://read.example.com", { headers: { authorization: `Bearer ${secret}` } }), { db: env.db, config, now: now() })).resolves.toMatchObject({ user: { id: BOB } });
   });
 
+  test("settings persist through HTTP, stay tenant-scoped, and render each theme", async () => {
+    const env = await environment("settings-http");
+    const app = buildApp({ db: env.db, config: { ...config, items_root: env.itemsRoot }, now });
+    const values = {
+      theme: "dark",
+      font: "sans",
+      text_size: "large",
+      line_spacing: "loose",
+      paragraph_spacing: "compact",
+      text_width: "wide",
+    };
+    const body = new URLSearchParams(values).toString();
+    const saved = await post(app, "/settings", body, {
+      "content-type": "application/x-www-form-urlencoded",
+      cookie: session(ALICE),
+    });
+    expect(saved.status).toBe(303);
+    expect(env.db.query("SELECT theme, font, text_size FROM user_settings WHERE user_id = ?").get(ALICE)).toMatchObject({ theme: "dark", font: "sans", text_size: "large" });
+
+    const invalid = await post(app, "/settings", new URLSearchParams({ ...values, theme: "blue" }).toString(), {
+      "content-type": "application/x-www-form-urlencoded",
+      cookie: session(ALICE),
+    });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.text()).toContain("VIEW_INVALID_VALUE");
+
+    const bobPage = await app.handle(new Request("http://localhost/settings", { headers: { cookie: session(BOB) } }));
+    expect(await bobPage.text()).toContain('<option value="auto" selected>Auto</option>');
+    const darkPage = await app.handle(new Request("http://localhost/settings", { headers: { cookie: session(ALICE) } }));
+    const darkBody = await darkPage.text();
+    expect(darkBody).toContain('<html lang="en" data-theme="ink">');
+    expect(darkBody).toContain('<meta name="theme-color" content="#14151a"/>');
+    expect(darkBody).toContain('data-cp-reader data-cp-font="sans" data-cp-text-size="large" data-cp-line-spacing="loose" data-cp-paragraph-spacing="compact" data-cp-text-width="wide"');
+    expect(darkBody).toContain('autocomplete="off"');
+
+    for (const theme of ["light", "auto"] as const) {
+      await post(app, "/settings", new URLSearchParams({ ...values, theme }).toString(), {
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: session(ALICE),
+      });
+      const response = await app.handle(new Request("http://localhost/settings", { headers: { cookie: session(ALICE) } }));
+      const rendered = await response.text();
+      if (theme === "light") expect(rendered).toContain('data-theme="parchment"');
+      else expect(rendered).not.toContain("data-theme=");
+    }
+
+    const script = await app.handle(new Request("http://localhost/reader-settings.js"));
+    expect(script.status).toBe(200);
+    expect(script.headers.get("content-type")).toContain("text/javascript");
+    expect((await script.text()).length).toBeGreaterThan(0);
+  });
+
   test("a signed-out reader cannot access settings", async () => {
     const env = await environment("settings-auth");
     const app = buildApp({ db: env.db, config: { ...config, items_root: env.itemsRoot }, now });

@@ -14,6 +14,7 @@ import {
   libraryDeps,
   preferredLocale,
   toLogin,
+  userSettings,
   type WebDeps,
 } from "./deps";
 
@@ -41,6 +42,7 @@ export function libraryRoutes(deps: WebDeps) {
           items={items}
           saveRequests={saveRequests}
           locale={preferredLocale(request)}
+          settings={userSettings(deps, principal.user.id)}
         />,
       );
     })
@@ -60,6 +62,6 @@ export function libraryRoutes(deps: WebDeps) {
               query,
               SEARCH_LIMIT,
             );
-      return page(<SearchPage query={query} results={results} />);
+      return page(<SearchPage query={query} results={results} settings={userSettings(deps, principal.user.id)} />);
     });
 }

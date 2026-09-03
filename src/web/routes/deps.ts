@@ -2,8 +2,14 @@ import { Database } from "bun:sqlite";
 
 import type { Config } from "../../contracts/config";
 import type { LibraryDeps } from "../../services/library";
+import { getUserSettings } from "../../store/settings";
+import type { UserId } from "../../contracts/ids";
 
 export type WebDeps = { db: Database; config: Config; now: () => Date };
+
+export function userSettings(deps: WebDeps, userId: UserId) {
+  return getUserSettings(deps.db, userId);
+}
 
 export function libraryDeps(deps: WebDeps): LibraryDeps {
   return { db: deps.db, itemsRoot: deps.config.items_root };

@@ -79,8 +79,19 @@ body {
   font-family: var(--font-reading);
   font-size: 1.125rem;
   line-height: 1.7;
-  max-width: 68ch;
 }
+
+[data-cp-reader] { max-width: 68ch; }
+[data-cp-reader][data-cp-text-width="narrow"] { max-width: 58ch; }
+[data-cp-reader][data-cp-text-width="wide"] { max-width: 78ch; }
+
+[data-cp-reader][data-cp-font="sans"] .cp-transcript { font-family: var(--font-chrome); }
+[data-cp-reader][data-cp-text-size="small"] .cp-transcript { font-size: 1rem; }
+[data-cp-reader][data-cp-text-size="large"] .cp-transcript { font-size: 1.3rem; }
+[data-cp-reader][data-cp-line-spacing="compact"] .cp-transcript { line-height: 1.45; }
+[data-cp-reader][data-cp-line-spacing="loose"] .cp-transcript { line-height: 2; }
+[data-cp-reader][data-cp-paragraph-spacing="compact"] .cp-block { margin-block: 0.45em; }
+[data-cp-reader][data-cp-paragraph-spacing="loose"] .cp-block { margin-block: 1.5em; }
 
 .cp-block {
   margin-block: 0.9em;

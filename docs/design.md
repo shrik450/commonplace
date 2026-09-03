@@ -37,7 +37,9 @@ Follow these color rules:
 
 ## Type
 
-- Use Newsreader for transcript text and Inter for interface text.
+- Use Newsreader for transcript text and Inter for interface text. Account
+  settings can choose serif or sans reading text, with controlled size, line
+  spacing, paragraph spacing, and text width.
 - Fontsource is not installed yet, so declare both families with fallbacks:
   `Newsreader, "Iowan Old Style", Palatino, Georgia, serif` and
   `Inter, system-ui, sans-serif`. Add the packages later as a deliberate
@@ -52,7 +54,8 @@ Follow these color rules:
 - The reader is one centred column. A narrow gutter on its left holds
   annotation marks, so a mark never pushes the text sideways.
 - The library is a dense list, one row per item: title, then host and date in
-  muted text. No cards, no thumbnails, no grid.
+  muted text. No cards, no thumbnails, no grid. Account appearance supports
+  Auto, Light, and Dark.
 - Keep the top bar compact and sticky. Include only the app name, search field,
   settings link, and sign-out link.
 - A skip link sits before the top bar. It is invisible until it takes focus.

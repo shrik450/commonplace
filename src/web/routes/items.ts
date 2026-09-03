@@ -12,7 +12,7 @@ import { newRequestId } from "../../contracts/ids";
 import { authenticate } from "../../services/auth";
 import { enqueueFetch } from "../../store/queue";
 import { ErrorPage, page } from "../views/layout";
-import { authDeps, toLogin, type WebDeps } from "./deps";
+import { authDeps, toLogin, userSettings, type WebDeps } from "./deps";
 
 // Accepts form data from the library and JSON from an iOS Shortcut.
 async function readUrl(request: Request): Promise<string | null> {
@@ -79,6 +79,7 @@ export function itemSaveRoutes(deps: WebDeps) {
           message:
             "Enter a complete web address that starts with http:// or https://, such as https://example.com/an-essay.",
           code: error.code,
+          settings: userSettings(deps, principal.user.id),
         }),
         400,
       );

@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 
 import { AppError } from "../contracts/errors";
 import type { Item } from "../contracts/item";
-import type { ItemId, UserId } from "../contracts/ids";
+import { asItemId, asUserId, type ItemId, type UserId } from "../contracts/ids";
 import { write } from "./db";
 
 export type Cursor = { created_at: string; id: ItemId };
@@ -12,8 +12,8 @@ const ITEM_COLUMNS = `
 `;
 
 type ItemRow = {
-  id: ItemId;
-  user_id: UserId;
+  id: string;
+  user_id: string;
   url: string;
   title: string;
   author: string | null;
@@ -22,7 +22,7 @@ type ItemRow = {
 };
 
 function itemOf(row: ItemRow): Item {
-  return row;
+  return { ...row, id: asItemId(row.id), user_id: asUserId(row.user_id) };
 }
 
 function requireRow(changes: number, userId: UserId, id: ItemId): void {
@@ -103,11 +103,11 @@ export function listItems(
 // This unscoped query is used only by the orphan sweep.
 export function itemPaths(db: Database): string[] {
   return db
-    .query<{ user_id: UserId; id: ItemId }, []>(
+    .query<{ user_id: string; id: string }, []>(
       "SELECT user_id, id FROM items",
     )
     .all()
-    .map((row) => `${row.user_id}/${row.id}`);
+    .map((row) => `${asUserId(row.user_id)}/${asItemId(row.id)}`);
 }
 
 export function updateItem(

@@ -1,37 +1,52 @@
 import { Database } from "bun:sqlite";
 
-import type { TokenId, UserId } from "../contracts/ids";
+import { asUserId, type TokenId, type UserId } from "../contracts/ids";
+import { DEFAULT_SETTINGS } from "../contracts/settings";
 import type { ApiToken, User } from "../contracts/item";
 import { write } from "./db";
 
 const USER_COLUMNS = `id, subject, email, created_at`;
 const TOKEN_COLUMNS = `id, user_id, name, token_hash, created_at, last_used_at`;
 
+type UserRow = Omit<User, "id"> & { id: string };
+type TokenRow = Omit<ApiToken, "user_id"> & { user_id: string };
+
+function userOf(row: UserRow): User {
+  return { ...row, id: asUserId(row.id) };
+}
+
+function tokenOf(row: TokenRow): ApiToken {
+  return { ...row, user_id: asUserId(row.user_id) };
+}
+
 export function insertUser(db: Database, user: User): User {
-  write(
-    db,
-    "INSERT INTO users (id, subject, email, created_at) VALUES (?, ?, ?, ?)",
-    [user.id, user.subject, user.email, user.created_at],
-    { id: user.id, subject: user.subject },
-  );
+  const insert = db.transaction(() => {
+    write(
+      db,
+      "INSERT INTO users (id, subject, email, created_at) VALUES (?, ?, ?, ?)",
+      [user.id, user.subject, user.email, user.created_at],
+      { id: user.id, subject: user.subject },
+    );
+    write(
+      db,
+      "INSERT INTO user_settings (user_id, theme, font, text_size, line_spacing, paragraph_spacing, text_width) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [user.id, DEFAULT_SETTINGS.theme, DEFAULT_SETTINGS.font, DEFAULT_SETTINGS.text_size,
+        DEFAULT_SETTINGS.line_spacing, DEFAULT_SETTINGS.paragraph_spacing, DEFAULT_SETTINGS.text_width],
+      { user_id: user.id },
+    );
+  });
+  insert();
   return user;
 }
 
 export function getUser(db: Database, id: UserId): User | null {
-  return (
-    db.query<User, [string]>(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`)
-      .get(id) ?? null
-  );
+  const row = db.query<UserRow, [string]>(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(id);
+  return row === null ? null : userOf(row);
 }
 
 export function getUserBySubject(db: Database, subject: string): User | null {
-  return (
-    db
-      .query<User, [string]>(
-        `SELECT ${USER_COLUMNS} FROM users WHERE subject = ?`,
-      )
-      .get(subject) ?? null
-  );
+  const row = db.query<UserRow, [string]>(`SELECT ${USER_COLUMNS} FROM users WHERE subject = ?`).get(subject);
+  return row === null ? null : userOf(row);
 }
 
 export function insertApiToken(db: Database, token: ApiToken): ApiToken {
@@ -56,22 +71,18 @@ export function getApiTokenByHash(
   db: Database,
   tokenHash: string,
 ): ApiToken | null {
-  return (
-    db
-      .query<ApiToken, [string]>(
-        `SELECT ${TOKEN_COLUMNS} FROM api_tokens WHERE token_hash = ?`,
-      )
-      .get(tokenHash) ?? null
-  );
+  const row = db.query<TokenRow, [string]>(`SELECT ${TOKEN_COLUMNS} FROM api_tokens WHERE token_hash = ?`).get(tokenHash);
+  return row === null ? null : tokenOf(row);
 }
 
 export function listApiTokens(db: Database, userId: UserId): ApiToken[] {
   return db
-    .query<ApiToken, [string]>(
+    .query<TokenRow, [string]>(
       `SELECT ${TOKEN_COLUMNS} FROM api_tokens WHERE user_id = ?
        ORDER BY created_at DESC, id DESC`,
     )
-    .all(userId);
+    .all(userId)
+    .map(tokenOf);
 }
 
 export function touchApiToken(
