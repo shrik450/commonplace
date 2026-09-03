@@ -1,8 +1,8 @@
 # Visual design
 
 Read this document before you change `src/web/`. It defines a consistent visual
-system for every page. The stack uses Tailwind CSS 4, daisyUI, Newsreader for
-reading, Inter for interface text, inline Lucide SVG icons, and dark mode.
+system for every page. The stack uses Tailwind CSS 4, daisyUI, self-hosted
+reading fonts, system interface text, inline Lucide SVG icons, and dark mode.
 
 ## Design direction
 
@@ -37,13 +37,12 @@ Follow these color rules:
 
 ## Type
 
-- Use Newsreader for transcript text and Inter for interface text. Account
-  settings can choose serif, sans serif, or monospace reading text. Sliders
-  control size, line spacing, paragraph spacing, and text width.
-- Fontsource is not installed yet, so declare both families with fallbacks:
-  `Newsreader, "Iowan Old Style", Palatino, Georgia, serif` and
-  `Inter, system-ui, sans-serif`. Add the packages later as a deliberate
-  decision, not as a side effect of a styling change.
+- Use Newsreader for transcript text and system sans serif for interface text.
+  Account settings can choose Newsreader, Literata, Source Serif 4, Atkinson
+  Hyperlegible Next, system sans serif, system monospace, or JetBrains Mono.
+  Sliders control size, line spacing, paragraph spacing, and text width.
+- Self-host the Latin variable fonts as WOFF2 files. Use each font's system
+  category as its fallback.
 - The reading column holds about 68 characters. Set it with `max-width`, in
   `ch`, not with a pixel width.
 - Set transcript body text to `1.125rem` with a `1.7` line height. Make captured

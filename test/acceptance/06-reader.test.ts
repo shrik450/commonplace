@@ -303,7 +303,7 @@ describe("authenticated reader routes", () => {
     const app = buildApp({ db: env.db, config: { ...CONFIG, items_root: env.itemsRoot }, now });
     const reader = await app.handle(new Request(`http://localhost/items/${env.itemId}`, { headers: { cookie: cookie(ALICE) } }));
     const readerBody = await reader.text();
-    const settings = new URLSearchParams({ theme: "auto", font: "monospace", text_size: "22", line_spacing: "190", paragraph_spacing: "60", text_width: "80" });
+    const settings = new URLSearchParams({ theme: "auto", font: "jetbrains-mono", text_size: "22", line_spacing: "190", paragraph_spacing: "60", text_width: "80" });
     const saved = await app.handle(new Request("http://localhost/settings", {
       method: "POST",
       headers: { cookie: cookie(ALICE), "content-type": "application/x-www-form-urlencoded" },

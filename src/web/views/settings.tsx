@@ -3,6 +3,8 @@ import {
   FONTS,
   READING_RANGES,
   THEMES,
+  type Font,
+  type Theme,
   type UserSettings,
 } from "../../contracts/settings";
 import { readableDate } from "./library";
@@ -65,16 +67,27 @@ export function NewTokenPage({ name, secret, settings }: { name: string; secret:
   );
 }
 
-function optionLabel(value: string): string {
-  return value === "sans" ? "Sans serif" : value[0]!.toUpperCase() + value.slice(1);
-}
+type SettingsOption = Font | Theme;
 
-function SettingsSelect({ name, label, values, current }: { name: string; label: string; values: readonly string[]; current: string }) {
+const OPTION_LABELS = {
+  auto: "Auto",
+  light: "Light",
+  dark: "Dark",
+  newsreader: "Newsreader",
+  literata: "Literata",
+  "source-serif": "Source Serif 4",
+  atkinson: "Atkinson Hyperlegible Next",
+  "system-sans": "System sans serif",
+  "system-mono": "System monospace",
+  "jetbrains-mono": "JetBrains Mono",
+} satisfies Record<SettingsOption, string>;
+
+function SettingsSelect({ name, label, values, current }: { name: string; label: string; values: readonly SettingsOption[]; current: SettingsOption }) {
   return (
     <label class="grid gap-1 text-sm">
       {label}
       <select name={name} class={SELECT_FIELD} autocomplete="off">
-        {values.map((value) => <option value={value} selected={current === value}>{optionLabel(value)}</option>)}
+        {values.map((value) => <option value={value} selected={current === value}>{OPTION_LABELS[value]}</option>)}
       </select>
     </label>
   );

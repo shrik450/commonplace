@@ -462,7 +462,7 @@ describe("token management", () => {
     const app = buildApp({ db: env.db, config: { ...config, items_root: env.itemsRoot }, now });
     const values = {
       theme: "dark",
-      font: "monospace",
+      font: "jetbrains-mono",
       text_size: "22",
       line_spacing: "190",
       paragraph_spacing: "60",
@@ -474,7 +474,7 @@ describe("token management", () => {
       cookie: session(ALICE),
     });
     expect(saved.status).toBe(303);
-    expect(env.db.query("SELECT theme, font, text_size FROM user_settings WHERE user_id = ?").get(ALICE)).toMatchObject({ theme: "dark", font: "monospace", text_size: 22 });
+    expect(env.db.query("SELECT theme, font, text_size FROM user_settings WHERE user_id = ?").get(ALICE)).toMatchObject({ theme: "dark", font: "jetbrains-mono", text_size: 22 });
 
     const invalid = await post(app, "/settings", new URLSearchParams({ ...values, theme: "blue" }).toString(), {
       "content-type": "application/x-www-form-urlencoded",
@@ -484,12 +484,15 @@ describe("token management", () => {
     expect(await invalid.text()).toContain("VIEW_INVALID_VALUE");
 
     const bobPage = await app.handle(new Request("http://localhost/settings", { headers: { cookie: session(BOB) } }));
-    expect(await bobPage.text()).toContain('<option value="auto" selected>Auto</option>');
+    const bobBody = await bobPage.text();
+    expect(bobBody).toContain('<option value="auto" selected>Auto</option>');
+    expect(bobBody).toContain('<option value="newsreader" selected>Newsreader</option>');
     const darkPage = await app.handle(new Request("http://localhost/settings", { headers: { cookie: session(ALICE) } }));
     const darkBody = await darkPage.text();
     expect(darkBody).toContain('<html lang="en" data-theme="ink">');
     expect(darkBody).toContain('<meta name="theme-color" content="#14151a"/>');
-    expect(darkBody).toContain('data-cp-reader data-cp-font="monospace" data-cp-text-size="22" data-cp-line-spacing="190" data-cp-paragraph-spacing="60" data-cp-text-width="80"');
+    expect(darkBody).toContain('data-cp-reader data-cp-font="jetbrains-mono" data-cp-text-size="22" data-cp-line-spacing="190" data-cp-paragraph-spacing="60" data-cp-text-width="80"');
+    expect(darkBody).toContain('<option value="jetbrains-mono" selected>JetBrains Mono</option>');
     expect(darkBody).toContain('input id="text_size" type="range"');
     expect(darkBody).toContain("This sample includes enough text");
     expect(darkBody).toContain('autocomplete="off"');
@@ -509,6 +512,15 @@ describe("token management", () => {
     expect(script.status).toBe(200);
     expect(script.headers.get("content-type")).toContain("text/javascript");
     expect((await script.text()).length).toBeGreaterThan(0);
+
+    const font = await app.handle(new Request("http://localhost/fonts/jetbrains-mono-latin-wght-normal.woff2"));
+    expect(font.status).toBe(200);
+    expect(font.headers.get("content-type")).toBe("font/woff2");
+    expect(font.headers.get("cache-control")).toBe("public, max-age=86400");
+    expect((await font.arrayBuffer()).byteLength).toBeGreaterThan(0);
+
+    const missingFont = await app.handle(new Request("http://localhost/fonts/unknown.woff2"));
+    expect(missingFont.status).toBe(404);
   });
 
   test("a signed-out reader cannot access settings", async () => {
@@ -531,6 +543,8 @@ describe("generated stylesheet", () => {
     const css = await readFile(join(repoRoot, "public", "app.css"), "utf8");
     expect(css).toContain("rgb(214 148 61 / 0.28)");
     expect(css).toContain("rgb(217 155 78 / 0.24)");
+    expect(css).toContain("/fonts/newsreader-latin-opsz-normal.woff2");
+    expect(css).toContain("/fonts/jetbrains-mono-latin-wght-normal.woff2");
   });
 });
 

@@ -80,6 +80,7 @@ export function Layout({ title, query, refreshSeconds, children, settings, setti
         {refreshSeconds === undefined ? null : (
           <meta http-equiv="refresh" content={String(refreshSeconds)} />
         )}
+        <link rel="preload" href="/fonts/newsreader-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
         <link rel="stylesheet" href="/app.css" />
         {settingsScript ? <script src="/reader-settings.js" defer /> : null}
       </head>

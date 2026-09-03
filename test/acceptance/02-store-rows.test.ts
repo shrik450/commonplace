@@ -96,7 +96,7 @@ describe("tenant-scoped rows", () => {
     expect(() => getUserSettings(db, BOB)).toThrow(
       expect.objectContaining({ code: "STORE_NOT_FOUND" }),
     );
-    expect(() => parseSettings(ALICE, { theme: "blue", font: "serif", text_size: "18", line_spacing: "170", paragraph_spacing: "90", text_width: "68" })).toThrow(AppError);
+    expect(() => parseSettings(ALICE, { theme: "blue", font: "newsreader", text_size: "18", line_spacing: "170", paragraph_spacing: "90", text_width: "68" })).toThrow(AppError);
     db.close();
   });
 

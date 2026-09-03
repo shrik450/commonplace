@@ -10,7 +10,7 @@ const USER_ID = asUserId("22222222-2222-4222-8222-222222222222");
 const SETTINGS = {
   user_id: USER_ID,
   theme: "auto" as const,
-  font: "sans" as const,
+  font: "system-sans" as const,
   text_size: 18,
   line_spacing: 170,
   paragraph_spacing: 90,

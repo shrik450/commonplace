@@ -19,6 +19,18 @@ import { page } from "./views/layout";
 export type { WebDeps };
 
 const repoRoot = join(import.meta.dir, "..", "..");
+const FONT_FILES = new Set<string>([
+  "newsreader-latin-opsz-normal.woff2",
+  "newsreader-latin-opsz-italic.woff2",
+  "literata-latin-opsz-normal.woff2",
+  "literata-latin-opsz-italic.woff2",
+  "source-serif-4-latin-opsz-normal.woff2",
+  "source-serif-4-latin-opsz-italic.woff2",
+  "atkinson-hyperlegible-next-latin-wght-normal.woff2",
+  "atkinson-hyperlegible-next-latin-wght-italic.woff2",
+  "jetbrains-mono-latin-wght-normal.woff2",
+  "jetbrains-mono-latin-wght-italic.woff2",
+]);
 
 // These routes don't expose library data and don't require authentication.
 export function publicRoutes() {
@@ -32,7 +44,16 @@ export function publicRoutes() {
     .get(
       "/reader-settings.js",
       () => new Response(Bun.file(join(repoRoot, "public", "reader-settings.js")), { headers: { "content-type": "text/javascript; charset=utf-8" } }),
-    );
+    )
+    .get("/fonts/:file", ({ params }) => {
+      if (!FONT_FILES.has(params.file)) return new Response("Not found", { status: 404 });
+      return new Response(Bun.file(join(repoRoot, "public", "fonts", params.file)), {
+        headers: {
+          "cache-control": "public, max-age=86400",
+          "content-type": "font/woff2",
+        },
+      });
+    });
 }
 
 export function buildApp(deps: WebDeps) {

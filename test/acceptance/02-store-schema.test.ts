@@ -15,17 +15,48 @@ describe("database migration behavior", () => {
     roots.push(root);
     const db = openDatabase(join(root, "db.sqlite"), APPLIED_AT);
 
-    expect(SCHEMA_VERSION).toBe(4);
+    expect(SCHEMA_VERSION).toBe(5);
     expect(
       db.query<{ version: number }, []>(
         "SELECT version FROM migrations ORDER BY version",
       ).all(),
-    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }]);
     expect(
       db.query<{ name: string }, []>(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'items'",
       ).get(),
     ).toEqual({ name: "items" });
+    db.close();
+  });
+
+  test("maps existing font categories to named choices", async () => {
+    const root = await mkdtemp(join(tmpdir(), "commonplace-font-migration-"));
+    roots.push(root);
+    const legacy = new Database(join(root, "db.sqlite"));
+    for (const migration of MIGRATIONS.slice(0, 2)) {
+      legacy.exec(migration.sql);
+      legacy.run("INSERT INTO migrations (version, applied_at) VALUES (?, ?)", [
+        migration.version,
+        APPLIED_AT.toISOString(),
+      ]);
+    }
+    legacy.exec("INSERT INTO users (id, subject, created_at) VALUES ('serif-user', 'serif', 'created'), ('sans-user', 'sans', 'created'), ('mono-user', 'mono', 'created')");
+    for (const migration of MIGRATIONS.slice(2, 4)) {
+      legacy.exec(migration.sql);
+      legacy.run("INSERT INTO migrations (version, applied_at) VALUES (?, ?)", [
+        migration.version,
+        APPLIED_AT.toISOString(),
+      ]);
+    }
+    legacy.exec("UPDATE user_settings SET font = 'sans' WHERE user_id = 'sans-user'; UPDATE user_settings SET font = 'monospace' WHERE user_id = 'mono-user'");
+    legacy.close();
+
+    const db = openDatabase(join(root, "db.sqlite"), APPLIED_AT);
+    expect(db.query<{ user_id: string; font: string }, []>("SELECT user_id, font FROM user_settings ORDER BY user_id").all()).toEqual([
+      { user_id: "mono-user", font: "system-mono" },
+      { user_id: "sans-user", font: "system-sans" },
+      { user_id: "serif-user", font: "newsreader" },
+    ]);
     db.close();
   });
 

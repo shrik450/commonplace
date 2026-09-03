@@ -2,7 +2,15 @@ import { AppError } from "./errors";
 import type { UserId } from "./ids";
 
 export const THEMES = ["auto", "light", "dark"] as const;
-export const FONTS = ["serif", "sans", "monospace"] as const;
+export const FONTS = [
+  "newsreader",
+  "literata",
+  "source-serif",
+  "atkinson",
+  "system-sans",
+  "system-mono",
+  "jetbrains-mono",
+] as const;
 
 export const READING_RANGES = {
   text_size: { min: 16, max: 24, step: 1 },
@@ -57,7 +65,7 @@ export function parseSettings(userId: UserId, fields: SettingsFields): UserSetti
 
 export const DEFAULT_SETTINGS: Omit<UserSettings, "user_id"> = {
   theme: "auto",
-  font: "serif",
+  font: "newsreader",
   text_size: 18,
   line_spacing: 170,
   paragraph_spacing: 90,

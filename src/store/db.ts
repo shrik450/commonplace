@@ -46,7 +46,7 @@ export type Migration = { version: number; sql: string };
 
 export type TableInfo = { name: string; sql: string; columns: string[] };
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const MIGRATIONS: readonly Migration[] = [
   {
@@ -243,6 +243,27 @@ export const MIGRATIONS: readonly Migration[] = [
           CASE line_spacing WHEN 'compact' THEN 145 WHEN 'loose' THEN 200 ELSE 170 END,
           CASE paragraph_spacing WHEN 'compact' THEN 50 WHEN 'loose' THEN 150 ELSE 90 END,
           CASE text_width WHEN 'narrow' THEN 58 WHEN 'wide' THEN 78 ELSE 68 END
+        FROM user_settings_old;
+      DROP TABLE user_settings_old;
+    `,
+  },
+  {
+    version: 5,
+    sql: `
+      ALTER TABLE user_settings RENAME TO user_settings_old;
+      CREATE TABLE user_settings (
+        user_id            TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        theme              TEXT NOT NULL CHECK (theme IN ('auto', 'light', 'dark')),
+        font               TEXT NOT NULL CHECK (font IN ('newsreader', 'literata', 'source-serif', 'atkinson', 'system-sans', 'system-mono', 'jetbrains-mono')),
+        text_size          INTEGER NOT NULL CHECK (typeof(text_size) = 'integer' AND text_size BETWEEN 16 AND 24),
+        line_spacing       INTEGER NOT NULL CHECK (typeof(line_spacing) = 'integer' AND line_spacing BETWEEN 140 AND 200 AND line_spacing % 5 = 0),
+        paragraph_spacing  INTEGER NOT NULL CHECK (typeof(paragraph_spacing) = 'integer' AND paragraph_spacing BETWEEN 50 AND 150 AND paragraph_spacing % 5 = 0),
+        text_width         INTEGER NOT NULL CHECK (typeof(text_width) = 'integer' AND text_width BETWEEN 52 AND 84 AND text_width % 2 = 0)
+      );
+      INSERT INTO user_settings (user_id, theme, font, text_size, line_spacing, paragraph_spacing, text_width)
+        SELECT user_id, theme,
+          CASE font WHEN 'serif' THEN 'newsreader' WHEN 'sans' THEN 'system-sans' ELSE 'system-mono' END,
+          text_size, line_spacing, paragraph_spacing, text_width
         FROM user_settings_old;
       DROP TABLE user_settings_old;
     `,

@@ -46,8 +46,9 @@ configured roots.
 Ingest writes files before it commits the item row. A lease-aware sweep removes
 abandoned directories while protecting active work.
 
-Schema version 4 adds numeric reading controls and a monospace font. Schema
-version 3 adds per-user settings. Schema version 2 migrates old databases
+Schema version 5 adds named, self-hosted reading fonts. Schema version 4 adds
+numeric reading controls and a monospace font. Schema version 3 adds per-user
+settings. Schema version 2 migrates old databases
 by retaining only article rows with a non-null URL. It discards book rows,
 incomplete article rows, their annotations
 and search blocks, and legacy non-URL requests. Orphaned old item directories
