@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AppError, isAppError } from "../../src/contracts/errors";
+import { isNumberValue, type JsonValue } from "../../src/contracts/item";
 import {
   contentRanges,
   runAt,
@@ -27,15 +28,18 @@ function makeRun(
   };
 }
 
-function malformedIndex(map: TranscriptMap, textLength: number): unknown {
+type MalformedResult = number | "malformed" | "no throw" | "unexpected error";
+
+function malformedIndex(map: JsonValue, textLength: number): MalformedResult {
   try {
     validateMap(map, textLength);
     return "no throw";
   } catch (error) {
     if (!isAppError(error) || error.code !== "WALK_MAP_MALFORMED") {
-      return error;
+      return "unexpected error";
     }
-    return error.context.index;
+    const index = error.context.index;
+    return isNumberValue(index) ? index : "malformed";
   }
 }
 
@@ -59,7 +63,7 @@ describe("validateMap", () => {
   });
 
   test("rejects a non-integer doc_index", () => {
-    const run = makeRun(0, 3, true, "three" as unknown as number);
+    const run = makeRun(0, 3, true, Number.NaN);
     expect(malformedIndex({ runs: [run] }, 3)).toBe(0);
   });
 
@@ -70,9 +74,32 @@ describe("validateMap", () => {
 
   test("rejects a missing node_path", () => {
     const run = makeRun(0, 3);
-    delete (run as Partial<typeof run>).node_path;
-    const map = { runs: [run] } as unknown as TranscriptMap;
+    Reflect.deleteProperty(run, "node_path");
+    const map = { runs: [run] };
     expect(malformedIndex(map, 3)).toBe(0);
+  });
+
+  test("rejects every non-string node_path", () => {
+    for (const nodePath of [null, 42, {}, []]) {
+      expect(malformedIndex({ runs: [{ ...makeRun(0, 3), node_path: nodePath }] }, 3)).toBe(0);
+    }
+  });
+
+  test("rejects every malformed map shape with WALK_MAP_MALFORMED", () => {
+    const malformedMaps: JsonValue[] = [
+      null,
+      [],
+      {},
+      { runs: null },
+      { runs: [null] },
+      { runs: [{ ...makeRun(0, 3), start: "0" }] },
+      { runs: [{ ...makeRun(0, 3), end: "3" }] },
+      { runs: [{ ...makeRun(0, 3), block_index: false }] },
+      { runs: [{ ...makeRun(0, 3), is_content: "yes" }] },
+    ];
+    for (const map of malformedMaps) {
+      expect([0, "malformed"]).toContain(malformedIndex(map, 3));
+    }
   });
 
   test("reports the last run when the tail does not reach textLength", () => {

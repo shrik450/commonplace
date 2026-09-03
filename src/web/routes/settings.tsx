@@ -9,16 +9,25 @@ import { ErrorPage, page } from "../views/layout";
 import { NewTokenPage, RevokeTokenPage, SettingsPage } from "../views/settings";
 import { authDeps, preferredLocale, toLogin, type WebDeps } from "./deps";
 
-const MESSAGES: Record<string, string> = {
+type MessageKey = "VIEW_MISSING_FIELD" | "STORE_NOT_FOUND";
+
+const MESSAGES: Record<MessageKey, string> = {
   VIEW_MISSING_FIELD: "Enter a token name so you can identify it later.",
   STORE_NOT_FOUND: "That token is already gone. Nothing else changed.",
 };
+
+function messageFor(code: string): string {
+  if (code === "VIEW_MISSING_FIELD" || code === "STORE_NOT_FOUND") {
+    return MESSAGES[code];
+  }
+  return "Return to settings, and try the token action again.";
+}
 
 function badRequest(error: AppError): Response {
   return page(
     <ErrorPage
       title="Commonplace could not update the token"
-      message={MESSAGES[error.code] ?? "Return to settings, and try the token action again."}
+      message={messageFor(error.code)}
       code={error.code}
       href="/settings"
       linkLabel="Back to settings"

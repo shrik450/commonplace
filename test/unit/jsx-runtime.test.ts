@@ -1,6 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { Fragment, jsx, jsxs, raw } from "../../src/web/views/jsx-runtime";
-import { AppError, isAppError } from "../../src/contracts/errors";
+import { isAppError } from "../../src/contracts/errors";
+
+function LabelComponent(props: { readonly label: string }) {
+  return jsx("span", { children: props.label });
+}
+
+function checkJsxOverloads(): void {
+  // @ts-expect-error intrinsic props must contain renderable attributes.
+  jsx("div", 42);
+  // @ts-expect-error fragment props only accept children.
+  jsx(Fragment, { children: () => null });
+  jsx(LabelComponent, { label: "ok" });
+}
+
+void checkJsxOverloads;
 
 describe("jsx-runtime attribute and tag validation", () => {
   test("rejects an attribute name that smuggles in script handlers", () => {
@@ -12,8 +26,9 @@ describe("jsx-runtime attribute and tag validation", () => {
       error = caught;
     }
     expect(isAppError(error)).toBe(true);
-    expect((error as AppError).code).toBe("VIEW_INVALID_ATTRIBUTE");
-    expect((error as AppError).context.name).toBe("x onerror=alert(1) y");
+    if (!isAppError(error)) return;
+    expect(error.code).toBe("VIEW_INVALID_ATTRIBUTE");
+    expect(error.context.name).toBe("x onerror=alert(1) y");
   });
 
   test("rejects an attribute name that breaks out of the tag", () => {
@@ -24,7 +39,8 @@ describe("jsx-runtime attribute and tag validation", () => {
       error = caught;
     }
     expect(isAppError(error)).toBe(true);
-    expect((error as AppError).code).toBe("VIEW_INVALID_ATTRIBUTE");
+    if (!isAppError(error)) return;
+    expect(error.code).toBe("VIEW_INVALID_ATTRIBUTE");
   });
 
   test("rejects an invalid tag name", () => {
@@ -35,7 +51,8 @@ describe("jsx-runtime attribute and tag validation", () => {
       error = caught;
     }
     expect(isAppError(error)).toBe(true);
-    expect((error as AppError).code).toBe("VIEW_INVALID_TAG");
+    if (!isAppError(error)) return;
+    expect(error.code).toBe("VIEW_INVALID_TAG");
   });
 
   test("still allows plain, hyphenated, and namespaced names", () => {

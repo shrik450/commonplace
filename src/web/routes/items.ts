@@ -2,6 +2,12 @@ import { Elysia } from "elysia";
 
 import { toIso } from "../../contracts/clock";
 import { AppError } from "../../contracts/errors";
+import {
+  isJsonObject,
+  isStringValue,
+  parseJsonValue,
+  type JsonValue,
+} from "../../contracts/item";
 import { newRequestId } from "../../contracts/ids";
 import { authenticate } from "../../services/auth";
 import { enqueueFetch } from "../../store/queue";
@@ -12,15 +18,15 @@ import { authDeps, toLogin, type WebDeps } from "./deps";
 async function readUrl(request: Request): Promise<string | null> {
   const type = request.headers.get("content-type") ?? "";
   if (type.includes("application/json")) {
-    let body: unknown;
+    let body: JsonValue;
     try {
-      body = await request.json();
+      body = parseJsonValue(await request.text());
     } catch {
       return null;
     }
-    if (typeof body !== "object" || body === null) return null;
-    const url = (body as Record<string, unknown>).url;
-    return typeof url === "string" ? url : null;
+    if (!isJsonObject(body)) return null;
+    const url = body.url;
+    return isStringValue(url) ? url : null;
   }
   const fields = new URLSearchParams(await request.text());
   return fields.get("url");

@@ -37,6 +37,7 @@ history, maintainer count, install scripts, and transitive dependency count.
 | `@tailwindcss/cli` | 4.3.3 | same release train as `tailwindcss` | on next major |
 | `daisyui` | 5.7.17 | 5.7.18 to 5.7.22 shipped in one week; that burst has not settled | when the cadence returns to normal |
 | `oxlint` | 1.79.0 | 1.80.0 was 7 days old at audit | when 1.80.0 passes 14 days |
+| `@oxlint/plugins` | 1.79.0 | Must match the Oxlint version; zero dependencies and no install script | with Oxlint |
 | `typescript` | 7.0.2 | 54 days old, seven maintainers under Microsoft | on next minor |
 | `single-file-cli` | 2.1.3 | 2.6.4 and ten more shipped in one week; 2.1.3 predates the burst | on 2026-09-14, when 2.6.4 ages out |
 | `@types/bun` | 1.4.0 | matches the Bun 1.4.0 runtime; see the note below | with each Bun upgrade |
@@ -105,6 +106,10 @@ Remove it if the CSS build stops using the Tailwind CLI.
 **Three packages publish through one maintainer account.** A compromised
 account for `elysia`, `daisyui`, or `oxlint` could publish a malicious release.
 Exact version pins prevent an automatic upgrade to that release.
+
+`@oxlint/plugins` has one maintainer, no dependencies, and no install script.
+Its exact version must move with `oxlint` because the vendored plugin imports its
+runtime types and compatibility helpers.
 
 ## Later milestones
 

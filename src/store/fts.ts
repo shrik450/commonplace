@@ -63,7 +63,10 @@ export function indexBlocks(
       }
     })();
   } catch (error) {
-    throw translate(error, { item_id: itemId, blocks: blocks.length });
+    if (error instanceof Error) {
+      throw translate(error, { item_id: itemId, blocks: blocks.length });
+    }
+    throw translate(String(error), { item_id: itemId, blocks: blocks.length });
   }
 }
 
@@ -106,6 +109,7 @@ export function searchBlocks(
         rank: row.rank,
       }));
   } catch (error) {
-    throw translate(error, { user_id: userId, query });
+    if (error instanceof Error) throw translate(error, { user_id: userId, query });
+    throw translate(String(error), { user_id: userId, query });
   }
 }

@@ -247,12 +247,6 @@ describe("sanitize", () => {
     }
   });
 
-  test("throws WALK_UNPARSEABLE for a non-string input", () => {
-    const error = caught(() => sanitize(undefined as unknown as string));
-    expect(error).toBeInstanceOf(AppError);
-    expect((error as AppError).code).toBe("WALK_UNPARSEABLE");
-  });
-
   test("throws WALK_UNPARSEABLE for whitespace-only input", () => {
     const error = caught(() => sanitize("   \n\t  "));
     expect(error).toBeInstanceOf(AppError);

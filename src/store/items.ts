@@ -22,7 +22,7 @@ type ItemRow = {
 };
 
 function itemOf(row: ItemRow): Item {
-  return row as Item;
+  return row;
 }
 
 function requireRow(changes: number, userId: UserId, id: ItemId): void {

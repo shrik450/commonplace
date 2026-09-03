@@ -52,11 +52,13 @@ function pathOf(node: Node, root: Element): string {
 }
 
 function contentPaths(doc: Document): Set<string> | null {
+  // SAFETY: cloning a Document preserves its Document node type.
   const clone = doc.cloneNode(true) as Document;
   for (const el of clone.querySelectorAll("*")) {
     el.setAttribute("data-cp-path", pathOf(el, clone.documentElement));
   }
-  const article = new Readability(clone as never).parse();
+  // SAFETY: Readability accepts the cloned jsdom Document used for parsing.
+  const article = new Readability(clone as Document).parse();
   if (!article) return null;
   const kept = new JSDOM(article.content ?? "").window.document;
   const paths = new Set<string>();
@@ -82,10 +84,12 @@ export function walk(sanitizedHtml: string): Transcript {
   const items: Item[] = [];
   const collect = (node: Node, owner: Element, pre: boolean): void => {
     if (node.nodeType === 3) {
+      // SAFETY: nodeType 3 identifies a DOM Text node.
       items.push({ kind: "text", path: pathOf(node, root), raw: (node as Text).data, owner, pre });
       return;
     }
     if (node.nodeType !== 1) return;
+    // SAFETY: nodeType 1 identifies a DOM Element node.
     const el = node as Element;
     const tag = el.tagName.toLowerCase();
     if (tag === "br") {

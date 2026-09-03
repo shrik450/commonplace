@@ -54,6 +54,7 @@ function ownerTag(root: Element, path: string): string {
   let node = nodeAt(root, path);
   while (node) {
     if (node.nodeType === 1) {
+      // SAFETY: nodeType 1 identifies a DOM Element node.
       const tag = (node as Element).tagName.toLowerCase();
       if (BLOCK_SET.has(tag)) return tag;
     }

@@ -5,13 +5,11 @@ import {
 } from "bun:sqlite";
 
 import { AppError } from "../contracts/errors";
+import type { JsonObject } from "../contracts/item";
 
 // Translate SQLite failures at the store boundary. Unique and primary-key
 // violations are conflicts, while other constraints retain a separate code.
-export function translate(
-  error: unknown,
-  context: Record<string, unknown>,
-): AppError {
+export function translate(error: Error | string, context: JsonObject): AppError {
   if (error instanceof SQLiteError) {
     const code = error.code ?? "";
     if (code.includes("CONSTRAINT_UNIQUE") || code.includes("CONSTRAINT_PRIMARYKEY")) {
@@ -25,7 +23,8 @@ export function translate(
     }
     return new AppError("STORE_WRITE_FAILED", error.message, context);
   }
-  return new AppError("STORE_WRITE_FAILED", String(error), context);
+  const message = error instanceof Error ? error.message : String(error);
+  return new AppError("STORE_WRITE_FAILED", message, context);
 }
 
 // Runs one write statement and returns the number of changed rows.
@@ -33,12 +32,13 @@ export function write(
   db: Database,
   sql: string,
   params: SQLQueryBindings[],
-  context: Record<string, unknown>,
+  context: JsonObject,
 ): number {
   try {
     return db.run(sql, params).changes;
   } catch (error) {
-    throw translate(error, context);
+    if (error instanceof Error) throw translate(error, context);
+    throw translate(String(error), context);
   }
 }
 

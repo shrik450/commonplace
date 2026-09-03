@@ -1,9 +1,8 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 
-import { AppError, isAppError } from "../../src/contracts/errors";
+import { isAppError } from "../../src/contracts/errors";
 import type { ErrorCode } from "../../src/contracts/errors";
-import type { Item } from "../../src/contracts/item";
 import type {
   ApiToken,
   FetchRequest,
@@ -104,7 +103,7 @@ function makeBlock(over: Partial<BlockRow> = {}): BlockRow {
 
 // The raw SQLiteError also throws, so "it throws" proves nothing here. The
 // only acceptable shape is an AppError whose code names a STORE_* failure.
-function expectStoreError(fn: () => unknown, code?: ErrorCode): void {
+function expectStoreError(fn: () => void, code?: ErrorCode): void {
   let thrown: unknown;
   try {
     fn();
@@ -112,7 +111,8 @@ function expectStoreError(fn: () => unknown, code?: ErrorCode): void {
     thrown = error;
   }
   expect(isAppError(thrown)).toBe(true);
-  const appError = thrown as AppError;
+  if (!isAppError(thrown)) return;
+  const appError = thrown;
   expect(appError.code.startsWith("STORE_")).toBe(true);
   if (code !== undefined) {
     expect(appError.code).toBe(code);

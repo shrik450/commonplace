@@ -2,7 +2,11 @@ import { Database } from "bun:sqlite";
 
 import { AppError } from "../contracts/errors";
 import type { ItemId, UserId } from "../contracts/ids";
-import type { Annotation, Item } from "../contracts/item";
+import {
+  parseJsonValue,
+  type Annotation,
+  type Item,
+} from "../contracts/item";
 import { validateMap } from "../contracts/transcript";
 import type { TranscriptMap } from "../contracts/transcript";
 import { reanchor } from "../core/anchor";
@@ -44,6 +48,19 @@ export type SearchResult = {
 const HIT_OPEN = "\u0002";
 const HIT_CLOSE = "\u0003";
 
+function readMap(raw: string, textLength: number): TranscriptMap {
+  try {
+    const value = parseJsonValue(raw);
+    validateMap(value, textLength);
+    return value;
+  } catch (error) {
+    if (error instanceof AppError && error.code === "WALK_MAP_MALFORMED") {
+      throw error;
+    }
+    throw new AppError("WALK_MAP_MALFORMED", "the stored map is malformed");
+  }
+}
+
 export function listLibrary(
   deps: LibraryDeps,
   userId: UserId,
@@ -76,8 +93,7 @@ export async function loadTranscript(
     readItemFile(deps.itemsRoot, userId, itemId, "map.json"),
   ]);
 
-  const map = JSON.parse(raw) as TranscriptMap;
-  validateMap(map, transcript.length);
+  const map = readMap(raw, transcript.length);
   return { item, transcript, map, sanitized };
 }
 

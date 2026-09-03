@@ -13,8 +13,8 @@ function fakeTable(name: string, columns: string[]): TableInfo {
 }
 
 function schemaTables(): TableInfo[] {
-  return Object.entries(EXPECTED_COLUMNS).map(([name, columns]) =>
-    fakeTable(name, [...columns]),
+  return Object.entries(EXPECTED_COLUMNS).flatMap(([name, columns]) =>
+    columns === undefined ? [] : [fakeTable(name, [...columns])],
   );
 }
 

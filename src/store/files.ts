@@ -21,6 +21,10 @@ export type ItemFile =
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+function isMissingFile(error: Error): boolean {
+  return "code" in error && error.code === "ENOENT";
+}
+
 let tempCounter = 0;
 
 function checkId(value: string, label: string): void {
@@ -92,7 +96,7 @@ export async function readItemFile(
   try {
     return await readFile(path, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    if (error instanceof Error && isMissingFile(error)) {
       throw new AppError("STORE_NOT_FOUND", `no such file: ${path}`, {
         path,
       });
@@ -110,7 +114,7 @@ export async function sweepOrphans(
   try {
     userDirs = await readdir(itemsRoot);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (error instanceof Error && isMissingFile(error)) return [];
     throw error;
   }
 

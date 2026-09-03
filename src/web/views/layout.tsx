@@ -1,3 +1,4 @@
+import type { Child } from "./jsx-runtime";
 // Keep interactive state in these class strings so the UI invariant can check
 // the rendered markup.
 const FOCUS =
@@ -17,7 +18,7 @@ export const FIELD = `bg-transparent py-1 text-sm outline-none placeholder:text-
 
 // Renders the standard page heading. The home and reader views use larger
 // headings.
-export function PageHeading({ children }: { children?: unknown }) {
+export function PageHeading({ children }: { children?: Child }) {
   return (
     <h1 class="font-reading mb-6 text-2xl leading-tight text-pretty">
       {children}
@@ -28,7 +29,7 @@ export function PageHeading({ children }: { children?: unknown }) {
 export type LayoutProps = {
   title: string;
   query?: string;
-  children?: unknown;
+  children?: Child;
 };
 
 function SearchIcon() {
@@ -151,7 +152,7 @@ export function ErrorPage({
   );
 }
 
-export function page(node: unknown, status = 200): Response {
+export function page(node: Child, status = 200): Response {
   return new Response(`<!DOCTYPE html>${String(node)}`, {
     status,
     headers: { "content-type": "text/html; charset=utf-8" },

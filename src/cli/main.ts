@@ -274,7 +274,8 @@ if (import.meta.main) {
   try {
     process.exit(await run(argv));
   } catch (error) {
-    console.error(toLogLine("error", error));
+    const event = error instanceof Error ? error : String(error);
+    console.error(toLogLine("error", event));
     process.exit(1);
   }
 }

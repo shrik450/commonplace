@@ -4,6 +4,14 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { addMs, isBefore, parseIso, toIso } from "../contracts/clock";
 import type { Config } from "../contracts/config";
 import { AppError } from "../contracts/errors";
+import {
+  isJsonObject,
+  isNumberValue,
+  isStringValue,
+  parseJsonValue,
+  type JsonObject,
+  type JsonValue,
+} from "../contracts/item";
 import type { TokenId, UserId } from "../contracts/ids";
 import { asUserId, newSecret, newTokenId, newUserId } from "../contracts/ids";
 import type { ApiToken, User } from "../contracts/item";
@@ -28,6 +36,8 @@ export type Endpoints = {
   authorization_endpoint: string;
   token_endpoint: string;
 };
+export type LoginStart = { redirectUrl: string; setCookie: string };
+export type ApiTokenResult = { token: ApiToken; secret: string };
 
 function attributes(maxAgeSeconds: number): string {
   return `Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}`;
@@ -40,12 +50,14 @@ const CLEAR_COOKIE_MAX_AGE_SECONDS = 0;
 // reused.
 export const CLEAR_LOGIN_COOKIE = `${LOGIN_COOKIE}=; ${attributes(CLEAR_COOKIE_MAX_AGE_SECONDS)}`;
 
-function requiredDiscoveryField(
-  record: Record<string, unknown>,
-  name: string,
-): string {
+function stringField(record: JsonObject, name: string): string | null {
   const value = record[name];
-  if (typeof value !== "string" || value === "") {
+  return isStringValue(value) ? value : null;
+}
+
+function requiredDiscoveryField(record: JsonObject, name: string): string {
+  const value = stringField(record, name);
+  if (value === null || value === "") {
     throw new AppError(
       "AUTH_ISSUER_MISMATCH",
       `the discovery document names no ${name}`,
@@ -60,7 +72,7 @@ function sha256Hex(value: string): string {
 
 export function signPayload(
   secret: string,
-  payload: Record<string, unknown>,
+  payload: JsonObject,
 ): string {
   const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   const signature = createHmac("sha256", secret).update(body).digest("base64url");
@@ -71,7 +83,7 @@ export function verifyPayload(
   secret: string,
   value: string,
   now: Date,
-): Record<string, unknown> | null {
+): JsonObject | null {
   const dot = value.indexOf(".");
   if (dot <= 0 || dot === value.length - 1) return null;
   const body = value.slice(0, dot);
@@ -83,17 +95,16 @@ export function verifyPayload(
   if (given.length !== expected.length) return null;
   if (!timingSafeEqual(given, expected)) return null;
 
-  let payload: unknown;
+  let payload: JsonValue;
   try {
-    payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    payload = parseJsonValue(Buffer.from(body, "base64url").toString("utf8"));
   } catch {
     return null;
   }
-  if (typeof payload !== "object" || payload === null) return null;
+  if (!isJsonObject(payload)) return null;
 
-  const record = payload as Record<string, unknown>;
-  const exp = record.exp;
-  if (typeof exp !== "string") return null;
+  const exp = stringField(payload, "exp");
+  if (exp === null) return null;
   let expiresAt: Date;
   try {
     expiresAt = parseIso(exp);
@@ -101,7 +112,7 @@ export function verifyPayload(
     return null;
   }
   if (!isBefore(now, expiresAt)) return null;
-  return record;
+  return payload;
 }
 
 export async function discover(
@@ -109,7 +120,7 @@ export async function discover(
   fetchImpl: typeof fetch = fetch,
 ): Promise<Endpoints> {
   const url = `${config.issuer_url}/.well-known/openid-configuration`;
-  let document: unknown;
+  let document: JsonValue;
   try {
     const response = await fetchImpl(url);
     if (!response.ok) {
@@ -118,7 +129,7 @@ export async function discover(
         "the identity provider returned an error",
       );
     }
-    document = await response.json();
+    document = parseJsonValue(await response.text());
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError(
@@ -127,7 +138,13 @@ export async function discover(
     );
   }
 
-  const record = (document ?? {}) as Record<string, unknown>;
+  if (!isJsonObject(document)) {
+    throw new AppError(
+      "AUTH_ISSUER_MISMATCH",
+      "the discovery document is not a JSON object",
+    );
+  }
+  const record = document;
   const endpoints = {
     issuer: requiredDiscoveryField(record, "issuer"),
     authorization_endpoint: requiredDiscoveryField(
@@ -170,7 +187,7 @@ export function startLogin(
   endpoints: Endpoints,
   redirectUri: string,
   now: Date,
-): { redirectUrl: string; setCookie: string } {
+): LoginStart {
   const state = newSecret(32);
   const nonce = newSecret(32);
   const codeVerifier = newSecret(32);
@@ -209,7 +226,7 @@ function readCookie(header: string | null, name: string): string | null {
   return null;
 }
 
-function claimsOf(idToken: string): Record<string, unknown> {
+function claimsOf(idToken: string): JsonObject {
   // Don't verify the signature for this authorization code flow. OpenID
   // Connect Core 3.1.3.7, item 6, permits TLS server validation when the ID
   // token comes directly from the pinned token endpoint. Tokens received from
@@ -219,16 +236,16 @@ function claimsOf(idToken: string): Record<string, unknown> {
     throw new AppError("AUTH_TOKEN_INVALID", "the identity token is malformed");
   }
   const json = Buffer.from(parts[1]!, "base64url").toString("utf8");
-  let parsed: unknown;
+  let parsed: JsonValue;
   try {
-    parsed = JSON.parse(json);
+    parsed = parseJsonValue(json);
   } catch {
     throw new AppError("AUTH_TOKEN_INVALID", "the identity token is malformed");
   }
-  if (typeof parsed !== "object" || parsed === null) {
+  if (!isJsonObject(parsed)) {
     throw new AppError("AUTH_TOKEN_INVALID", "the identity token is malformed");
   }
-  return parsed as Record<string, unknown>;
+  return parsed;
 }
 
 export async function completeLogin(params: {
@@ -249,7 +266,16 @@ export async function completeLogin(params: {
     throw new AppError("AUTH_STATE_MISMATCH", "the login could not be matched");
   }
   const returnedState = url.searchParams.get("state");
-  if (!returnedState || returnedState !== attempt.state) {
+  const expectedState = stringField(attempt, "state");
+  const expectedNonce = stringField(attempt, "nonce");
+  const codeVerifier = stringField(attempt, "code_verifier");
+  if (
+    returnedState === null ||
+    expectedState === null ||
+    expectedNonce === null ||
+    codeVerifier === null ||
+    returnedState !== expectedState
+  ) {
     throw new AppError("AUTH_STATE_MISMATCH", "the login could not be matched");
   }
   const code = url.searchParams.get("code");
@@ -267,10 +293,10 @@ export async function completeLogin(params: {
     redirect_uri: redirectUri,
     client_id: config.client_id,
     client_secret: config.client_secret,
-    code_verifier: String(attempt.code_verifier),
+    code_verifier: codeVerifier,
   });
 
-  let payload: Record<string, unknown>;
+  let payload: JsonValue;
   try {
     const response = await fetchImpl(endpoints.token_endpoint, {
       method: "POST",
@@ -283,14 +309,17 @@ export async function completeLogin(params: {
         "the identity provider rejected the authorization code",
       );
     }
-    payload = (await response.json()) as Record<string, unknown>;
+    payload = parseJsonValue(await response.text());
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError("AUTH_EXCHANGE_FAILED", "the token request failed");
   }
 
-  const idToken = payload.id_token;
-  if (typeof idToken !== "string") {
+  if (!isJsonObject(payload)) {
+    throw new AppError("AUTH_TOKEN_INVALID", "the token response is not a JSON object");
+  }
+  const idToken = stringField(payload, "id_token");
+  if (idToken === null) {
     throw new AppError("AUTH_TOKEN_INVALID", "the token response contains no ID token");
   }
   const claims = claimsOf(idToken);
@@ -298,7 +327,7 @@ export async function completeLogin(params: {
   // Validate the required OpenID Connect claims in specification order.
   const claimRules: {
     claim: string;
-    holds: (value: unknown) => boolean;
+    holds: (value: JsonValue | undefined) => boolean;
     error: "AUTH_ISSUER_MISMATCH" | "AUTH_TOKEN_INVALID" | "AUTH_TOKEN_EXPIRED";
     because: string;
   }[] = [
@@ -319,19 +348,19 @@ export async function completeLogin(params: {
     {
       claim: "exp",
       holds: (value) =>
-        typeof value === "number" && value * 1000 > now.getTime(),
+        isNumberValue(value) && value * 1000 > now.getTime(),
       error: "AUTH_TOKEN_EXPIRED",
       because: "the ID token has expired",
     },
     {
       claim: "nonce",
-      holds: (value) => value === attempt.nonce,
+      holds: (value) => value === expectedNonce,
       error: "AUTH_TOKEN_INVALID",
       because: "the ID token nonce doesn't match the login request",
     },
     {
       claim: "sub",
-      holds: (value) => typeof value === "string" && value !== "",
+      holds: (value) => isStringValue(value) && value !== "",
       error: "AUTH_TOKEN_INVALID",
       because: "the ID token has no subject",
     },
@@ -341,9 +370,12 @@ export async function completeLogin(params: {
       throw new AppError(rule.error, rule.because);
     }
   }
-  const subject = claims.sub as string;
+  const subject = stringField(claims, "sub");
+  if (subject === null) {
+    throw new AppError("AUTH_TOKEN_INVALID", "the ID token has no subject");
+  }
 
-  const email = typeof claims.email === "string" ? claims.email : null;
+  const email = stringField(claims, "email");
   const existing = getUserBySubject(db, subject);
   const user =
     existing ??
@@ -368,7 +400,7 @@ export function createApiToken(
   userId: UserId,
   name: string,
   now: Date,
-): { token: ApiToken; secret: string } {
+): ApiTokenResult {
   const secret = newSecret(32);
   const token = insertApiToken(db, {
     id: newTokenId(),
@@ -411,12 +443,13 @@ export async function authenticate(
     throw new AppError("AUTH_REQUIRED", "this route needs a signed-in reader");
   }
   const payload = verifyPayload(config.session_secret, cookie, now);
-  if (!payload || typeof payload.user_id !== "string") {
+  const userIdValue = payload ? stringField(payload, "user_id") : null;
+  if (userIdValue === null) {
     throw new AppError("AUTH_TOKEN_INVALID", "the credential was rejected");
   }
   let userId: UserId;
   try {
-    userId = asUserId(payload.user_id);
+    userId = asUserId(userIdValue);
   } catch {
     throw new AppError("AUTH_TOKEN_INVALID", "the credential was rejected");
   }

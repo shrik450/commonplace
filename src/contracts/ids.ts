@@ -26,27 +26,28 @@ function brandOf<K extends string>(kind: K, value: string): Branded<K> {
       [kind]: value,
     });
   }
+  // SAFETY: UUID_PATTERN accepted this value as the lowercase UUID for kind K.
   return value as Branded<K>;
 }
 
 export function newUserId(): UserId {
-  return Bun.randomUUIDv7() as UserId;
+  return brandOf("UserId", Bun.randomUUIDv7());
 }
 
 export function newItemId(): ItemId {
-  return Bun.randomUUIDv7() as ItemId;
+  return brandOf("ItemId", Bun.randomUUIDv7());
 }
 
 export function newAnnotationId(): AnnotationId {
-  return Bun.randomUUIDv7() as AnnotationId;
+  return brandOf("AnnotationId", Bun.randomUUIDv7());
 }
 
 export function newTokenId(): TokenId {
-  return Bun.randomUUIDv7() as TokenId;
+  return brandOf("TokenId", Bun.randomUUIDv7());
 }
 
 export function newRequestId(): RequestId {
-  return Bun.randomUUIDv7() as RequestId;
+  return brandOf("RequestId", Bun.randomUUIDv7());
 }
 
 export function asUserId(value: string): UserId {

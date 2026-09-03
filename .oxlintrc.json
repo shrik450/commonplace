@@ -1,7 +1,0 @@
-{
-  "categories": {
-    "correctness": "error",
-    "suspicious": "error"
-  },
-  "ignorePatterns": ["node_modules/**", "public/**", "test/acceptance/**"]
-}

@@ -43,7 +43,7 @@ function badRequest(): Response {
   );
 }
 
-function missing(error: unknown): boolean {
+function missing(error: Error): boolean {
   return error instanceof AppError && error.code === "STORE_NOT_FOUND";
 }
 
@@ -73,7 +73,7 @@ export function itemRoutes(deps: WebDeps) {
           />,
         );
       } catch (error) {
-        if (missing(error)) return notFound();
+        if (error instanceof Error && missing(error)) return notFound();
         throw error;
       }
     })
@@ -96,7 +96,7 @@ export function itemRoutes(deps: WebDeps) {
           headers: { "content-type": "text/plain; charset=utf-8" },
         });
       } catch (error) {
-        if (missing(error)) return notFound();
+        if (error instanceof Error && missing(error)) return notFound();
         throw error;
       }
     })
@@ -124,7 +124,7 @@ export function itemRoutes(deps: WebDeps) {
           },
         });
       } catch (error) {
-        if (missing(error)) return notFound();
+        if (error instanceof Error && missing(error)) return notFound();
         throw error;
       }
     });

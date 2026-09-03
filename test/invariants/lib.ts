@@ -133,9 +133,9 @@ export function checkPurity(edges: ImportEdge[]): Violation[] {
     const impureModule = IMPURE_MODULES.some(
       (mod) => edge.to === mod || edge.to.startsWith(`${mod}/`),
     );
-    const impureLayer = IMPURE_LAYERS.includes(
-      layerOf(resolveTarget(edge)) as Layer,
-    );
+    const impureTarget = layerOf(resolveTarget(edge));
+    const impureLayer =
+      impureTarget !== null && IMPURE_LAYERS.includes(impureTarget);
     if (impureModule || impureLayer) {
       violations.push({
         file: edge.from,
@@ -405,7 +405,17 @@ export type SchemaViolation = {
 // The exact column set of every non-exempt table, taken from the version 1
 // schema in src/store/db.ts. Each value is sorted. Adding or dropping a
 // column is a schema change and must land here in the same change.
-export const EXPECTED_COLUMNS: Record<string, readonly string[]> = {
+type ExpectedColumns = {
+  readonly [table: string]: readonly string[] | undefined;
+};
+
+function defineExpectedColumns<const T extends ExpectedColumns>(
+  entries: T,
+): T & ExpectedColumns {
+  return entries;
+}
+
+export const EXPECTED_COLUMNS = defineExpectedColumns({
   migrations: ["applied_at", "version"],
   users: ["created_at", "email", "id", "subject"],
   api_tokens: ["created_at", "id", "last_used_at", "name", "token_hash", "user_id"],
@@ -441,7 +451,7 @@ export const EXPECTED_COLUMNS: Record<string, readonly string[]> = {
     "text",
     "user_id",
   ],
-};
+} satisfies ExpectedColumns);
 
 const SQLITE_PREFIX = "sqlite_";
 const FTS_SHADOW_SUFFIXES = ["_data", "_idx", "_content", "_docsize", "_config"];

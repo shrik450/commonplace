@@ -26,7 +26,7 @@ import { join } from "node:path";
 
 import { now, toIso } from "../../src/contracts/clock";
 import type { Config } from "../../src/contracts/config";
-import { AppError } from "../../src/contracts/errors";
+import { AppError, isAppError } from "../../src/contracts/errors";
 import {
   asUserId,
   newAnnotationId,
@@ -518,6 +518,29 @@ describe("src/services/library", () => {
     expect(loaded.item.title).toBe("The Analytical Engine");
     expect(loaded.transcript).toBe(env.transcript);
     expect(loaded.map.runs).toEqual(env.map.runs);
+  });
+
+  test("malformed stored maps always produce WALK_MAP_MALFORMED", async () => {
+    const env = await freshEnv("load-malformed-map");
+    const malformedMaps = [
+      "{",
+      "{}",
+      '{"runs":null}',
+      '{"runs":[null]}',
+      JSON.stringify({ runs: [{ ...env.map.runs[0]!, node_path: null }] }),
+      JSON.stringify({ runs: [{ ...env.map.runs[0]!, node_path: 42 }] }),
+      JSON.stringify({ runs: [{ ...env.map.runs[0]!, node_path: {} }] }),
+    ];
+
+    for (const map of malformedMaps) {
+      await writeItemFile(env.itemsRoot, ALICE, env.itemId, "map.json", map);
+      const failure = await loadTranscript(env.deps, ALICE, env.itemId).catch(
+        (error: unknown) => error,
+      );
+      expect(isAppError(failure)).toBe(true);
+      if (!isAppError(failure)) continue;
+      expect(failure.code).toBe("WALK_MAP_MALFORMED");
+    }
   });
 
   test("another tenant cannot load the item", async () => {

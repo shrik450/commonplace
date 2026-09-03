@@ -9,11 +9,9 @@ export function libraryDeps(deps: WebDeps): LibraryDeps {
   return { db: deps.db, itemsRoot: deps.config.items_root };
 }
 
-export function authDeps(deps: WebDeps): {
-  db: Database;
-  config: Config;
-  now: Date;
-} {
+export type AuthDeps = { db: Database; config: Config; now: Date };
+
+export function authDeps(deps: WebDeps): AuthDeps {
   return { db: deps.db, config: deps.config, now: deps.now() };
 }
 

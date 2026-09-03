@@ -6,6 +6,27 @@ import type {
   UserId,
 } from "./ids";
 
+export type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
+export type JsonObject = { readonly [key: string]: JsonValue | undefined };
+
+// JSON.parse returns valid JSON values by definition; this named boundary type
+// prevents untrusted JSON from leaking as an unbounded object.
+export function parseJsonValue(text: string): JsonValue {
+  // SAFETY: JSON.parse accepts only JSON primitives, arrays, and objects, which match JsonValue.
+  return JSON.parse(text) as JsonValue;
+}
+
+export function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return value !== null && !Array.isArray(value) && Object(value) === value;
+}
+
+export function isStringValue(value: JsonValue | undefined): value is string {
+  return typeof value === "string";
+}
+
+export function isNumberValue(value: JsonValue | undefined): value is number {
+  return typeof value === "number";
+}
 export type FetchState = "queued" | "claimed" | "done" | "failed";
 
 export type Item = {

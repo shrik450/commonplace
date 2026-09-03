@@ -25,6 +25,16 @@ export function blocksOf(map: TranscriptMap): TranscriptBlock[] {
   return blocks;
 }
 
+type MapObject = { readonly runs?: unknown };
+type RunObject = {
+  readonly start?: unknown;
+  readonly end?: unknown;
+  readonly doc_index?: unknown;
+  readonly node_path?: unknown;
+  readonly block_index?: unknown;
+  readonly is_content?: unknown;
+};
+
 function malformed(message: string, index?: number): AppError {
   return new AppError(
     "WALK_MAP_MALFORMED",
@@ -33,8 +43,37 @@ function malformed(message: string, index?: number): AppError {
   );
 }
 
-export function validateMap(map: TranscriptMap, textLength: number): void {
-  if (map.runs.length === 0) {
+function isMapObject(value: unknown): value is MapObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isRunObject(value: unknown): value is RunObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isInteger(value: unknown): value is number {
+  return Number.isInteger(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return isInteger(value) && value >= 0;
+}
+
+export function validateMap(
+  value: unknown,
+  textLength: number,
+): asserts value is TranscriptMap {
+  if (!isMapObject(value)) {
+    throw malformed("map must be an object");
+  }
+  const runs = value.runs;
+  if (!Array.isArray(runs)) {
+    throw malformed("map must contain a runs array");
+  }
+  if (!Number.isInteger(textLength) || textLength < 0) {
+    throw malformed("text length must be a non-negative integer");
+  }
+  if (runs.length === 0) {
     if (textLength > 0) {
       throw malformed("a map with no runs can't cover nonempty text");
     }
@@ -43,52 +82,69 @@ export function validateMap(map: TranscriptMap, textLength: number): void {
 
   let cursor = 0;
   let blockIndex = 0;
-  for (let i = 0; i < map.runs.length; i += 1) {
-    const run = map.runs[i]!;
-    if (!Number.isInteger(run.doc_index) || run.doc_index < 0) {
+  for (let i = 0; i < runs.length; i += 1) {
+    const candidate = runs[i];
+    if (!isRunObject(candidate)) {
+      throw malformed(`run ${i} must be an object`, i);
+    }
+    const start = candidate.start;
+    if (!isNonNegativeInteger(start)) {
+      throw malformed(`run ${i} has an invalid start`, i);
+    }
+    const end = candidate.end;
+    if (!isNonNegativeInteger(end)) {
+      throw malformed(`run ${i} has an invalid end`, i);
+    }
+    const docIndex = candidate.doc_index;
+    if (!isNonNegativeInteger(docIndex)) {
       throw malformed(
-        `run ${i} has doc_index ${String(run.doc_index)}; expected a non-negative integer`,
+        `run ${i} has doc_index ${String(docIndex)}; expected a non-negative integer`,
         i,
       );
     }
-    if (!Number.isInteger(run.block_index) || run.block_index < 0) {
+    const currentBlockIndex = candidate.block_index;
+    if (!isNonNegativeInteger(currentBlockIndex)) {
       throw malformed(
-        `run ${i} has block_index ${String(run.block_index)}; expected a non-negative integer`,
+        `run ${i} has block_index ${String(currentBlockIndex)}; expected a non-negative integer`,
         i,
       );
     }
-    if (run.block_index < blockIndex) {
+    if (currentBlockIndex < blockIndex) {
       throw malformed(
-        `run ${i} has block_index ${run.block_index} after ${blockIndex}; it must never decrease`,
+        `run ${i} has block_index ${currentBlockIndex} after ${blockIndex}; it must never decrease`,
         i,
       );
     }
-    blockIndex = run.block_index;
-    if (typeof run.node_path !== "string") {
+    blockIndex = currentBlockIndex;
+    const nodePath = candidate.node_path;
+    if (typeof nodePath !== "string") {
       throw malformed(
-        `run ${i} has a ${typeof run.node_path} node_path; expected a string`,
+        `run ${i} has a ${nodePath === null ? "null" : typeof nodePath} node_path; expected a string`,
         i,
       );
     }
-    if (run.end <= run.start) {
+    if (typeof candidate.is_content !== "boolean") {
+      throw malformed(`run ${i} has an invalid is_content`, i);
+    }
+    if (end <= start) {
       throw malformed(
-        `run ${i} spans ${run.start}..${run.end}; end must exceed start`,
+        `run ${i} spans ${start}..${end}; end must exceed start`,
         i,
       );
     }
-    if (run.start !== cursor) {
+    if (start !== cursor) {
       throw malformed(
-        `run ${i} starts at ${run.start} but the text up to ${cursor} is tiled`,
+        `run ${i} starts at ${start} but the text up to ${cursor} is tiled`,
         i,
       );
     }
-    cursor = run.end;
+    cursor = end;
   }
 
   if (cursor !== textLength) {
     throw malformed(
       `runs end at ${cursor} but the text length is ${textLength}`,
-      map.runs.length - 1,
+      runs.length - 1,
     );
   }
 }

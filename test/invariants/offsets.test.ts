@@ -25,7 +25,10 @@ async function parsedGolden(name: string): Promise<{ text: string; runs: Run[] }
   const runs = raw
     .split("\n")
     .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as Run);
+    .map((line) => {
+      // SAFETY: each golden map line is written from a Run value.
+      return JSON.parse(line) as Run;
+    });
   return { text, runs };
 }
 

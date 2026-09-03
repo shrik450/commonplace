@@ -3,6 +3,7 @@ import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isAppError } from "../../src/contracts/errors";
+import type { JsonObject } from "../../src/contracts/item";
 import {
   BLOCKED_URL_PATTERNS,
   buildArgs,
@@ -99,7 +100,7 @@ describe("capture with an injected binary", () => {
       `echo "browser exploded" >&2\nexit 3`,
     );
     let code: string | undefined;
-    let context: Record<string, unknown> = {};
+    let context: JsonObject = {};
     try {
       await capture({ url, outputPath, binaryPath, browserPath });
     } catch (error) {

@@ -57,7 +57,7 @@ export function claimNext(
         .get(leaseExpiresAt) ?? null
     );
   } catch (error) {
-    throw translate(error, {});
+    throw translate(error instanceof Error ? error : String(error), {});
   }
 }
 
@@ -81,7 +81,7 @@ export function claimRequest(
         .get(leaseExpiresAt, id) ?? null
     );
   } catch (error) {
-    throw translate(error, {});
+    throw translate(error instanceof Error ? error : String(error), {});
   }
 }
 
@@ -200,6 +200,6 @@ export function sweepStaleLeases(
   try {
     return sweep.immediate();
   } catch (error) {
-    throw translate(error, {});
+    throw translate(error instanceof Error ? error : String(error), {});
   }
 }

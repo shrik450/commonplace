@@ -61,12 +61,14 @@ const CONFIG = {
   ALLOW_ARIA_ATTR: false,
 };
 
+const purifierWindow = new JSDOM("").window;
+// SAFETY: jsdom's window implements the DOMPurify window interface.
 const purifier = createDOMPurify(
-  new JSDOM("").window as unknown as Parameters<typeof createDOMPurify>[0],
+  purifierWindow as Parameters<typeof createDOMPurify>[0],
 );
 
 export function sanitize(html: string): string {
-  if (typeof html !== "string" || html.trim() === "") {
+  if (html.trim() === "") {
     throw new AppError("WALK_UNPARSEABLE", "the HTML input is empty");
   }
   return `<!DOCTYPE html>\n${purifier.sanitize(html, CONFIG)}`;

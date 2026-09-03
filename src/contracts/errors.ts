@@ -1,3 +1,5 @@
+import type { JsonObject } from "./item";
+
 export const ERROR_CODES = [
   "CONFIG_FILE_MISSING",
   "CONFIG_FILE_UNREADABLE",
@@ -38,16 +40,13 @@ export const ERROR_CODES = [
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
+export type ErrorEvent = AppError | Error | string;
 
 export class AppError extends Error {
   readonly code: ErrorCode;
-  readonly context: Record<string, unknown>;
+  readonly context: JsonObject;
 
-  constructor(
-    code: ErrorCode,
-    message: string,
-    context: Record<string, unknown> = {},
-  ) {
+  constructor(code: ErrorCode, message: string, context: JsonObject = {}) {
     super(message);
     this.name = "AppError";
     this.code = code;
@@ -61,12 +60,12 @@ export function isAppError(value: unknown): value is AppError {
 
 export function toLogLine(
   level: "info" | "warn" | "error",
-  event: unknown,
-  extra: Record<string, unknown> = {},
+  event: ErrorEvent,
+  extra: JsonObject = {},
 ): string {
   let code = "UNKNOWN";
   let msg: string;
-  let context: Record<string, unknown> = {};
+  let context: JsonObject = {};
   if (event instanceof AppError) {
     code = event.code;
     msg = event.message;
@@ -74,7 +73,7 @@ export function toLogLine(
   } else if (event instanceof Error) {
     msg = event.message;
   } else {
-    msg = String(event);
+    msg = event;
   }
   return JSON.stringify({ level, code, msg, ...context, ...extra });
 }

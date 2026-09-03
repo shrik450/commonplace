@@ -8,7 +8,7 @@
 // 3. Three exports in `test/invariants/lib.ts`:
 //
 //      export type SchemaViolation = { table: string; rule: string; detail: string };
-//      export const EXPECTED_COLUMNS: Record<string, readonly string[]>;
+//      export const EXPECTED_COLUMNS: Record<string, readonly string[] | undefined>;
 //      export function checkTenancy(tables: TableInfo[]): SchemaViolation[];
 //      export function checkNoPositionsInDb(tables: TableInfo[]): SchemaViolation[];
 //
@@ -192,11 +192,14 @@ function fakeShadowTables(name: string): TableInfo[] {
 }
 
 function schemaTables(): TableInfo[] {
-  return Object.entries(EXPECTED_COLUMNS).map(([name, columns]) =>
-    name === "blocks_fts"
-      ? fakeFtsTable(name, [...columns])
-      : fakeTable(name, [...columns]),
-  );
+  return Object.entries(EXPECTED_COLUMNS).flatMap(([name, columns]) => {
+    if (columns === undefined) return [];
+    return [
+      name === "blocks_fts"
+        ? fakeFtsTable(name, [...columns])
+        : fakeTable(name, [...columns]),
+    ];
+  });
 }
 
 function detailOf(violations: SchemaViolation[]): string {
@@ -958,10 +961,11 @@ describe("invariant 10: determinism", () => {
 describe("src/store/db translate", () => {
   // `translate` returns `AppError`, so `return error` doesn't compile. Verify
   // that a read-only database can't expose a raw `SQLiteError` from L2.
-  function sqliteFailure(run: (db: Database) => void): unknown {
+  function sqliteFailure(run: (db: Database) => void): Error | string {
     const db = migratedMemoryDb();
     try {
-      return caught(() => run(db));
+      const error = caught(() => run(db));
+      return error instanceof Error ? error : String(error);
     } finally {
       db.close();
     }

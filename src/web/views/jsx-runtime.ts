@@ -34,11 +34,16 @@ class HtmlNode {
 }
 
 export type { HtmlNode };
+export type Child = HtmlNode | Child[] | string | number | boolean | null | undefined;
+type AttributeProps = { readonly [key: string]: Child };
+type FragmentProps = { readonly children?: Child };
+
+type Component<P> = (props: P) => Child;
 
 export const Fragment: unique symbol = Symbol("Fragment");
 
-function renderChild(child: unknown): string {
-  if (child === null || child === undefined || typeof child === "boolean") {
+function renderChild(child: Child): string {
+  if (child === null || child === undefined || child === true || child === false) {
     return "";
   }
   if (child instanceof HtmlNode) return child.toString();
@@ -46,10 +51,7 @@ function renderChild(child: unknown): string {
   return Bun.escapeHTML(String(child));
 }
 
-function renderElement(
-  tag: string,
-  props: Record<string, unknown>,
-): string {
+function renderElement(tag: string, props: AttributeProps): string {
   if (!NAME_PATTERN.test(tag)) {
     throw new AppError("VIEW_INVALID_TAG", `invalid tag name "${tag}"`, {
       tag,
@@ -75,19 +77,28 @@ function renderElement(
   return `<${tag}${attributes}>${renderChild(props.children)}</${tag}>`;
 }
 
-export function jsx(
-  type: string | typeof Fragment | ((props: never) => unknown),
-  props: Record<string, unknown>,
-): HtmlNode {
-  if (type === Fragment) {
-    return new HtmlNode(renderChild(props.children));
+type JsxArguments<P> =
+  | [type: typeof Fragment, props: FragmentProps]
+  | [type: string, props: AttributeProps]
+  | [type: Component<P>, props: P];
+
+function isComponentCall<P>(
+  args: JsxArguments<P>,
+): args is [type: Component<P>, props: P] {
+  return typeof args[0] === "function";
+}
+
+export function jsx(type: typeof Fragment, props: FragmentProps): HtmlNode;
+export function jsx(type: string, props: AttributeProps): HtmlNode;
+export function jsx<P>(type: Component<P>, props: P): HtmlNode;
+export function jsx<P>(...args: JsxArguments<P>): HtmlNode {
+  if (args[0] === Fragment) {
+    return new HtmlNode(renderChild(args[1].children));
   }
-  if (typeof type === "function") {
-    const rendered = (type as (props: unknown) => unknown)(props);
-    // `renderChild` handles a component result, including arrays and empty values.
-    return new HtmlNode(renderChild(rendered));
+  if (isComponentCall(args)) {
+    return new HtmlNode(renderChild(args[0](args[1])));
   }
-  return new HtmlNode(renderElement(type, props));
+  return new HtmlNode(renderElement(args[0], args[1]));
 }
 
 export const jsxs = jsx;
@@ -99,12 +110,9 @@ export function raw(html: string): HtmlNode {
 export namespace JSX {
   export type Element = HtmlNode;
   export interface IntrinsicElements {
-    [element: string]: {
-      [attribute: string]: unknown;
-      children?: unknown;
-    };
+    [element: string]: AttributeProps;
   }
   export interface ElementChildrenAttribute {
-    children: unknown;
+    children: Child;
   }
 }

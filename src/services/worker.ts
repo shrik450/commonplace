@@ -140,8 +140,9 @@ export function startWorker(deps: WorkerDeps): Worker {
   let alive = true;
 
   const finished = runWorker(deps, controller.signal)
-    .catch((error: unknown) => {
-      console.error(toLogLine("error", error));
+    .catch((error) => {
+      const event = error instanceof Error ? error : String(error);
+      console.error(toLogLine("error", event));
     })
     .finally(() => {
       alive = false;

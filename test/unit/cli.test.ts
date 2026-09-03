@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { ingestCommand } from "../../src/cli/main";
 import { now } from "../../src/contracts/clock";
 import { asUserId } from "../../src/contracts/ids";
+import { isAppError } from "../../src/contracts/errors";
 import { openDatabase } from "../../src/store/db";
 import { insertUser } from "../../src/store/users";
 import type { CaptureRequest } from "../../src/services/acquire";
@@ -54,7 +55,9 @@ describe("ingestCommand", () => {
     } catch (error) {
       caught = error;
     }
-    expect((caught as { code?: string }).code).toBe("CLI_BAD_ARGUMENT");
+    expect(isAppError(caught)).toBe(true);
+    if (!isAppError(caught)) return;
+    expect(caught.code).toBe("CLI_BAD_ARGUMENT");
   });
 
   test("fails with CLI_BAD_ARGUMENT when --user is not a UUID", async () => {
@@ -64,7 +67,9 @@ describe("ingestCommand", () => {
     } catch (error) {
       caught = error;
     }
-    expect((caught as { code?: string }).code).toBe("CLI_BAD_ARGUMENT");
+    expect(isAppError(caught)).toBe(true);
+    if (!isAppError(caught)) return;
+    expect(caught.code).toBe("CLI_BAD_ARGUMENT");
   });
 
   test("enqueues a request, drains it, and prints the item id", async () => {
@@ -91,6 +96,7 @@ describe("ingestCommand", () => {
     expect(exitCode).toBe(0);
     // Logs are diagnostics on stderr; stdout holds only the command's answer.
     expect(lines).toHaveLength(1);
+    // SAFETY: ingestCommand writes a JSON object with item_id and state in JSON mode.
     const printed = JSON.parse(lines[0]!) as { item_id: string; state: string };
     expect(printed.state).toBe("done");
 
