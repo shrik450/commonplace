@@ -11,7 +11,7 @@ import { validateMap } from "../contracts/transcript";
 import type { TranscriptMap } from "../contracts/transcript";
 import { reanchor } from "../core/anchor";
 import { project } from "../core/project";
-import type { Highlight } from "../core/project";
+import type { Highlight, ProjectionMode } from "../core/project";
 import { listAnnotations } from "../store/annotations";
 import { readItemFile } from "../store/files";
 import { searchBlocks } from "../store/fts";
@@ -103,7 +103,7 @@ export async function captureFile(
   itemId: ItemId,
 ): Promise<string> {
   requireItem(deps, userId, itemId);
-  return readItemFile(deps.itemsRoot, userId, itemId, "sanitized.html");
+  return readItemFile(deps.itemsRoot, userId, itemId, "original.html");
 }
 
 // Validates each annotation against its quote. Stale offsets move to the
@@ -133,6 +133,7 @@ export async function readerPage(
   deps: LibraryDeps,
   userId: UserId,
   itemId: ItemId,
+  mode: ProjectionMode = "reader",
 ): Promise<ReaderPage> {
   const loaded = await loadTranscript(deps, userId, itemId);
   const annotations = listAnnotations(deps.db, userId, itemId);
@@ -141,6 +142,7 @@ export async function readerPage(
     transcript: loaded.transcript,
     map: loaded.map,
     highlights: placeAnnotations(loaded.transcript, annotations),
+    mode,
   });
   return { ...loaded, annotations, html };
 }

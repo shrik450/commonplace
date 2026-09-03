@@ -152,9 +152,10 @@ The reader behavior tests cover this property:
 > view with that range highlighted. Read the text inside the highlight
 > elements. It equals `transcript.slice(a, b)`.
 
-The reader view renders only content runs, so the property is stated for
-content ranges. A range that crosses a non-content run is projected as the
-content parts it covers, in order.
+The reader view renders only content runs. The structured text view renders
+all runs. The round-trip property is stated for content ranges because the
+reader omits non-content text. A range that crosses a non-content run is
+projected as the runs included by that view, in order.
 
 ## Re-anchoring
 

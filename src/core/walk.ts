@@ -51,7 +51,7 @@ function pathOf(node: Node, root: Element): string {
   return parts.join("/");
 }
 
-function contentPaths(doc: Document): Set<string> | null {
+export function contentPaths(doc: Document): Set<string> | null {
   // SAFETY: cloning a Document preserves its Document node type.
   const clone = doc.cloneNode(true) as Document;
   for (const el of clone.querySelectorAll("*")) {

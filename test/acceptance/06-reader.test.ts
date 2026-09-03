@@ -9,6 +9,7 @@ import { addMs, now, toIso } from "../../src/contracts/clock";
 import type { Config } from "../../src/contracts/config";
 import { asUserId, newAnnotationId, newItemId } from "../../src/contracts/ids";
 import type { ItemId, UserId } from "../../src/contracts/ids";
+import { blocksOf } from "../../src/contracts/transcript";
 import type { Item, User } from "../../src/contracts/item";
 import { anchorQuote, reanchor } from "../../src/core/anchor";
 import { project } from "../../src/core/project";
@@ -26,6 +27,33 @@ import { insertUser } from "../../src/store/users";
 const ALICE = asUserId("11111111-1111-4111-8111-111111111111");
 const BOB = asUserId("22222222-2222-4222-8222-222222222222");
 const PAGE = "<html><head><title>Reader</title></head><body><article><h1>Reader title</h1><p>First paragraph with enough content to score as an article.</p><p>Second paragraph for highlights and search.</p></article><nav>Hidden navigation</nav></body></html>";
+const ORIGINAL_PAGE = PAGE.replace(
+  "<head>",
+  "<head><style>@font-face { font-family: saved; src: url(data:font/woff2;base64,AAAA); } body { color: red; }</style><script>window hostile = true;</script>",
+).replace(
+  "</body>",
+  '<img src="data:image/png;base64,AAAA" alt="Saved diagram" /></body>',
+);
+const STRUCTURED_PAGE = `<html><head><title>Structured</title><style>.remote { background: url(https://cdn.example/remote.png); }</style></head><body>
+  <article>
+    <h1>Structured content</h1>
+    <p>A long article paragraph gives the reader enough content to preserve every structure below. <a href="https://example.com/destination">A discoverable link</a> uses <em>emphasis</em>, <strong>strong text</strong>, <s>struck text</s>, and <code>inline()</code>.</p>
+    <blockquote><p>A quoted passage remains a block quote.</p></blockquote>
+    <ol><li>First ordered item</li><li>Second ordered item</li></ol>
+    <ul><li>Unordered item with <img src="https://cdn.example/remote.png" alt="Remote diagram" /></li><li>Embedded <img src="data:image/png;base64,AAAA" alt="Embedded diagram" /></li></ul>
+    <pre><code>const value = 1;</code></pre>
+    <figure><img src="data:image/png;base64,BBBB" alt="Standalone diagram" /></figure>
+    <table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody><tr><td>One</td><td>Two</td></tr></tbody></table>
+    <hr />
+    <script>document.body.innerHTML = "hostile";</script><iframe src="https://evil.example/frame"></iframe>
+  </article>
+</body></html>`;
+const WRAPPER_PAGE = `<html><body><article>
+  <address>Address text</address><dl><dt>Term</dt><dd>Definition</dd></dl>
+  <fieldset><summary>Summary</summary><p>Field text</p></fieldset>
+  <footer>Footer text</footer><header>Header text</header><hgroup><h2>Group text</h2></hgroup>
+  <main>Main text</main><nav>Navigation text</nav><noscript>Noscript text</noscript>
+</article></body></html>`;
 const CONFIG: Config = {
   db_root: "/unused",
   items_root: "/unused",
@@ -45,13 +73,18 @@ type Env = {
   transcript: string;
   map: ReturnType<typeof walk>["map"];
   sanitized: string;
+  original: string;
 };
 
 function user(id: UserId, subject: string): User {
   return { id, subject, email: null, created_at: "2026-01-01T00:00:00.000Z" };
 }
 
-async function environment(name: string, owner: UserId = ALICE): Promise<Env> {
+async function environment(
+  name: string,
+  owner: UserId = ALICE,
+  original: string = ORIGINAL_PAGE,
+): Promise<Env> {
   const root = await mkdtemp(join(tmpdir(), `commonplace-reader-${name}-`));
   roots.push(root);
   const db = openDatabase(join(root, "db.sqlite"), now());
@@ -59,8 +92,9 @@ async function environment(name: string, owner: UserId = ALICE): Promise<Env> {
   insertUser(db, user(BOB, "bob"));
   const itemsRoot = join(root, "items");
   const itemId = newItemId();
-  const sanitized = sanitize(PAGE);
+  const sanitized = sanitize(original);
   const { text: transcript, map } = walk(sanitized);
+  await writeItemFile(itemsRoot, owner, itemId, "original.html", original);
   await writeItemFile(itemsRoot, owner, itemId, "sanitized.html", sanitized);
   await writeItemFile(itemsRoot, owner, itemId, "transcript.txt", transcript);
   await writeItemFile(itemsRoot, owner, itemId, "map.json", JSON.stringify(map));
@@ -89,7 +123,7 @@ async function environment(name: string, owner: UserId = ALICE): Promise<Env> {
     is_content: block.is_content,
     text: transcript.slice(block.start, block.end),
   })));
-  return { db, itemsRoot, itemId, transcript, map, sanitized };
+  return { db, itemsRoot, itemId, transcript, map, sanitized, original };
 }
 
 function cookie(userId: UserId): string {
@@ -124,6 +158,46 @@ describe("reader projection", () => {
     expect(html).toContain("Reader title");
     expect(html).not.toContain("Hidden navigation");
     expect(highlighted(html, String(id))).toContain("Reader title");
+  });
+
+  test("keeps every allowed wrapper in the structured projection", async () => {
+    const env = await environment("structured-wrappers", ALICE, WRAPPER_PAGE);
+    const document = new JSDOM(project({
+      sanitizedHtml: env.sanitized,
+      transcript: env.transcript,
+      map: env.map,
+      mode: "structured",
+    })).window.document;
+    for (const tag of [
+      "address", "dd", "dl", "dt", "fieldset", "footer", "header",
+      "hgroup", "main", "nav", "summary", "noscript",
+    ]) {
+      expect(document.querySelector(`.cp-transcript ${tag}`)).not.toBeNull();
+    }
+    expect(document.querySelector("address")?.textContent).toContain("Address text");
+    expect(document.querySelector("dd")?.textContent).toContain("Definition");
+    expect(document.querySelector("noscript")?.textContent).toContain("Noscript text");
+  });
+
+  test("keeps multiple blocks owned by one element addressable", async () => {
+    const sanitized = sanitize("<html><body><article>before <p>nested</p> after</article></body></html>");
+    const walked = walk(sanitized);
+    const html = project({
+      sanitizedHtml: sanitized,
+      transcript: walked.text,
+      map: walked.map,
+      mode: "structured",
+    });
+    const document = new JSDOM(html).window.document;
+    const blocks = blocksOf(walked.map);
+    expect(blocks).toHaveLength(3);
+    expect(document.querySelectorAll('[id^="b"]')).toHaveLength(3);
+    for (const block of blocks) {
+      const target = document.querySelector(`#b${block.index}`);
+      expect(target?.textContent).toContain(walked.text.slice(block.runs[0]!.start, block.runs[0]!.end));
+      expect(target?.getAttribute("data-cp-start")).toBe(String(block.runs[0]!.start));
+      expect(target?.getAttribute("data-cp-end")).toBe(String(block.runs.at(-1)!.end));
+    }
   });
 
   test("a highlight crossing content runs reads back the projected content", async () => {
@@ -217,18 +291,67 @@ describe("authenticated reader routes", () => {
     expect(response.status).toBe(400);
   });
 
-  test("serve the raw transcript and CSP-protected capture only to the owner", async () => {
+  test("serve structured text and the frozen saved copy only to the owner", async () => {
     const env = await environment("routes");
     const app = buildApp({ db: env.db, config: { ...CONFIG, items_root: env.itemsRoot }, now });
+    const reader = await app.handle(new Request(`http://localhost/items/${env.itemId}`, { headers: { cookie: cookie(ALICE) } }));
+    const readerBody = await reader.text();
     const raw = await app.handle(new Request(`http://localhost/items/${env.itemId}/raw`, { headers: { cookie: cookie(ALICE) } }));
     expect(raw.status).toBe(200);
-    expect(await raw.text()).toBe(env.transcript);
+    const rawBody = await raw.text();
+    expect(raw.headers.get("content-type")).toContain("text/html");
+    expect(rawBody).toContain("Hidden navigation");
+    expect(readerBody).not.toContain("Hidden navigation");
+    expect(rawBody).not.toBe(readerBody);
+    expect(rawBody).toContain("Structured text");
+    expect(rawBody).toContain("data-cp-block");
     const capture = await app.handle(new Request(`http://localhost/items/${env.itemId}/capture`, { headers: { cookie: cookie(ALICE) } }));
-    expect(capture.headers.get("content-security-policy")).toContain("script-src 'none'");
+    expect(await capture.text()).toBe(env.original);
+    const policy = capture.headers.get("content-security-policy")!;
+    expect(policy).toContain("sandbox");
+    expect(policy).toContain("style-src 'unsafe-inline'");
+    expect(policy).toContain("img-src data:");
+    expect(policy).toContain("font-src data:");
+    expect(policy).toContain("script-src 'none'");
+    expect(policy).toContain("connect-src 'none'");
+    expect(policy).toContain("frame-src 'none'");
+    expect(policy).toContain("object-src 'none'");
+    expect(policy).toContain("form-action 'none'");
+    expect(policy).not.toContain("http:");
+    expect(policy).not.toContain("https:");
     const other = await app.handle(new Request(`http://localhost/items/${env.itemId}`, { headers: { cookie: cookie(BOB) } }));
     expect(other.status).toBe(404);
     const signedOut = await app.handle(new Request(`http://localhost/items/${env.itemId}`));
     expect(signedOut.status).toBe(303);
+  });
+
+  test("preserves structured semantics without loading remote images", async () => {
+    const env = await environment("structured", ALICE, STRUCTURED_PAGE);
+    const app = buildApp({ db: env.db, config: { ...CONFIG, items_root: env.itemsRoot }, now });
+    const response = await app.handle(new Request(`http://localhost/items/${env.itemId}/raw`, { headers: { cookie: cookie(ALICE) } }));
+    const document = new JSDOM(await response.text()).window.document;
+    expect(response.status).toBe(200);
+    expect(document.querySelector(".cp-transcript h1")?.textContent).toContain("Structured content");
+    expect(document.querySelector("a[href=\"https://example.com/destination\"]")?.textContent).toContain("discoverable link");
+    expect(document.querySelector("img[alt=\"Remote diagram\"]")?.getAttribute("src")).toBeNull();
+    expect(document.body.innerHTML).not.toContain("https://cdn.example/remote.png");
+    expect(document.querySelector("img[alt=\"Embedded diagram\"]")?.getAttribute("src")).toStartWith("data:image/png");
+    expect(document.querySelector("ol")).not.toBeNull();
+    expect(document.querySelector("ul")).not.toBeNull();
+    expect(document.querySelector("blockquote")).not.toBeNull();
+    expect(document.querySelector("pre code")?.textContent).toContain("const value = 1;");
+    expect(document.querySelector("em")).not.toBeNull();
+    expect(document.querySelector("strong")).not.toBeNull();
+    expect(document.querySelector("s")).not.toBeNull();
+    expect(document.querySelector("table")).not.toBeNull();
+    expect(document.querySelector(".cp-table-wrap")).not.toBeNull();
+    expect(document.querySelector(".cp-table-wrap")?.getAttribute("role")).toBe("region");
+    expect(document.querySelector(".cp-table-wrap")?.getAttribute("tabindex")).toBe("0");
+    expect(document.querySelector(".cp-table-wrap")?.getAttribute("aria-label")).toBe("Scrollable table");
+    expect(document.querySelector('img[alt="Standalone diagram"]')?.getAttribute("src")).toStartWith("data:image/png");
+    expect(document.querySelector("hr")).not.toBeNull();
+    expect(document.querySelector("script")).toBeNull();
+    expect(document.querySelector("iframe")).toBeNull();
   });
 
   test("every protected GET redirects signed-out readers", async () => {
@@ -289,8 +412,8 @@ describe("authenticated reader routes", () => {
     expect(body).toContain(`/items/${env.itemId}#b0`);
   });
 
-  test("captureFile returns the sanitized durable file", async () => {
+  test("captureFile returns the original durable file", async () => {
     const env = await environment("capture-file");
-    expect(await captureFile({ db: env.db, itemsRoot: env.itemsRoot }, ALICE, env.itemId)).toBe(env.sanitized);
+    expect(await captureFile({ db: env.db, itemsRoot: env.itemsRoot }, ALICE, env.itemId)).toBe(env.original);
   });
 });
