@@ -111,9 +111,9 @@ Exact version pins prevent an automatic upgrade to that release.
 Its exact version must move with `oxlint` because the vendored plugin imports its
 runtime types and compatibility helpers.
 
-## Later milestones
+## Future dependency review
 
-Audit `playwright` before adding it.
+Audit `playwright` before adding it for annotation browser tests.
 
 `dompurify`, `jsdom`, and `@mozilla/readability` were audited on 2026-09-01 and
 are pinned above. `linkedom` was audited at the same time and rejected. See
