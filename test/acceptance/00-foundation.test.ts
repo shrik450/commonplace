@@ -36,6 +36,10 @@ describe("configuration", () => {
     expect(config.browser_path).toBe("/usr/bin/chromium");
   });
 
+  test("rejects missing browser_path", () => {
+    expect(() => parseConfig(configText().replace('browser_path = "/usr/bin/chromium"\n', ""))).toThrow(AppError);
+  });
+
   test("rejects a missing setting with its stable error code", () => {
     const error = (() => {
       try {

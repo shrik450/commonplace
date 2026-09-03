@@ -97,6 +97,7 @@ describe("operator CLI behavior", () => {
       console.log = originalLog;
     }
     expect(output).toHaveLength(1);
+    // SAFETY: a successful JSON ingest response contains item_id and state.
     const result = JSON.parse(output[0]!) as { item_id: string; state: string };
     expect(result.state).toBe("done");
     expect(await readFile(join(root, "items", String(USER_ID), result.item_id, "transcript.txt"), "utf8")).toContain("transcript of real length");

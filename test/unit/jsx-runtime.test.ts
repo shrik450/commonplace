@@ -7,7 +7,7 @@ import { Fragment, jsx, raw } from "../../src/web/views/jsx-runtime";
 const TextComponent = () => "<script>";
 const RawComponent = () => jsx("div", { children: raw("<b>safe boundary</b>") });
 
-function codeOf(run: () => unknown): string {
+function codeOf(run: () => void): string {
   try {
     run();
   } catch (error) {

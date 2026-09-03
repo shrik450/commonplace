@@ -8,7 +8,7 @@ import { addMs, now } from "../../src/contracts/clock";
 import { AppError } from "../../src/contracts/errors";
 import { asUserId, newItemId, newRequestId } from "../../src/contracts/ids";
 import type { ItemId } from "../../src/contracts/ids";
-import type { User } from "../../src/contracts/item";
+import type { FetchRequest, User } from "../../src/contracts/item";
 import { validateMap } from "../../src/contracts/transcript";
 import type { CaptureRequest, CaptureResult } from "../../src/services/acquire";
 import { ingestRequest } from "../../src/services/ingest";
@@ -20,7 +20,6 @@ import { getItem, listItems } from "../../src/store/items";
 import {
   claimNext,
   enqueueFetch,
-  getFetchRequest,
   sweepStaleLeases,
 } from "../../src/store/queue";
 import { insertUser } from "../../src/store/users";
@@ -56,6 +55,12 @@ function capture(html: string): (request: CaptureRequest) => Promise<CaptureResu
   };
 }
 
+function fetchRequest(db: Database, userId: typeof ALICE, id: ReturnType<typeof newRequestId>): FetchRequest | null {
+  return db.query<FetchRequest, [string, string]>(
+    "SELECT id, user_id, item_id, url, state, lease_expires_at, attempts, error_code, created_at FROM fetch_requests WHERE user_id = ? AND id = ?",
+  ).get(userId, id) ?? null;
+}
+
 function queue(env: Env, userId: typeof ALICE, itemId: ItemId | null = null) {
   return enqueueFetch(env.db, {
     id: newRequestId(),
@@ -75,7 +80,7 @@ function deps(env: Env, captureFn: (request: CaptureRequest) => Promise<CaptureR
 }
 
 async function files(env: Env, userId: typeof ALICE, itemId: ItemId): Promise<string[]> {
-  return readdir(join(env.itemsRoot, userId, itemId));
+  return readdir(join(env.itemsRoot, userId, itemId)).then((entries) => entries.toSorted());
 }
 
 afterAll(async () => {
@@ -89,10 +94,10 @@ describe("ingest outcomes", () => {
     const outcome = await drainOnce(deps(env, capture(PAGE)));
     expect(outcome?.state).toBe("done");
     const itemId = (outcome as { itemId: ItemId }).itemId;
-    expect(getFetchRequest(env.db, ALICE, request.id)).toMatchObject({ state: "done", item_id: itemId });
+    expect(fetchRequest(env.db, ALICE, request.id)).toMatchObject({ state: "done", item_id: itemId });
     expect(getItem(env.db, ALICE, itemId)).toMatchObject({ title: "Saved title", author: "Ada Lovelace" });
     expect(await files(env, ALICE, itemId)).toEqual([
-      "original.html", "sanitized.html", "transcript.txt", "map.json",
+      "map.json", "original.html", "sanitized.html", "transcript.txt",
     ]);
     const transcript = await readItemFile(env.itemsRoot, ALICE, itemId, "transcript.txt");
     const map = JSON.parse(await readItemFile(env.itemsRoot, ALICE, itemId, "map.json"));
@@ -106,7 +111,7 @@ describe("ingest outcomes", () => {
     const env = await environment("metadata");
     const request = queue(env, ALICE);
     expect((await drainOnce(deps(env, capture(PAGE))))?.state).toBe("done");
-    const itemId = getFetchRequest(env.db, ALICE, request.id)!.item_id!;
+    const itemId = fetchRequest(env.db, ALICE, request.id)!.item_id!;
     expect(getItem(env.db, ALICE, itemId)).toMatchObject({
       title: "Saved title",
       author: "Ada Lovelace",
@@ -116,7 +121,7 @@ describe("ingest outcomes", () => {
     const noTitle = "<html><body><article><p>Enough prose to become a transcript with several words.</p></article></body></html>";
     const fallbackRequest = queue(env, ALICE);
     expect((await drainOnce(deps(env, capture(noTitle))))?.state).toBe("done");
-    const fallbackId = getFetchRequest(env.db, ALICE, fallbackRequest.id)!.item_id!;
+    const fallbackId = fetchRequest(env.db, ALICE, fallbackRequest.id)!.item_id!;
     expect(getItem(env.db, ALICE, fallbackId)!.title).toBe("https://example.com/article");
   });
 
@@ -129,9 +134,9 @@ describe("ingest outcomes", () => {
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const outcome = await drainOnce(deps(env, failing));
       expect(outcome?.state).toBe("retry");
-      expect(getFetchRequest(env.db, ALICE, request.id)!.attempts).toBe(attempt);
+      expect(fetchRequest(env.db, ALICE, request.id)!.attempts).toBe(attempt);
     }
-    expect(getFetchRequest(env.db, ALICE, request.id)).toMatchObject({
+    expect(fetchRequest(env.db, ALICE, request.id)).toMatchObject({
       state: "failed", error_code: "INGEST_ATTEMPTS_EXHAUSTED",
     });
   });
@@ -145,7 +150,7 @@ describe("ingest outcomes", () => {
     };
     const outcome = await drainOnce(deps(env, failing));
     expect(outcome).toMatchObject({ state: "retry", code: "ACQUIRE_FAILED" });
-    const reserved = getFetchRequest(env.db, ALICE, request.id)!;
+    const reserved = fetchRequest(env.db, ALICE, request.id)!;
     expect(reserved.item_id).not.toBeNull();
     expect(await files(env, ALICE, reserved.item_id!)).toContain("original.html");
     expect(getItem(env.db, ALICE, reserved.item_id!)).toBeNull();
@@ -181,7 +186,7 @@ await drainOnce({
     ]);
     expect(exitCode, stderr).toBe(1);
 
-    const crashed = getFetchRequest(env.db, ALICE, request.id)!;
+    const crashed = fetchRequest(env.db, ALICE, request.id)!;
     expect(crashed.state).toBe("claimed");
     expect(crashed.item_id).not.toBeNull();
     expect(await files(env, ALICE, crashed.item_id!)).toEqual([
@@ -196,13 +201,13 @@ await drainOnce({
     ]);
 
     expect((await drainOnce(deps(env, capture(PAGE))))?.state).toBe("done");
-    expect(getFetchRequest(env.db, ALICE, request.id)!.state).toBe("done");
+    expect(fetchRequest(env.db, ALICE, request.id)!.state).toBe("done");
     expect(getItem(env.db, ALICE, crashed.item_id!)).not.toBeNull();
     expect(await files(env, ALICE, crashed.item_id!)).toEqual([
+      "map.json",
       "original.html",
       "sanitized.html",
       "transcript.txt",
-      "map.json",
     ]);
   }, 20_000);
 
@@ -233,9 +238,9 @@ await drainOnce({
       return capture(PAGE)(captureRequest);
     };
     expect((await drainOnce(deps(env, captureOnce)))?.state).toBe("retry");
-    const reserved = getFetchRequest(env.db, ALICE, request.id)!.item_id!;
+    const reserved = fetchRequest(env.db, ALICE, request.id)!.item_id!;
     expect((await drainOnce(deps(env, captureOnce)))?.state).toBe("done");
-    expect(getFetchRequest(env.db, ALICE, request.id)!.item_id).toBe(reserved);
+    expect(fetchRequest(env.db, ALICE, request.id)!.item_id).toBe(reserved);
     expect(await readdir(join(env.itemsRoot, ALICE))).toEqual([reserved]);
   });
 
@@ -244,7 +249,7 @@ await drainOnce({
     const request = queue(env, ALICE);
     const outcome = await drainOnce(deps(env, capture("<html><body></body></html>")));
     expect(outcome).toMatchObject({ state: "retry", code: "INGEST_EMPTY_TRANSCRIPT" });
-    expect(getFetchRequest(env.db, ALICE, request.id)!.state).toBe("queued");
+    expect(fetchRequest(env.db, ALICE, request.id)!.state).toBe("queued");
     expect(listItems(env.db, ALICE, 10)).toEqual([]);
   });
 
@@ -253,19 +258,19 @@ await drainOnce({
     const first = queue(env, ALICE);
     const saved = await drainOnce(deps(env, capture(PAGE)));
     const itemId = (saved as { itemId: ItemId }).itemId;
-    expect(getFetchRequest(env.db, ALICE, first.id)!.item_id).toBe(itemId);
+    expect(fetchRequest(env.db, ALICE, first.id)!.item_id).toBe(itemId);
 
     const second = queue(env, ALICE);
     const changed = PAGE.replace("Saved title", "Changed title");
     expect((await drainOnce(deps(env, capture(changed))))?.state).toBe("done");
-    expect(getFetchRequest(env.db, ALICE, second.id)!.item_id).toBe(itemId);
+    expect(fetchRequest(env.db, ALICE, second.id)!.item_id).toBe(itemId);
     expect(listItems(env.db, ALICE, 10)).toHaveLength(1);
     expect(getItem(env.db, ALICE, itemId)!.title).toBe("Changed title");
 
     const bobRequest = queue(env, BOB);
     const bobSaved = await drainOnce(deps(env, capture(PAGE)));
     expect(bobSaved?.state).toBe("done");
-    expect(getFetchRequest(env.db, BOB, bobRequest.id)!.item_id).not.toBe(itemId);
+    expect(fetchRequest(env.db, BOB, bobRequest.id)!.item_id).not.toBe(itemId);
     expect(listItems(env.db, BOB, 10)).toHaveLength(1);
     expect(searchBlocks(env.db, BOB, "durable", 10)).toHaveLength(1);
   });
@@ -280,6 +285,6 @@ await drainOnce({
     const outcome = await ingestRequest(deps(env, capture(PAGE)), claimed);
     expect(outcome).toMatchObject({ state: "failed", code: "INGEST_LEASE_LOST" });
     expect(listItems(env.db, ALICE, 10)).toEqual([]);
-    expect(getFetchRequest(env.db, ALICE, request.id)!.state).toBe("claimed");
+    expect(fetchRequest(env.db, ALICE, request.id)!.state).toBe("claimed");
   });
 });

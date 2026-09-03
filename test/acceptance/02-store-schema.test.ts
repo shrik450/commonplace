@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -68,8 +68,8 @@ describe("database migration behavior", () => {
     expect(db.query<{ item_id: string }, []>("SELECT item_id FROM blocks_fts").all()).toEqual([
       { item_id: "article" },
     ]);
-    expect(db.query("PRAGMA table_info(items)").all().map((row) => row.name)).not.toContain("kind");
-    expect(db.query("PRAGMA table_info(fetch_requests)").all().map((row) => row.name)).not.toContain("source_path");
+    expect(db.query<{ name: string }, []>("PRAGMA table_info(items)").all().map((row) => row.name)).not.toContain("kind");
+    expect(db.query<{ name: string }, []>("PRAGMA table_info(fetch_requests)").all().map((row) => row.name)).not.toContain("source_path");
     db.close();
   });
 });

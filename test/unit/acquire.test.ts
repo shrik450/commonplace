@@ -7,6 +7,7 @@ import { isAppError } from "../../src/contracts/errors";
 import { BLOCKED_URL_PATTERNS, buildArgs, capture } from "../../src/services/acquire";
 
 const url = "https://example.com/article";
+const browserPath = "/usr/bin/chromium";
 
 async function executable(body: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "commonplace-acquire-"));
@@ -26,21 +27,21 @@ describe("capture", () => {
         `for i in $(seq 1 600); do printf x >> "$output"; done`,
     );
 
-    await capture({ url, outputPath, binaryPath });
+    await capture({ url, browserPath, outputPath, binaryPath });
 
     const argv = (await readFile(argvPath, "utf8")).trimEnd().split("\n");
     expect(argv.slice(-2)).toEqual([url, outputPath]);
   });
 
   test("passes URL immediately before the positional output path", () => {
-    const args = buildArgs({ url, outputPath: "/tmp/capture.html" });
+    const args = buildArgs({ url, browserPath, outputPath: "/tmp/capture.html" });
     expect(args.slice(-2)).toEqual([url, "/tmp/capture.html"]);
     expect(args).not.toContain("--output");
   });
 
   test("forwards browser and blocked URL options", () => {
     const args = buildArgs({ url, outputPath: "/tmp/capture.html", browserPath: "/usr/bin/chromium" });
-    expect(buildArgs({ url, outputPath: "/tmp/capture.html" })).not.toContain("--browser-executable-path");
+    expect(buildArgs({ url, browserPath, outputPath: "/tmp/capture.html" })).toContain("--browser-executable-path");
     expect(args).toContain("--browser-executable-path");
     expect(args).toContain("/usr/bin/chromium");
     for (const pattern of BLOCKED_URL_PATTERNS) expect(args).toContain(pattern);
@@ -50,18 +51,19 @@ describe("capture", () => {
     const binaryPath = await executable('echo "browser failed" >&2\nexit 3');
     let error: unknown;
     try {
-      await capture({ url, outputPath: "/tmp/capture.html", binaryPath });
+      await capture({ url, browserPath, outputPath: "/tmp/capture.html", binaryPath });
     } catch (caught) {
       error = caught;
     }
     expect(isAppError(error)).toBe(true);
-    expect((error as { code: string }).code).toBe("ACQUIRE_FAILED");
+    if (!isAppError(error)) return;
+    expect(error.code).toBe("ACQUIRE_FAILED");
   });
 
   test("rejects a successful run that did not produce a real capture", async () => {
     const binaryPath = await executable("printf 'too small' > \"$output\"");
     const outputPath = join(tmpdir(), "commonplace-tiny.html");
-    await expect(capture({ url, outputPath, binaryPath })).rejects.toMatchObject({
+    await expect(capture({ url, browserPath, outputPath, binaryPath })).rejects.toMatchObject({
       code: "ACQUIRE_FAILED",
     });
     expect((await stat(outputPath)).size).toBeLessThan(512);
@@ -69,7 +71,7 @@ describe("capture", () => {
 
   test("stops a capture that exceeds its timeout", async () => {
     const binaryPath = await executable("sleep 30");
-    await expect(capture({ url, outputPath: "/tmp/capture.html", binaryPath, timeoutMs: 100 })).rejects.toMatchObject({
+    await expect(capture({ url, browserPath, outputPath: "/tmp/capture.html", binaryPath, timeoutMs: 100 })).rejects.toMatchObject({
       code: "ACQUIRE_TIMEOUT",
     });
   });

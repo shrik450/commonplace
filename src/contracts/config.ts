@@ -150,6 +150,5 @@ export function parseConfig(text: string): Config {
     browser_path: browserPath,
   };
 }
-}
 
 export type { Config };

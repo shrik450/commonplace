@@ -17,7 +17,6 @@ import { walk } from "../../src/core/walk";
 import { createApiToken, signPayload } from "../../src/services/auth";
 import { captureFile, readerPage, searchLibrary } from "../../src/services/library";
 import { buildApp } from "../../src/web/server";
-import { insertAnnotation } from "../../src/store/annotations";
 import { openDatabase } from "../../src/store/db";
 import { writeItemFile } from "../../src/store/files";
 import { indexBlocks } from "../../src/store/fts";
@@ -180,17 +179,10 @@ describe("reader projection", () => {
     const run = env.map.runs.find((candidate) => candidate.is_content && candidate.end - candidate.start > 10)!;
     const quote = env.transcript.slice(run.start + 1, run.start + 8);
     const id = newAnnotationId();
-    insertAnnotation(env.db, {
-      id,
-      user_id: ALICE,
-      item_id: env.itemId,
-      start_offset: run.start,
-      end_offset: run.start + quote.length,
-      quote,
-      note: null,
-      created_at: toIso(now()),
-      updated_at: toIso(now()),
-    });
+    env.db.run(
+      "INSERT INTO annotations (id, user_id, item_id, start_offset, end_offset, quote, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)",
+      [id, ALICE, env.itemId, run.start, run.start + quote.length, quote, toIso(now()), toIso(now())],
+    );
     const page = await readerPage({ db: env.db, itemsRoot: env.itemsRoot }, ALICE, env.itemId);
     expect(highlighted(page.html, String(id))).toBe(quote);
   });

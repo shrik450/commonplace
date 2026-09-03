@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,7 +14,7 @@ import { authenticate, createApiToken, signPayload } from "../../src/services/au
 import { startWorker } from "../../src/services/worker";
 import { openDatabase } from "../../src/store/db";
 import { listItems } from "../../src/store/items";
-import { enqueueFetch, listFetchRequests } from "../../src/store/queue";
+import { enqueueFetch } from "../../src/store/queue";
 import { insertUser, listApiTokens } from "../../src/store/users";
 import { buildApp } from "../../src/web/server";
 import { loginRedirectUri } from "../../src/web/routes/auth";
@@ -23,6 +23,7 @@ const ALICE = asUserId("11111111-1111-4111-8111-111111111111");
 const BOB = asUserId("22222222-2222-4222-8222-222222222222");
 const SECRET = "x".repeat(32);
 const PAGE = "<html><body><article><h1>Saved</h1><p>Enough text to create a searchable saved item.</p></article></body></html>";
+const repoRoot = join(import.meta.dir, "..", "..");
 const roots: string[] = [];
 
 const config: Config = parseConfig([
@@ -64,6 +65,12 @@ function session(userId: typeof ALICE): string {
   return `cp_session=${signPayload(SECRET, { user_id: userId, exp: addMs(now(), 60_000).toISOString() })}`;
 }
 
+function queuedCount(db: Database, userId: typeof ALICE): number {
+  return db.query<{ count: number }, [string]>(
+    "SELECT COUNT(*) AS count FROM fetch_requests WHERE user_id = ?",
+  ).get(userId)!.count;
+}
+
 function post(app: ReturnType<typeof buildApp>, path: string, body: BodyInit, headers: Record<string, string>): Promise<Response> {
   return app.handle(new Request(`http://localhost${path}`, { method: "POST", body, headers }));
 }
@@ -90,7 +97,7 @@ describe("save endpoint", () => {
     const response = await post(app, "/items", input.body, { ...input.headers, cookie: session(ALICE) });
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe("/library");
-    expect(listFetchRequests(env.db, ALICE, 10)).toHaveLength(1);
+    expect(queuedCount(env.db, ALICE)).toBe(1);
   });
 
   test("an API token returns JSON and owns the queued request", async () => {
@@ -104,8 +111,8 @@ describe("save endpoint", () => {
     });
     expect(response.status).toBe(201);
     expect((await response.json() as { state: string }).state).toBe("queued");
-    expect(listFetchRequests(env.db, BOB, 10)).toHaveLength(1);
-    expect(listFetchRequests(env.db, ALICE, 10)).toEqual([]);
+    expect(queuedCount(env.db, BOB)).toBe(1);
+    expect(queuedCount(env.db, ALICE)).toBe(0);
   });
 
   test("rejects bad or unauthenticated saves", async () => {
@@ -114,7 +121,7 @@ describe("save endpoint", () => {
     const bad = form("not a URL");
     expect((await post(app, "/items", bad.body, { ...bad.headers, cookie: session(ALICE) })).status).toBe(400);
     expect((await post(app, "/items", bad.body, bad.headers)).status).toBe(303);
-    expect(listFetchRequests(env.db, ALICE, 10)).toEqual([]);
+    expect(queuedCount(env.db, ALICE)).toBe(0);
   });
 });
 
@@ -184,6 +191,20 @@ describe("token management", () => {
   });
 });
 
+describe("generated stylesheet", () => {
+  test("keeps light and dark highlight washes distinct", async () => {
+    const child = Bun.spawn(["bun", "run", "css"], {
+      cwd: repoRoot,
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    expect(await child.exited).toBe(0);
+    const css = await readFile(join(repoRoot, "public", "app.css"), "utf8");
+    expect(css).toContain("rgb(214 148 61 / 0.28)");
+    expect(css).toContain("rgb(217 155 78 / 0.24)");
+  });
+});
+
 describe("in-process worker", () => {
   test("drains queued work and stops", async () => {
     const env = await environment("worker");
@@ -193,7 +214,7 @@ describe("in-process worker", () => {
       lease_expires_at: null, attempts: 0, error_code: null,
       created_at: toIso(now()),
     });
-    const worker = startWorker({ db: env.db, itemsRoot: env.itemsRoot, now, capture: env.capture });
+    const worker = startWorker({ db: env.db, itemsRoot: env.itemsRoot, now, capture: env.capture, browserPath: "/usr/bin/chromium" });
     const deadline = performance.now() + 10_000;
     while (listItems(env.db, ALICE, 10).length === 0 && performance.now() < deadline) await Bun.sleep(25);
     await worker.stop();

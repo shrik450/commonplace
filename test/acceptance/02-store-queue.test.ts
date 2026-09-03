@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { asItemId, asRequestId, asUserId } from "../../src/contracts/ids";
 import type { FetchRequest, Item, User } from "../../src/contracts/item";
 import { migrate } from "../../src/store/db";
-import { indexBlocks, removeItem, searchBlocks } from "../../src/store/fts";
+import { indexBlocks, searchBlocks } from "../../src/store/fts";
 import type { BlockRow } from "../../src/store/fts";
 import {
   itemDir,
@@ -21,7 +21,6 @@ import {
   claimNext,
   completeFetch,
   enqueueFetch,
-  getFetchRequest,
   pendingItemPaths,
   releaseFetch,
   sweepStaleLeases,
@@ -81,6 +80,12 @@ function db(): Database {
   return value;
 }
 
+function fetchRequest(db: Database, userId: ReturnType<typeof asUserId>, id: ReturnType<typeof asRequestId>): FetchRequest | null {
+  return db.query<FetchRequest, [string, string]>(
+    "SELECT id, user_id, item_id, url, state, lease_expires_at, attempts, error_code, created_at FROM fetch_requests WHERE user_id = ? AND id = ?",
+  ).get(userId, id) ?? null;
+}
+
 function blocks(itemId: ReturnType<typeof asItemId>, userId: ReturnType<typeof asUserId>): BlockRow[] {
   return [{
     item_id: itemId,
@@ -107,7 +112,7 @@ describe("queue lifecycle", () => {
     expect(claimed.id).toBe(queued.id);
     expect(claimed.state).toBe("claimed");
     expect(completeFetch(database, claimed.id, claimed.attempts, ITEM_A)).toBe(true);
-    expect(getFetchRequest(database, ALICE, claimed.id)).toMatchObject({
+    expect(fetchRequest(database, ALICE, claimed.id)).toMatchObject({
       state: "done",
       item_id: ITEM_A,
       lease_expires_at: null,
@@ -121,7 +126,7 @@ describe("queue lifecycle", () => {
     const retry = enqueueFetch(database, request(requestId("1"), ALICE));
     const claimed = claimNext(database, NOW, 60_000)!;
     expect(releaseFetch(database, claimed.id, claimed.attempts, "ACQUIRE_TIMEOUT")).toBe(true);
-    expect(getFetchRequest(database, ALICE, retry.id)!.state).toBe("queued");
+    expect(fetchRequest(database, ALICE, retry.id)!.state).toBe("queued");
     database.close();
   });
 
@@ -135,7 +140,7 @@ describe("queue lifecycle", () => {
       if (attempt < MAX_ATTEMPTS) expect(result.requeued).toContain(queued.id);
       else expect(result.failed).toContain(queued.id);
     }
-    expect(getFetchRequest(database, ALICE, queued.id)!.error_code).toBe(
+    expect(fetchRequest(database, ALICE, queued.id)!.error_code).toBe(
       "INGEST_ATTEMPTS_EXHAUSTED",
     );
     database.close();
@@ -152,7 +157,7 @@ describe("queue lifecycle", () => {
 
     expect(completeFetch(database, first.id, first.attempts, ITEM_A)).toBe(false);
     expect(completeFetch(database, second.id, second.attempts, ITEM_B)).toBe(true);
-    expect(getFetchRequest(database, ALICE, queued.id)!.item_id).toBe(ITEM_B);
+    expect(fetchRequest(database, ALICE, queued.id)!.item_id).toBe(ITEM_B);
     database.close();
   });
 });
@@ -180,7 +185,7 @@ describe("search behavior", () => {
     indexBlocks(database, ITEM_A, [{ ...blocks(ITEM_A, ALICE)[0]!, text: "replacement" }]);
     expect(searchBlocks(database, ALICE, "needle", 10)).toEqual([]);
     expect(searchBlocks(database, ALICE, "replacement", 10)).toHaveLength(1);
-    removeItem(database, ALICE, ITEM_A);
+    indexBlocks(database, ITEM_A, []);
     expect(searchBlocks(database, ALICE, "replacement", 10)).toEqual([]);
     database.close();
   });
@@ -230,7 +235,7 @@ describe("durable item files", () => {
     await writeItemFile(root, ALICE, ITEM_A, "original.html", "first");
     await writeItemFile(root, ALICE, ITEM_A, "transcript.txt", "second");
     expect(await readItemFile(root, ALICE, ITEM_A, "transcript.txt")).toBe("second");
-    expect(await readdir(join(root, ALICE, ITEM_A))).toEqual(["original.html", "transcript.txt"]);
+    expect((await readdir(join(root, ALICE, ITEM_A)).then((entries) => entries.toSorted()))).toEqual(["original.html", "transcript.txt"]);
     await expect(writeItemFile(root, ALICE, "../../escape" as never, "map.json", "x")).rejects.toMatchObject({
       code: "STORE_INVALID_PATH",
     });
