@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { asItemId, asRequestId, asUserId } from "../../src/contracts/ids";
+import type { ItemId } from "../../src/contracts/ids";
 import type { FetchRequest, Item, User } from "../../src/contracts/item";
 import { migrate } from "../../src/store/db";
 import { indexBlocks, searchBlocks } from "../../src/store/fts";
@@ -236,9 +237,11 @@ describe("durable item files", () => {
     await writeItemFile(root, ALICE, ITEM_A, "transcript.txt", "second");
     expect(await readItemFile(root, ALICE, ITEM_A, "transcript.txt")).toBe("second");
     expect((await readdir(join(root, ALICE, ITEM_A)).then((entries) => entries.toSorted()))).toEqual(["original.html", "transcript.txt"]);
+    // SAFETY: Normal ID validation is intentionally bypassed to test the storage boundary with traversal input.
+    const traversalId = "../../escape" as ItemId;
     let error: unknown;
     try {
-      asItemId("../../escape");
+      await writeItemFile(root, ALICE, traversalId, "transcript.txt", "blocked");
     } catch (caught) {
       error = caught;
     }
