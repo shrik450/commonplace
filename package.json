@@ -2,6 +2,7 @@
   "name": "commonplace",
   "private": true,
   "type": "module",
+  "version": "0.1.0",
   "scripts": {
     "verify": "bun run typecheck && bun run lint && bun run test",
     "typecheck": "tsc --noEmit",
