@@ -429,7 +429,10 @@ export async function authenticate(
   const header = request.headers.get("authorization");
   const bearer = header?.startsWith("Bearer ") ? header.slice(7) : null;
 
-  if (bearer) {
+  if (bearer !== null) {
+    if (bearer === "") {
+      throw new AppError("AUTH_TOKEN_INVALID", "the credential was rejected");
+    }
     const row = getApiTokenByHash(db, sha256Hex(bearer));
     if (!row) {
       throw new AppError("AUTH_TOKEN_INVALID", "the credential was rejected");

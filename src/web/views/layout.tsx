@@ -6,6 +6,8 @@ const FOCUS =
 // Styles secondary navigation links.
 export const LINK = `text-secondary hover:text-primary transition-colors duration-150 ${FOCUS}`;
 
+export const CONTENT_LINK = `text-base-content hover:text-primary active:text-primary/80 transition-colors duration-150 ${FOCUS}`;
+
 // Styles non-primary actions.
 export const ACTION = `text-primary underline decoration-1 underline-offset-4 hover:decoration-2 hover:text-primary/80 transition-colors duration-150 ${FOCUS}`;
 
@@ -28,6 +30,7 @@ export function PageHeading({ children }: { children?: Child }) {
 export type LayoutProps = {
   title: string;
   query?: string;
+  refreshSeconds?: number;
   children?: Child;
 };
 
@@ -49,7 +52,7 @@ function SearchIcon() {
   );
 }
 
-export function Layout({ title, query, children }: LayoutProps) {
+export function Layout({ title, query, refreshSeconds, children }: LayoutProps) {
   return (
     <html lang="en">
       <head>
@@ -66,6 +69,9 @@ export function Layout({ title, query, children }: LayoutProps) {
           media="(prefers-color-scheme: dark)"
         />
         <title>{`${title} — Commonplace`}</title>
+        {refreshSeconds === undefined ? null : (
+          <meta http-equiv="refresh" content={String(refreshSeconds)} />
+        )}
         <link rel="stylesheet" href="/app.css" />
       </head>
       <body class="bg-base-200 text-base-content min-h-screen">

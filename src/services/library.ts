@@ -1,10 +1,11 @@
 import { Database } from "bun:sqlite";
 
 import { AppError } from "../contracts/errors";
-import type { ItemId, UserId } from "../contracts/ids";
+import type { ItemId, RequestId, UserId } from "../contracts/ids";
 import {
   parseJsonValue,
   type Annotation,
+  type FetchRequest,
   type Item,
 } from "../contracts/item";
 import { validateMap } from "../contracts/transcript";
@@ -17,6 +18,10 @@ import { readItemFile } from "../store/files";
 import { searchBlocks } from "../store/fts";
 import { getItem, listItems } from "../store/items";
 import type { Cursor } from "../store/items";
+import {
+  getFetchRequest,
+  listSaveRequests as listStoredSaveRequests,
+} from "../store/queue";
 
 export type LibraryDeps = { db: Database; itemsRoot: string };
 
@@ -68,6 +73,22 @@ export function listLibrary(
   before?: Cursor,
 ): Item[] {
   return listItems(deps.db, userId, limit, before);
+}
+
+export function listSaveRequests(
+  deps: LibraryDeps,
+  userId: UserId,
+  limit: number,
+): FetchRequest[] {
+  return listStoredSaveRequests(deps.db, userId, limit);
+}
+
+export function getSaveRequest(
+  deps: LibraryDeps,
+  userId: UserId,
+  requestId: RequestId,
+): FetchRequest | null {
+  return getFetchRequest(deps.db, userId, requestId);
 }
 
 function requireItem(deps: LibraryDeps, userId: UserId, itemId: ItemId): Item {

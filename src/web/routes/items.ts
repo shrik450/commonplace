@@ -100,13 +100,17 @@ export function itemSaveRoutes(deps: WebDeps) {
 
     if (principal.via === "token") {
       return new Response(
-        JSON.stringify({ request_id: queued.id, state: queued.state }),
+        JSON.stringify({
+          request_id: queued.id,
+          state: queued.state,
+          status_url: `${deps.config.base_url}/saves/${queued.id}`,
+        }),
         { status: 201, headers: { "content-type": "application/json" } },
       );
     }
     return new Response(null, {
       status: 303,
-      headers: { location: "/library" },
+      headers: { location: `/saves/${queued.id}` },
     });
   });
 }

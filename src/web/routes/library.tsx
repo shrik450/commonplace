@@ -1,7 +1,11 @@
 import { Elysia } from "elysia";
 
 import { authenticate } from "../../services/auth";
-import { listLibrary, searchLibrary } from "../../services/library";
+import {
+  listLibrary,
+  listSaveRequests,
+  searchLibrary,
+} from "../../services/library";
 import { LibraryPage } from "../views/library";
 import { page } from "../views/layout";
 import { SearchPage } from "../views/search";
@@ -15,6 +19,7 @@ import {
 
 const PAGE_SIZE = 50;
 const SEARCH_LIMIT = 30;
+const SAVE_REQUEST_LIMIT = 10;
 
 export function libraryRoutes(deps: WebDeps) {
   return new Elysia()
@@ -24,13 +29,19 @@ export function libraryRoutes(deps: WebDeps) {
       );
       if (principal === null) return toLogin();
 
-      const items = listLibrary(
-        libraryDeps(deps),
+      const library = libraryDeps(deps);
+      const items = listLibrary(library, principal.user.id, PAGE_SIZE);
+      const saveRequests = listSaveRequests(
+        library,
         principal.user.id,
-        PAGE_SIZE,
+        SAVE_REQUEST_LIMIT,
       );
       return page(
-        <LibraryPage items={items} locale={preferredLocale(request)} />,
+        <LibraryPage
+          items={items}
+          saveRequests={saveRequests}
+          locale={preferredLocale(request)}
+        />,
       );
     })
     .get("/search", async ({ request }) => {

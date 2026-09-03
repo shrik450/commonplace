@@ -1,5 +1,6 @@
 import { parseIso } from "../../contracts/clock";
-import type { Item } from "../../contracts/item";
+import type { FetchRequest, Item } from "../../contracts/item";
+import { SaveRequestRow } from "./save";
 import { FIELD, Layout, PageHeading, SUBMIT } from "./layout";
 
 export function hostOf(url: string): string | null {
@@ -43,9 +44,11 @@ function Row({ item, locale }: { item: Item; locale: string }) {
 
 export function LibraryPage({
   items,
+  saveRequests,
   locale,
 }: {
   items: Item[];
+  saveRequests: FetchRequest[];
   locale: string;
 }) {
   return (
@@ -70,15 +73,34 @@ export function LibraryPage({
           Save page
         </button>
       </form>
+      {saveRequests.length === 0 ? null : (
+        <section class="mt-10">
+          <h2 class="cp-rule mb-0 pb-2 text-base font-semibold">
+            Save activity
+          </h2>
+          <ul>{saveRequests.map((request) => (
+            <SaveRequestRow request={request} />
+          ))}</ul>
+        </section>
+      )}
       {items.length === 0 ? (
         <p class="text-secondary max-w-prose py-8 text-sm">
           Your library is empty. Enter a web address to save a searchable copy
           of the page.
         </p>
-      ) : (
-        <ul>{items.map((item) => (
+      ) : saveRequests.length === 0 ? (
+        <ul class="mt-10">{items.map((item) => (
           <Row item={item} locale={locale} />
         ))}</ul>
+      ) : (
+        <section class="mt-10">
+          <h2 class="cp-rule mb-0 pb-2 text-base font-semibold">
+            Saved pages
+          </h2>
+          <ul>{items.map((item) => (
+            <Row item={item} locale={locale} />
+          ))}</ul>
+        </section>
       )}
     </Layout>
   );

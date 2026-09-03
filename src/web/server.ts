@@ -10,6 +10,7 @@ import { authRoutes, logoutRoute } from "./routes/auth";
 import type { WebDeps } from "./routes/deps";
 import { itemRoutes } from "./routes/item";
 import { itemSaveRoutes } from "./routes/items";
+import { saveRoutes } from "./routes/save";
 import { libraryRoutes } from "./routes/library";
 import { settingsRoutes } from "./routes/settings";
 import { HomePage } from "./views/home";
@@ -38,7 +39,8 @@ export function buildApp(deps: WebDeps) {
     .use(libraryRoutes(deps))
     .use(itemSaveRoutes(deps))
     .use(settingsRoutes(deps))
-    .use(itemRoutes(deps));
+    .use(itemRoutes(deps))
+    .use(saveRoutes(deps));
 }
 
 // Keep server startup in the web layer because the CLI and web layers can't
