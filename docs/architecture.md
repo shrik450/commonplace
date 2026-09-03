@@ -66,9 +66,11 @@ server starts it in the same process because the queue is intentionally local.
 ### Web and CLI
 
 The web layer renders server-side HTML for the home page, library, search,
-reader, saved capture, raw transcript, sign-in, and token settings. It serves
-no application JavaScript. The saved capture route remains authenticated and
-uses `script-src 'none'`.
+reader, structured text, saved copy, sign-in, and token settings. It serves no
+application JavaScript. The structured text view retains safe HTML semantics
+and uses the transcript and Map for ordered text. The saved copy remains
+authenticated, serves `original.html`, and uses a strict policy with inline CSS
+and embedded data images and fonts only.
 
 The CLI has two operator commands:
 

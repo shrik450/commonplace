@@ -54,7 +54,7 @@ export const ALLOWED_TAGS: string[] = [
 
 const CONFIG = {
   ALLOWED_TAGS,
-  ALLOWED_ATTR: ["id","class","href","src","alt","title","lang","dir","colspan","rowspan","datetime","width","height"],
+  ALLOWED_ATTR: ["id","class","href","src","alt","title","lang","dir","colspan","rowspan","datetime","width","height","start","reversed","type","scope"],
   WHOLE_DOCUMENT: true,
   KEEP_CONTENT: true,
   ALLOW_DATA_ATTR: false,

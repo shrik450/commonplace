@@ -42,7 +42,7 @@ export function ReaderPageView({
             class="text-secondary mt-4 flex flex-wrap gap-4 text-xs"
           >
             <a class={LINK} href={`/items/${item.id}/raw`}>
-              Plain text
+              Structured text
             </a>
             <a class={LINK} href={`/items/${item.id}/capture`}>
               Saved copy

@@ -36,7 +36,7 @@ Ingest writes these four files under
 `items/<user_id>/<item_id>/`:
 
 - `original.html` — the captured page.
-- `sanitized.html` — the safe page served by the archive.
+- `sanitized.html` — the safe structure used for the reader and structured text view.
 - `transcript.txt` — the current text stream.
 - `map.json` — the current transcript-to-DOM Map.
 
@@ -58,11 +58,13 @@ The web app provides:
 - OIDC sign-in with signed, secure session cookies;
 - a library and full-text search;
 - URL saving from the library or an API token;
-- a reader, raw transcript, and authenticated sanitized capture;
+- a reader, structured text view, and authenticated saved copy;
 - API token creation and revocation.
 
-The reader uses server-rendered HTML. It ships no application JavaScript. The
-capture route sends `script-src 'none'` and the sanitizer removes scripts.
+The reader and structured text view use server-rendered HTML. They ship no
+application JavaScript. The saved copy serves the captured page with a strict
+policy that allows inline CSS and embedded data images and fonts, while
+blocking scripts and network resources.
 
 Annotations remain renderable from stored rows. Annotation creation is not
 exposed until there is a complete selection-to-save flow.
@@ -76,7 +78,10 @@ Token secrets are shown once and only their SHA-256 hashes are stored.
 
 OIDC discovery must return same-origin HTTPS endpoints for the configured
 issuer. Login uses authorization code flow with PKCE. Redirect URLs come from
-`base_url`, never from the request Host header.
+`base_url`, never from the request Host header. The saved copy serves the
+captured `original.html` with a strict policy that allows only inline CSS and
+embedded data images and fonts. It blocks scripts, network requests, frames,
+objects, and form submissions.
 
 ## Running it
 
