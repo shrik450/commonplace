@@ -23,6 +23,7 @@
   "devDependencies": {
     "@oxlint/plugins": "1.79.0",
     "@tailwindcss/cli": "4.3.3",
+    "@tailwindcss/typography": "0.5.20",
     "@types/bun": "1.4.0",
     "@types/jsdom": "30.0.0",
     "daisyui": "5.7.17",

@@ -281,7 +281,14 @@ describe("authenticated reader routes", () => {
 
     const reader = await app.handle(new Request(`http://localhost/items/${env.itemId}`, { headers: { cookie: cookie(ALICE) } }));
     expect(reader.status).toBe(200);
-    expect(await reader.text()).toContain("data-cp-block");
+    const readerBody = await reader.text();
+    expect(readerBody).toContain("data-cp-block");
+    const document = new JSDOM(readerBody).window.document;
+    const readerShell = document.querySelector("[data-cp-reader]");
+    expect(readerShell?.tagName).toBe("DIV");
+    const article = readerShell?.querySelector(":scope > article");
+    expect(article?.getAttribute("aria-labelledby")).toBe("reader-title");
+    expect(article?.querySelector("[data-cp-projected] > .cp-transcript")?.tagName).toBe("DIV");
   });
 
   test("rejects an invalid item ID at the route boundary", async () => {

@@ -309,5 +309,5 @@ export function project(input: ProjectInput): string {
   const content = body === null
     ? ""
     : [...body.childNodes].map((node) => renderNode(node, false)).join("");
-  return `<article class="cp-transcript">${content}</article>`;
+  return `<div class="cp-transcript">${content}</div>`;
 }
