@@ -4,6 +4,7 @@ node_modules
 dist
 .cache
 plan
+design/icon-studies
 public/app.css
 test/fixtures/real
 *.db

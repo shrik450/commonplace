@@ -37,6 +37,12 @@ export function publicRoutes() {
   return new Elysia()
     .get("/health", () => ({ ok: true }))
     .get("/", () => page(HomePage()))
+    .get("/icon.svg", () => new Response(Bun.file(join(repoRoot, "public", "icon.svg")), {
+      headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" },
+    }))
+    .get("/favicon.svg", () => new Response(Bun.file(join(repoRoot, "public", "favicon.svg")), {
+      headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" },
+    }))
     .get(
       "/app.css",
       () => new Response(Bun.file(join(repoRoot, "public", "app.css"))),

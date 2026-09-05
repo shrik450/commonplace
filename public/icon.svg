@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 256 256" fill="none">
+  <title>Commonplace clippings</title>
+  <defs>
+    <linearGradient id="paper" x1="55" y1="42" x2="187" y2="235" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFDF3"/>
+      <stop offset=".65" stop-color="#F5EAD2"/>
+      <stop offset="1" stop-color="#E5D2AB"/>
+    </linearGradient>
+    <linearGradient id="back" x1="40" y1="54" x2="228" y2="233" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EEE2C7"/>
+      <stop offset="1" stop-color="#CBBB96"/>
+    </linearGradient>
+    <linearGradient id="brass" x1="34" y1="65" x2="78" y2="54" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#98733B"/>
+      <stop offset=".24" stop-color="#E9C980"/>
+      <stop offset=".42" stop-color="#FFF0BE"/>
+      <stop offset=".65" stop-color="#C29952"/>
+      <stop offset="1" stop-color="#896431"/>
+    </linearGradient>
+    <linearGradient id="highlight" x1="64" y1="137" x2="196" y2="153" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D99B3D" stop-opacity=".5"/>
+      <stop offset=".3" stop-color="#D99B3D" stop-opacity=".78"/>
+      <stop offset="1" stop-color="#D99B3D" stop-opacity=".55"/>
+    </linearGradient>
+    <filter id="shadow" x="-15%" y="-15%" width="135%" height="140%">
+      <feDropShadow dx="1" dy="3" stdDeviation="2.2" flood-color="#463720" flood-opacity=".24"/>
+    </filter>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" seed="12"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".09"/></feComponentTransfer>
+      <feComposite in2="SourceGraphic" operator="in"/>
+    </filter>
+    <clipPath id="paper-edge">
+      <path d="M28 48 205 32 219 174Q209 178 221 184L226 214 48 235Z"/>
+    </clipPath>
+  </defs>
+  <g stroke-linejoin="round">
+    <path d="M40 54 223 60 228 233 34 224Z" fill="url(#back)" stroke="#A28F6E" stroke-width="1" filter="url(#shadow)"/>
+    <path d="M28 48 205 32 219 174Q209 178 221 184L226 214 48 235Z" fill="url(#paper)" stroke="#BBA783" stroke-width="1" filter="url(#shadow)"/>
+    <g clip-path="url(#paper-edge)">
+      <path d="m45 232 181-21v5L48 237Z" fill="#C3AB7E" opacity=".4"/>
+      <path d="m29 49 175-16" stroke="#FFFFFF" stroke-opacity=".8" stroke-width="1.5"/>
+      <rect x="25" y="30" width="205" height="210" fill="#897653" filter="url(#grain)"/>
+    </g>
+    <path d="m49 233 175-20" stroke="#FFFCED" stroke-opacity=".75" stroke-width="1"/>
+  </g>
+  <g transform="rotate(-6 128 140)">
+    <path d="m87 143 79-.3 .5 11-79.5 .3Z" fill="url(#highlight)"/>
+    <path d="m89 144 75-.3" stroke="#EDBB62" stroke-width="1" opacity=".35"/>
+    <g fill="#514735" font-family="Georgia, 'Liberation Serif', serif" font-size="9.5">
+      <text x="65" y="124">A page worth keeping,</text>
+      <text x="65" y="138">a passage worth reading,</text>
+      <text x="65" y="152">and a <tspan x="89" textLength="75" lengthAdjust="spacingAndGlyphs">thought to return to.</tspan></text>
+      <text x="65" y="166">Gathered here, in your</text>
+      <text x="65" y="180">own commonplace.</text>
+    </g>
+  </g>
+  <path d="m78 64-6-30C66 6 27 15 33 42l14 61c5 23 38 16 33-7L69 48" stroke="#886B3F" stroke-width="8" stroke-linecap="round" filter="url(#shadow)"/>
+  <path d="m78 64-6-30C66 6 27 15 33 42l14 61c5 23 38 16 33-7L69 48" stroke="url(#brass)" stroke-width="6" stroke-linecap="round"/>
+  <path d="M69 32C64 11 30 18 36 41l13 59" stroke="#FFF3CE" stroke-opacity=".65" stroke-width="1.1" stroke-linecap="round"/>
+</svg>

@@ -77,6 +77,7 @@ export function Layout({ title, query, refreshSeconds, children, settings, setti
           <meta name="theme-color" content={themeColor} />
         )}
         <title>{`${title} — Commonplace`}</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any" />
         {refreshSeconds === undefined ? null : (
           <meta http-equiv="refresh" content={String(refreshSeconds)} />
         )}
@@ -98,6 +99,7 @@ export function Layout({ title, query, refreshSeconds, children, settings, setti
               translate="no"
               class={`text-base-content hover:text-primary text-sm font-semibold tracking-tight transition-colors duration-150 ${FOCUS}`}
             >
+              <img src="/icon.svg" alt="" width="24" height="24" class="mr-2 inline-block align-middle" />
               Commonplace
             </a>
             <form
