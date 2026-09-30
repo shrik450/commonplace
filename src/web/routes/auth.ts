@@ -48,6 +48,7 @@ export function authRoutes(deps: WebDeps) {
             code,
             href: "/login",
             linkLabel: "Try signing in again",
+            context: null,
           }),
           503,
         );
@@ -75,6 +76,7 @@ export function authRoutes(deps: WebDeps) {
               code,
               href: "/login",
               linkLabel: "Sign in again",
+              context: null,
             }),
           )}`,
           {

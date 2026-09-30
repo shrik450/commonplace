@@ -20,3 +20,10 @@ public/app.css
 
 # Rendered pages for a visual review. Rebuild them, do not commit them.
 preview/
+
+# Built browser scripts, from `bun run scripts`.
+public/scripts/
+
+# The dev shell's cache, and local scratch files.
+.direnv/
+.scratch/

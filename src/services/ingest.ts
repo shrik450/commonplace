@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
 import { sanitize } from "../core/sanitize";
+import { summarize } from "../core/summarize";
 import { metadata, walk } from "../core/walk";
 import type { ErrorCode } from "../contracts/errors";
 import { AppError } from "../contracts/errors";
@@ -143,6 +144,7 @@ async function runIngest(
   );
 
   const blocks = buildBlocks(map, text, itemId, request.user_id);
+  const summary = summarize(text, map);
 
   // Store the item, search index, and completed request in one transaction.
   // `bun:sqlite` transactions are synchronous, so all asynchronous work must
@@ -161,11 +163,13 @@ async function runIngest(
         author: meta.author,
         created_at: finishedAt.toISOString(),
         ingested_at: null,
+        ...summary,
       });
     } else {
       updateItem(deps.db, request.user_id, itemId, {
         title,
         author: meta.author,
+        summary,
       });
     }
     markIngested(deps.db, request.user_id, itemId, finishedAt);

@@ -1,0 +1,25 @@
+name: Verify
+
+on:
+  push:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+      # The dev shell is the toolchain: the Bun and the Chromium this runs are
+      # the ones `flake.lock` pins, the same as on a developer's machine.
+      - name: Install dependencies
+        run: nix develop -c bun install --frozen-lockfile
+      - name: Verify
+        run: nix develop -c bun run verify

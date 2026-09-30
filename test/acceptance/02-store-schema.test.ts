@@ -4,6 +4,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { blocksOf } from "../../src/contracts/transcript";
+import { sanitize } from "../../src/core/sanitize";
+import { summarize } from "../../src/core/summarize";
+import { walk } from "../../src/core/walk";
 import { MIGRATIONS, SCHEMA_VERSION, openDatabase } from "../../src/store/db";
 
 const APPLIED_AT = new Date("2026-02-01T00:00:00.000Z");
@@ -15,12 +19,12 @@ describe("database migration behavior", () => {
     roots.push(root);
     const db = openDatabase(join(root, "db.sqlite"), APPLIED_AT);
 
-    expect(SCHEMA_VERSION).toBe(5);
+    expect(SCHEMA_VERSION).toBe(6);
     expect(
       db.query<{ version: number }, []>(
         "SELECT version FROM migrations ORDER BY version",
       ).all(),
-    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }]);
+    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }]);
     expect(
       db.query<{ name: string }, []>(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'items'",
@@ -101,6 +105,63 @@ describe("database migration behavior", () => {
     ]);
     expect(db.query<{ name: string }, []>("PRAGMA table_info(items)").all().map((row) => row.name)).not.toContain("kind");
     expect(db.query<{ name: string }, []>("PRAGMA table_info(fetch_requests)").all().map((row) => row.name)).not.toContain("source_path");
+    db.close();
+  });
+});
+
+describe("summary backfill", () => {
+  test("gives items saved before summaries what a new ingest would store", async () => {
+    const root = await mkdtemp(join(tmpdir(), "commonplace-summary-backfill-"));
+    roots.push(root);
+    const legacy = new Database(join(root, "db.sqlite"));
+    for (const migration of MIGRATIONS.slice(0, 5)) {
+      legacy.exec(migration.sql);
+      legacy.run("INSERT INTO migrations (version, applied_at) VALUES (?, ?)", [migration.version, APPLIED_AT.toISOString()]);
+    }
+    legacy.exec("INSERT INTO users (id, subject, created_at) VALUES ('u', 'reader', 'created')");
+
+    const pages = {
+      prose: "<html><body><nav><p>A long navigation paragraph that is not article content, yet runs well beyond eighty characters.</p></nav>" +
+        "<article><h1>Title</h1><p>   </p><p>Short.</p><p>" + "Enough prose to quote on a card, well beyond the minimum length for an excerpt. ".repeat(8) + "</p></article></body></html>",
+      astral: "<html><body><article><h1>Symbols</h1><p>" + "Mathematical script letters like 𝒜 and 𝒵 count as one character in SQLite. ".repeat(9) + "</p></article></body></html>",
+      terse: "<html><body><article><p>Too short to quote.</p></article></body></html>",
+    };
+    const expected = new Map<string, ReturnType<typeof summarize>>();
+    for (const [id, html] of Object.entries(pages)) {
+      const { text, map } = walk(sanitize(html));
+      expected.set(id, summarize(text, map));
+      legacy.run("INSERT INTO items (id, user_id, url, title, author, created_at, ingested_at) VALUES (?, 'u', ?, ?, NULL, 'created', 'created')", [id, `https://example.com/${id}`, id]);
+      for (const block of blocksOf(map)) {
+        const first = block.runs[0]!;
+        const last = block.runs.at(-1)!;
+        const blockText = text.slice(first.start, last.end);
+        if (blockText.trim() === "") continue;
+        legacy.run(
+          "INSERT INTO blocks_fts (text, item_id, user_id, block_index, start_offset, end_offset, is_content) VALUES (?, ?, 'u', ?, ?, ?, ?)",
+          [blockText, id, block.index, first.start, last.end, first.is_content ? 1 : 0],
+        );
+      }
+    }
+    legacy.run("INSERT INTO items (id, user_id, url, title, author, created_at, ingested_at) VALUES ('unindexed', 'u', 'https://example.com/unindexed', 'Unindexed', NULL, 'created', NULL)");
+    legacy.close();
+
+    const db = openDatabase(join(root, "db.sqlite"), APPLIED_AT);
+    const rows = new Map(
+      db.query<{ id: string; excerpt: string; content_length: number }, []>("SELECT id, excerpt, content_length FROM items").all()
+        .map((row) => [row.id, { excerpt: row.excerpt, content_length: row.content_length }]),
+    );
+    expect(rows.get("prose")).toEqual(expected.get("prose")!);
+    expect(rows.get("prose")!.excerpt).toStartWith("Enough prose to quote");
+    expect(rows.get("terse")).toEqual(expected.get("terse")!);
+    expect(rows.get("terse")!.excerpt).toBe("");
+    expect(rows.get("unindexed")).toEqual({ excerpt: "", content_length: 0 });
+    // SQLite counts an astral-plane character once where JavaScript strings
+    // count two UTF-16 units. Both sides count characters, so they agree, and
+    // the cut never lands inside one.
+    const astral = rows.get("astral")!;
+    expect(astral).toEqual(expected.get("astral")!);
+    expect([...astral.excerpt]).toHaveLength(400);
+    expect(astral.excerpt.isWellFormed()).toBe(true);
     db.close();
   });
 });

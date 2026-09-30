@@ -1,0 +1,120 @@
+/* Every colour holds both themes. Parchment is daylight on a warm desk; ink
+   is the same desk at night under a lamp. The theme setting only chooses the
+   colour scheme, and `light-dark()` does the rest. */
+:root { color-scheme: light dark; }
+[data-theme="parchment"] { color-scheme: light; }
+[data-theme="ink"] { color-scheme: dark; }
+
+@theme {
+  --font-reading: Newsreader, "Iowan Old Style", Palatino, Georgia, serif;
+  --font-chrome: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-code: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* The type scale. Every size in the interface is one of these steps; the
+     transcript alone sizes itself, from the reading settings. The first five
+     are interface text, the rest are set in the reading font. */
+  --text-micro: 11px;
+  --text-caption: 12px;
+  --text-label: 13px;
+  --text-control: 14px;
+  --text-body: 15px;
+  --text-plain: 16px;
+  --text-quote: 18px;
+  --text-heading: 20px;
+  --text-title: 30px;
+  --text-display: 40px;
+
+  /* Medium for display type, heading for titles, label for interface text
+     that must stand out, stamp for small capitals. */
+  --font-weight-medium: 500;
+  --font-weight-heading: 600;
+  --font-weight-label: 650;
+  --font-weight-stamp: 800;
+
+  --color-desk: light-dark(#efe7d8, #14151a);
+  --color-desk-glow: light-dark(rgb(255 252 244 / 0.55), rgb(255 184 120 / 0.07));
+  --color-paper: light-dark(#fffaf0, #23242c);
+  --color-paper-lifted: light-dark(#fffdf7, #2a2b34);
+  --color-paper-aged: light-dark(#f6ecd6, #1d1e25);
+  --color-paper-fold: light-dark(#eadcbe, #34353f);
+  --color-ink: light-dark(#2a241d, #e6e2da);
+  --color-ink-muted: light-dark(#6e675e, #a39cad);
+  --color-ink-faint: light-dark(#a1978a, #6f6a79);
+  --color-note: light-dark(#5c4630, #d6c2a4);
+  --color-rule: light-dark(#e2dacd, #33343e);
+  --color-accent: light-dark(#b4522f, #d97a4e);
+  --color-accent-strong: light-dark(#9c4425, #e8946a);
+  --color-on-accent: light-dark(#fffaf0, #14151a);
+  --color-wash: light-dark(rgb(214 148 61 / 0.28), rgb(217 155 78 / 0.24));
+
+  --color-cloth: light-dark(#ab4b2b, #6a2a18);
+  --color-cloth-deep: light-dark(#8c3b20, #56200f);
+  --color-cloth-shade: light-dark(#7a3320, #3c180d);
+  --color-on-cloth: light-dark(#fff4e4, #f1dac4);
+  --color-brass: light-dark(#c29952, #9a7c45);
+  --color-brass-deep: light-dark(#8a6430, #5e4a26);
+  --color-brass-mark: light-dark(#8a6428, #c9a462);
+  --color-manila: light-dark(#ecdcb6, #3d3629);
+  --color-manila-edge: light-dark(#cdb582, #5c5140);
+
+  /* Light and shadow. `umbra` is the tight contact shadow, `penumbra` the
+     wide ambient one. The edge colours are the lit top and the shaded bottom
+     of anything with thickness. */
+  --color-umbra: light-dark(rgb(60 40 20 / 0.14), rgb(0 0 0 / 0.5));
+  --color-penumbra: light-dark(rgb(60 40 20 / 0.2), rgb(0 0 0 / 0.55));
+  --color-cloth-umbra: light-dark(rgb(40 12 2 / 0.45), rgb(0 0 0 / 0.6));
+  --color-edge-hi: light-dark(rgb(255 255 255 / 0.75), rgb(255 255 255 / 0.08));
+  --color-edge-lo: light-dark(rgb(170 145 105 / 0.28), rgb(0 0 0 / 0.45));
+  --color-cloth-edge-hi: light-dark(rgb(255 225 200 / 0.24), rgb(255 205 175 / 0.12));
+  --color-brass-edge-hi: light-dark(rgb(255 240 200 / 0.6), rgb(255 230 180 / 0.22));
+  --color-accent-edge: light-dark(rgb(255 255 255 / 0.22), rgb(255 255 255 / 0.18));
+  /* The front face of the box turns away from the light. */
+  --color-face-shade: light-dark(rgb(40 12 2 / 0.13), rgb(0 0 0 / 0.22));
+}
+
+:root {
+  /* Three heights above the desk. */
+  --lift-1: 0 0 0 0.5px var(--color-umbra), 0 1px 1px var(--color-umbra), 0 3px 6px -2px var(--color-penumbra);
+  --lift-2: 0 0 0 0.5px var(--color-umbra), 0 2px 2px var(--color-umbra), 0 8px 14px -4px var(--color-penumbra), 0 22px 40px -12px var(--color-penumbra);
+  --lift-3: 0 0 0 1px var(--color-umbra), 0 2px 2px var(--color-umbra), 0 14px 24px -8px var(--color-penumbra), 0 36px 64px -20px var(--color-penumbra);
+  /* Paper has a lit top edge and a darker bottom edge: its thickness. */
+  --paper-edge: inset 0 1px 0 var(--color-edge-hi), inset 0 -1px 0 var(--color-edge-lo);
+
+  /* The only textures: a faint grain on paper, and the weave of book cloth. */
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .35  0 0 0 0 .28  0 0 0 0 .18  0 0 0 .05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --weave:
+    repeating-linear-gradient(45deg, rgb(0 0 0 / 0.035) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.03) 0 1px, transparent 1px 3px);
+
+  /* Motion: colour changes, things settling with a little overshoot, a
+     spring for small tabs, and a page turning. */
+  --fade: 150ms;
+  --settle: cubic-bezier(0.3, 0.7, 0.4, 1.15);
+  --spring: cubic-bezier(0.3, 0.7, 0.4, 1.4);
+  --turn: 650ms;
+}
+
+/* One width for every page that holds one object: the reading measure, in
+   the reading font at the reading size, plus a sheet's margins. Registering
+   the property makes it resolve to pixels here, where the body carries the
+   reading font at the reading size, and pass those pixels down. The size
+   matters: an optical-size font like Newsreader widens its letters as it
+   shrinks, so a measure taken at another size and scaled is wrong. */
+@property --page-w {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 760px;
+}
+
+body {
+  --cp-measure: 68;
+  --cp-size: 18;
+  --sheet-pad: 72px;
+  font-family: var(--reading-font);
+  font-size: calc(var(--cp-size) * 1px);
+  --page-w: calc(var(--cp-measure) * 1ch + 2 * var(--sheet-pad));
+}
+
+@media (max-width: 720px) {
+  body { --sheet-pad: 22px; }
+}

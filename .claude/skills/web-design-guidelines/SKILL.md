@@ -36,16 +36,23 @@ the manual review after `bun run verify` passes.
 
 Read every file the change touches under `src/web/`. Check each rule in
 `references/web-interface-guidelines.md`. Skip the React rules; this app
-renders JSX to a string on the server and ships no application script. Map
-them to their HTML equivalents:
+renders JSX to a string on the server, and each page works without a script.
+Small same-origin scripts in `src/web/client/` enhance the index box, the
+book, the save card, clipping, and the settings preview. Map the React rules
+to their equivalents here:
 
 | Guideline says | Here it means |
 | -------------- | ------------- |
 | `onKeyDown` handlers | Use a real `<button>` or `<a>`, which is already keyboard-reachable. |
 | `<Link>` | A plain `<a href>`. |
-| `useState` and URL sync | State already lives in the URL, because every page is a GET. |
-| Hydration safety | No hydration. Check that server-rendered HTML does not depend on client state. |
-| Virtualize long lists | Page the query in the route instead. |
+| `useState` and URL sync | State lives in the URL: views, filters, and pages are GET parameters. A script holds only what the page shows, such as which spread is open. |
+| Hydration safety | No hydration. Scripts enhance server-rendered HTML that already works on its own. |
+| Virtualize long lists | Page the query in the route, with cursors, instead. |
+
+Then look at the result. Run `bun run preview shots` and read the screenshots
+for every view the change touches, in both themes and at both sizes. The
+browser tests in `test/browser/` check behavior; the screenshots are for what
+a test can't judge.
 
 ## Report findings
 

@@ -52,6 +52,8 @@ function item(id: ReturnType<typeof asItemId>, userId: ReturnType<typeof asUserI
     author: null,
     created_at: NOW.toISOString(),
     ingested_at: null,
+    excerpt: "",
+    content_length: 0,
   };
 }
 

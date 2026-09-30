@@ -93,18 +93,24 @@ function cutsIn(run: Run, highlights: Highlight[]): number[] {
   return [...cuts].toSorted((a, b) => a - b);
 }
 
+// `marked` collects the highlights already rendered. Pieces render in reading
+// order, so the first piece of each highlight carries `data-cp-first`, which
+// the reader numbers in the margin.
 function piece(
   transcript: string,
   start: number,
   end: number,
   highlights: Highlight[],
+  marked: Set<AnnotationId>,
 ): string {
   const covering = highlights.filter(
     (highlight) => highlight.start <= start && highlight.end >= end,
   );
   let html = escape(transcript.slice(start, end));
   for (const highlight of covering.toReversed()) {
-    html = `<mark class="cp-mark" data-cp-annotation="${escape(highlight.id)}">${html}</mark>`;
+    const first = marked.has(highlight.id) ? "" : " data-cp-first";
+    marked.add(highlight.id);
+    html = `<mark class="cp-mark" data-cp-annotation="${escape(highlight.id)}"${first}>${html}</mark>`;
   }
   return html;
 }
@@ -215,11 +221,12 @@ export function project(input: ProjectInput): string {
     blockRanges.set(block.index, { start: first.start, end: last.end, tag });
   }
 
+  const marked = new Set<AnnotationId>();
   const renderRun = (run: Run, className = ""): string => {
     const cuts = cutsIn(run, highlights);
     const content: string[] = [];
     for (let i = 0; i < cuts.length - 1; i += 1) {
-      content.push(piece(transcript, cuts[i]!, cuts[i + 1]!, highlights));
+      content.push(piece(transcript, cuts[i]!, cuts[i + 1]!, highlights, marked));
     }
     const block = blockRanges.get(run.block_index);
     const first = firstRunByBlock.get(run.block_index) === run;

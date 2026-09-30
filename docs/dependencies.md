@@ -35,7 +35,6 @@ history, maintainer count, install scripts, and transitive dependency count.
 | `elysia` | 1.4.29 | 1.4.30 was 5 days old at audit; 1.4.29 has aged | when 1.4.30 passes 14 days |
 | `tailwindcss` | 4.3.3 | 46 days old, three maintainers, zero deps | on next major |
 | `@tailwindcss/cli` | 4.3.3 | same release train as `tailwindcss` | on next major |
-| `daisyui` | 5.7.17 | 5.7.18 to 5.7.22 shipped in one week; that burst has not settled | when the cadence returns to normal |
 | `oxlint` | 1.79.0 | 1.80.0 was 7 days old at audit | when 1.80.0 passes 14 days |
 | `@oxlint/plugins` | 1.79.0 | Must match the Oxlint version; zero dependencies and no install script | with Oxlint |
 | `typescript` | 7.0.2 | 54 days old, seven maintainers under Microsoft | on next minor |
@@ -45,6 +44,7 @@ history, maintainer count, install scripts, and transitive dependency count.
 | `dompurify` | 3.4.13 | 28 days old; 3.4.14 was 12 days old at audit | when 3.4.14 passes 14 days |
 | `@mozilla/readability` | 0.6.0 | zero dependencies, three maintainers, Mozilla's repository | on next release |
 | `@types/jsdom` | 30.0.0 | types only, no scripts, matches jsdom 30 | with each jsdom bump |
+| `playwright-core` | 1.63.0 | 25 days old at audit, zero dependencies, no install script, five Microsoft maintainers | on next minor |
 
 ## Rejected
 
@@ -103,17 +103,24 @@ results. Version 1.4.0 contains only `.d.ts` files and has no install script.
 the dependency trees. `@tailwindcss/cli` uses it to compile a native binary.
 Remove it if the CSS build stops using the Tailwind CLI.
 
-**Three packages publish through one maintainer account.** A compromised
-account for `elysia`, `daisyui`, or `oxlint` could publish a malicious release.
+**Two packages publish through one maintainer account.** A compromised
+account for `elysia` or `oxlint` could publish a malicious release.
 Exact version pins prevent an automatic upgrade to that release.
 
 `@oxlint/plugins` has one maintainer, no dependencies, and no install script.
 Its exact version must move with `oxlint` because the vendored plugin imports its
 runtime types and compatibility helpers.
 
-## Future dependency review
+**`playwright-core` drives a browser, but never fetches one.** It is a dev
+dependency for the browser tests and `bun run preview`. Unlike `playwright`,
+it has no install script and downloads no browsers; it launches the Chromium
+that `nix develop` provides through `COMMONPLACE_TEST_BROWSER`.
 
-Audit `playwright` before adding it for annotation browser tests.
+## Removed
+
+- `daisyui` — It had come to supply only two colour themes. The material
+  design defines its own tokens in `src/web/styles/tokens.css`, with both
+  themes in one `light-dark()` declaration each.
 
 `dompurify`, `jsdom`, and `@mozilla/readability` were audited on 2026-09-01 and
 are pinned above. `linkedom` was audited at the same time and rejected. See

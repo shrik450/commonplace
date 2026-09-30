@@ -6,16 +6,10 @@ import type { ItemId } from "../../contracts/ids";
 import { authenticate } from "../../services/auth";
 import { captureFile, readerPage } from "../../services/library";
 import type { ProjectionMode } from "../../core/project";
-import { ErrorPage, page } from "../views/layout";
+import { page, type PageContext } from "../views/layout";
 import { ReaderPageView } from "../views/reader";
-import {
-  authDeps,
-  libraryDeps,
-  preferredLocale,
-  toLogin,
-  userSettings,
-  type WebDeps,
-} from "./deps";
+import { authDeps, libraryDeps, pageContext, toLogin, type WebDeps } from "./deps";
+import { errorResponse } from "./errors";
 
 function readItemId(raw: string): ItemId | null {
   try {
@@ -25,25 +19,21 @@ function readItemId(raw: string): ItemId | null {
   }
 }
 
-function notFound(settings: ReturnType<typeof userSettings>): Response {
-  return page(
-    <ErrorPage
-      title="Commonplace cannot find that page"
-      message="Your library has no item at this address. The item may have been deleted, or the link may be outdated."
-      settings={settings}
-    />,
+function notFound(context: PageContext): Response {
+  return errorResponse(
+    context,
     404,
+    "Commonplace cannot find that page",
+    "Your library has no item at this address. The item may have been deleted, or the link may be outdated.",
   );
 }
 
-function badRequest(settings: ReturnType<typeof userSettings>): Response {
-  return page(
-    <ErrorPage
-      title="That item address is invalid"
-      message="A valid item address ends with an item ID. Open your library, and select the page again."
-      settings={settings}
-    />,
+function badRequest(context: PageContext): Response {
+  return errorResponse(
+    context,
     400,
+    "That item address is invalid",
+    "A valid item address ends with an item ID. Open your library, and select the page again.",
   );
 }
 
@@ -60,8 +50,9 @@ async function itemPageResponse(
   const principal = await authenticate(request, authDeps(deps)).catch(() => null);
   if (principal === null) return toLogin();
 
+  const context = pageContext(deps, principal.user.id, request);
   const itemId = readItemId(rawItemId);
-  if (itemId === null) return badRequest(userSettings(deps, principal.user.id));
+  if (itemId === null) return badRequest(context);
 
   try {
     const view = await readerPage(
@@ -75,12 +66,12 @@ async function itemPageResponse(
         item={view.item}
         html={view.html}
         annotations={view.annotations}
-        locale={preferredLocale(request)}
-        settings={userSettings(deps, principal.user.id)}
+        mode={mode}
+        context={context}
       />,
     );
   } catch (error) {
-    if (error instanceof Error && missing(error)) return notFound(userSettings(deps, principal.user.id));
+    if (error instanceof Error && missing(error)) return notFound(context);
     throw error;
   }
 }
@@ -100,7 +91,7 @@ export function itemRoutes(deps: WebDeps) {
       if (principal === null) return toLogin();
 
       const itemId = readItemId(params.id);
-      if (itemId === null) return badRequest(userSettings(deps, principal.user.id));
+      if (itemId === null) return badRequest(pageContext(deps, principal.user.id, request));
 
       try {
         const html = await captureFile(
@@ -119,7 +110,7 @@ export function itemRoutes(deps: WebDeps) {
           },
         });
       } catch (error) {
-        if (error instanceof Error && missing(error)) return notFound(userSettings(deps, principal.user.id));
+        if (error instanceof Error && missing(error)) return notFound(pageContext(deps, principal.user.id, request));
         throw error;
       }
     });

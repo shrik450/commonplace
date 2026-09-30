@@ -1,14 +1,13 @@
 import { Database } from "bun:sqlite";
 
+import type { Cursor } from "../contracts/cursor";
 import { AppError } from "../contracts/errors";
-import type { Item } from "../contracts/item";
+import type { Item, ItemSummary } from "../contracts/item";
 import { asItemId, asUserId, type ItemId, type UserId } from "../contracts/ids";
 import { write } from "./db";
 
-export type Cursor = { created_at: string; id: ItemId };
-
 const ITEM_COLUMNS = `
-  id, user_id, url, title, author, created_at, ingested_at
+  id, user_id, url, title, author, created_at, ingested_at, excerpt, content_length
 `;
 
 type ItemRow = {
@@ -19,6 +18,8 @@ type ItemRow = {
   author: string | null;
   created_at: string;
   ingested_at: string | null;
+  excerpt: string;
+  content_length: number;
 };
 
 function itemOf(row: ItemRow): Item {
@@ -37,8 +38,8 @@ function requireRow(changes: number, userId: UserId, id: ItemId): void {
 export function insertItem(db: Database, item: Item): Item {
   write(
     db,
-    `INSERT INTO items (id, user_id, url, title, author, created_at, ingested_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO items (id, user_id, url, title, author, created_at, ingested_at, excerpt, content_length)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       item.id,
       item.user_id,
@@ -47,6 +48,8 @@ export function insertItem(db: Database, item: Item): Item {
       item.author,
       item.created_at,
       item.ingested_at,
+      item.excerpt,
+      item.content_length,
     ],
     { user_id: item.user_id, id: item.id },
   );
@@ -75,6 +78,7 @@ export function getItemByUrl(
   return row === null ? null : itemOf(row);
 }
 
+// Lists items newest first, starting just older than `before` when given.
 export function listItems(
   db: Database,
   userId: UserId,
@@ -100,6 +104,45 @@ export function listItems(
     .map(itemOf);
 }
 
+// Lists the `limit` items just newer than `after`, newest first.
+export function listItemsAfter(
+  db: Database,
+  userId: UserId,
+  limit: number,
+  after: Cursor,
+): Item[] {
+  return db
+    .query<ItemRow, [string, string, string, number]>(
+      `SELECT ${ITEM_COLUMNS} FROM items
+       WHERE user_id = ? AND (created_at, id) > (?, ?)
+       ORDER BY created_at ASC, id ASC LIMIT ?`,
+    )
+    .all(userId, after.created_at, after.id, limit)
+    .map(itemOf)
+    .toReversed();
+}
+
+export function countItems(db: Database, userId: UserId): number {
+  return db
+    .query<{ count: number }, [string]>(
+      "SELECT count(*) AS count FROM items WHERE user_id = ?",
+    )
+    .get(userId)!.count;
+}
+
+export function countItemsNewerThan(
+  db: Database,
+  userId: UserId,
+  cursor: Cursor,
+): number {
+  return db
+    .query<{ count: number }, [string, string, string]>(
+      `SELECT count(*) AS count FROM items
+       WHERE user_id = ? AND (created_at, id) > (?, ?)`,
+    )
+    .get(userId, cursor.created_at, cursor.id)!.count;
+}
+
 // This unscoped query is used only by the orphan sweep.
 export function itemPaths(db: Database): string[] {
   return db
@@ -114,10 +157,10 @@ export function updateItem(
   db: Database,
   userId: UserId,
   id: ItemId,
-  fields: { title?: string; author?: string | null },
+  fields: { title?: string; author?: string | null; summary?: ItemSummary },
 ): Item {
   const sets: string[] = [];
-  const values: (string | null)[] = [];
+  const values: (string | number | null)[] = [];
   if (Object.hasOwn(fields, "title")) {
     sets.push("title = ?");
     values.push(fields.title!);
@@ -125,6 +168,10 @@ export function updateItem(
   if (Object.hasOwn(fields, "author")) {
     sets.push("author = ?");
     values.push(fields.author!);
+  }
+  if (fields.summary !== undefined) {
+    sets.push("excerpt = ?", "content_length = ?");
+    values.push(fields.summary.excerpt, fields.summary.content_length);
   }
   if (sets.length > 0) {
     const changes = write(

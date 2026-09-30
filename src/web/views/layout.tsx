@@ -1,80 +1,53 @@
 import type { UserSettings } from "../../contracts/settings";
+import type { ClientScript } from "../client/scripts";
 import type { Child } from "./jsx-runtime";
+import { Masthead, type View } from "./masthead";
+import { Sheet } from "./sheet";
+import { ACTION, LINK } from "./controls";
 
-// Keep interactive state in these shared class strings for consistent controls.
-const FOCUS =
-  "rounded-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
-
-// Styles secondary navigation links.
-export const LINK = `text-secondary hover:text-primary transition-colors duration-150 ${FOCUS}`;
-
-export const CONTENT_LINK = `text-base-content hover:text-primary active:text-primary/80 transition-colors duration-150 ${FOCUS}`;
-
-// Styles non-primary actions.
-export const ACTION = `text-primary underline decoration-1 underline-offset-4 hover:decoration-2 hover:text-primary/80 transition-colors duration-150 ${FOCUS}`;
-
-// Styles the primary action on a page.
-export const SUBMIT = `bg-primary text-primary-content hover:bg-primary/85 active:bg-primary/70 px-3 py-1 text-sm transition-colors duration-150 ${FOCUS}`;
-
-// Styles text fields and their focus state.
-export const FIELD = `bg-transparent py-1 text-sm outline-none placeholder:text-secondary ${FOCUS}`;
-
-export const SELECT_FIELD = `border border-base-300 bg-base-100 text-base-content px-2 py-1 text-sm outline-none ${FOCUS}`;
-
-export const RANGE_FIELD = `accent-primary w-full cursor-pointer ${FOCUS}`;
-
-// Renders the standard page heading. The home and reader views use larger
-// headings.
-export function PageHeading({ children }: { children?: Child }) {
-  return (
-    <h1 class="font-reading mb-6 text-2xl leading-tight text-pretty">
-      {children}
-    </h1>
-  );
-}
+// What every signed-in page needs to draw the desk around its content.
+export type PageContext = {
+  settings: UserSettings;
+  locale: string;
+  cardCount: number;
+  today: Date;
+};
 
 export type LayoutProps = {
   title: string;
+  // Public pages have no context: no tabs, no search, no counts.
+  context: PageContext | null;
+  current?: View;
   query?: string;
+  scripts?: readonly ClientScript[];
   refreshSeconds?: number;
   children?: Child;
-  settings?: UserSettings;
-  settingsScript?: boolean;
 };
 
-function SearchIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      aria-hidden="true"
-    >
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.3-4.3" />
-    </svg>
-  );
+const DESK_COLORS = { parchment: "#efe7d8", ink: "#14151a" } as const;
+
+function themeOf(settings: UserSettings | undefined): keyof typeof DESK_COLORS | undefined {
+  if (settings?.theme === "light") return "parchment";
+  if (settings?.theme === "dark") return "ink";
+  return undefined;
 }
 
-export function Layout({ title, query, refreshSeconds, children, settings, settingsScript = false }: LayoutProps) {
-  const theme = settings?.theme === "light" ? "parchment" : settings?.theme === "dark" ? "ink" : undefined;
-  const themeColor = theme === "ink" ? "#14151a" : "#f7f3ec";
+export function Layout({ title, context, current, query, scripts = [], refreshSeconds, children }: LayoutProps) {
+  const settings = context?.settings;
+  const theme = themeOf(settings);
+  const loaded: ClientScript[] = context === null ? [...scripts] : ["save-card", ...scripts];
   return (
     <html lang="en" data-theme={theme}>
       <head>
         <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         {theme === undefined ? (
           <>
-            <meta name="theme-color" content="#f7f3ec" media="(prefers-color-scheme: light)" />
-            <meta name="theme-color" content="#14151a" media="(prefers-color-scheme: dark)" />
+            <meta name="theme-color" content={DESK_COLORS.parchment} media="(prefers-color-scheme: light)" />
+            <meta name="theme-color" content={DESK_COLORS.ink} media="(prefers-color-scheme: dark)" />
           </>
         ) : (
-          <meta name="theme-color" content={themeColor} />
+          <meta name="theme-color" content={DESK_COLORS[theme]} />
         )}
         <title>{`${title} — Commonplace`}</title>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any" />
@@ -83,70 +56,30 @@ export function Layout({ title, query, refreshSeconds, children, settings, setti
         )}
         <link rel="preload" href="/fonts/newsreader-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
         <link rel="stylesheet" href="/app.css" />
-        {settingsScript ? <script src="/reader-settings.js" defer /> : null}
+        {[...new Set(loaded)].map((name) => <script type="module" src={`/scripts/${name}.js`} />)}
       </head>
-      <body class="bg-base-200 text-base-content min-h-screen">
-        <a
-          href="#main"
-          class={`bg-base-100 sr-only px-3 py-2 text-sm focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-20 ${LINK}`}
-        >
-          Skip to main content
-        </a>
-        <header class="cp-rule bg-base-100 sticky top-0 z-10">
-          <div class="mx-auto flex max-w-4xl flex-wrap items-center gap-x-5 gap-y-2 px-6 py-3">
-            <a
-              href="/library"
-              translate="no"
-              class={`text-base-content hover:text-primary text-sm font-semibold tracking-tight transition-colors duration-150 ${FOCUS}`}
-            >
-              <img src="/icon.svg" alt="" width="24" height="24" class="mr-2 inline-block align-middle" />
-              Commonplace
-            </a>
-            <form
-              action="/search"
-              method="get"
-              role="search"
-              class="focus-within:text-primary order-last flex w-full min-w-0 items-center gap-2 sm:order-none sm:w-auto sm:flex-1"
-            >
-              <span class="text-secondary" aria-hidden="true">
-                <SearchIcon />
-              </span>
-              <input
-                type="search"
-                name="q"
-                value={query ?? ""}
-                aria-label="Search your library"
-                autocomplete="off"
-                placeholder="Search everything you saved…"
-                class={`w-full min-w-0 ${FIELD}`}
-              />
-            </form>
-            <a href="/settings" class={`ml-auto text-sm sm:ml-0 ${LINK}`}>
-              Settings
-            </a>
-            <a href="/logout" class={`text-sm ${LINK}`}>
-              Log out
-            </a>
-          </div>
-        </header>
-        <main id="main" class="mx-auto max-w-4xl px-6 py-10">
-          {children}
-        </main>
+      <body
+        data-cp-font={settings?.font}
+        style={settings === undefined ? undefined : `--cp-measure: ${settings.text_width}; --cp-size: ${settings.text_size}`}
+      >
+        <a href="#main" class={`skip-link ${LINK}`}>Skip to main content</a>
+        <Masthead context={context} current={current} query={query} />
+        <main id="main" class="desk">{children}</main>
       </body>
     </html>
   );
 }
 
-// Renders a browser error with a recovery link and optional diagnostic code.
+// Renders a page error with a recovery link and an optional diagnostic code.
 export function ErrorPage({
   title,
   message,
   code,
   href = "/library",
   linkLabel = "Go to your library",
-  settings,
+  context,
 }: {
-  settings?: UserSettings;
+  context: PageContext | null;
   title: string;
   message: string;
   code?: string;
@@ -154,19 +87,17 @@ export function ErrorPage({
   linkLabel?: string;
 }) {
   return (
-    <Layout title={title} settings={settings}>
-      <h1 class="font-reading text-3xl leading-tight text-pretty">{title}</h1>
-      <p class="mt-4 max-w-prose text-sm leading-relaxed">{message}</p>
-      <p class="mt-8">
-        <a class={`text-sm ${ACTION}`} href={href}>
-          {linkLabel}
-        </a>
-      </p>
-      {code === undefined ? null : (
-        <p class="text-secondary mt-10 font-mono text-xs" translate="no">
-          {code}
+    <Layout title={title} context={context}>
+      <Sheet labelledBy="error-title">
+        <h1 id="error-title" class="sheet-title">{title}</h1>
+        <p id="error-message" class="sheet-lede">{message}</p>
+        <p class="sheet-actions">
+          <a class={ACTION} href={href}>{linkLabel}</a>
         </p>
-      )}
+        {code === undefined ? null : (
+          <p class="sheet-code" translate="no">{code}</p>
+        )}
+      </Sheet>
     </Layout>
   );
 }

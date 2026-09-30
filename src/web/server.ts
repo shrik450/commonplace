@@ -6,7 +6,9 @@ import { capture } from "../services/acquire";
 import { startWorker } from "../services/worker";
 import { defaultConfigPath, loadConfig } from "../store/config";
 import { openDatabase } from "../store/db";
+import { assetRoutes } from "./routes/assets";
 import { authRoutes, logoutRoute } from "./routes/auth";
+import { clippingRoutes } from "./routes/clippings";
 import type { WebDeps } from "./routes/deps";
 import { itemRoutes } from "./routes/item";
 import { itemSaveRoutes } from "./routes/items";
@@ -18,48 +20,12 @@ import { page } from "./views/layout";
 
 export type { WebDeps };
 
-const repoRoot = join(import.meta.dir, "..", "..");
-const FONT_FILES = new Set<string>([
-  "newsreader-latin-opsz-normal.woff2",
-  "newsreader-latin-opsz-italic.woff2",
-  "literata-latin-opsz-normal.woff2",
-  "literata-latin-opsz-italic.woff2",
-  "source-serif-4-latin-opsz-normal.woff2",
-  "source-serif-4-latin-opsz-italic.woff2",
-  "atkinson-hyperlegible-next-latin-wght-normal.woff2",
-  "atkinson-hyperlegible-next-latin-wght-italic.woff2",
-  "jetbrains-mono-latin-wght-normal.woff2",
-  "jetbrains-mono-latin-wght-italic.woff2",
-]);
-
 // These routes don't expose library data and don't require authentication.
 export function publicRoutes() {
   return new Elysia()
+    .use(assetRoutes())
     .get("/health", () => ({ ok: true }))
-    .get("/", () => page(HomePage()))
-    .get("/icon.svg", () => new Response(Bun.file(join(repoRoot, "public", "icon.svg")), {
-      headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" },
-    }))
-    .get("/favicon.svg", () => new Response(Bun.file(join(repoRoot, "public", "favicon.svg")), {
-      headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" },
-    }))
-    .get(
-      "/app.css",
-      () => new Response(Bun.file(join(repoRoot, "public", "app.css"))),
-    )
-    .get(
-      "/reader-settings.js",
-      () => new Response(Bun.file(join(repoRoot, "public", "reader-settings.js")), { headers: { "content-type": "text/javascript; charset=utf-8" } }),
-    )
-    .get("/fonts/:file", ({ params }) => {
-      if (!FONT_FILES.has(params.file)) return new Response("Not found", { status: 404 });
-      return new Response(Bun.file(join(repoRoot, "public", "fonts", params.file)), {
-        headers: {
-          "cache-control": "public, max-age=86400",
-          "content-type": "font/woff2",
-        },
-      });
-    });
+    .get("/", () => page(HomePage()));
 }
 
 export function buildApp(deps: WebDeps) {
@@ -71,6 +37,7 @@ export function buildApp(deps: WebDeps) {
     .use(itemSaveRoutes(deps))
     .use(settingsRoutes(deps))
     .use(itemRoutes(deps))
+    .use(clippingRoutes(deps))
     .use(saveRoutes(deps));
 }
 

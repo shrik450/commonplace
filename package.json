@@ -4,15 +4,18 @@
   "type": "module",
   "version": "0.1.1",
   "scripts": {
-    "verify": "bun run typecheck && bun run lint && bun run test",
+    "verify": "bun run typecheck && bun run lint && bun run assets && bun run test",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
-    "test": "bun test test/acceptance test/invariants test/unit",
+    "test": "bun test test/acceptance test/unit test/browser",
     "serve": "bun run src/web/server.ts",
-    "css": "bunx @tailwindcss/cli -i src/web/styles.css -o public/app.css",
-    "css:watch": "bunx @tailwindcss/cli -i src/web/styles.css -o public/app.css --watch",
+    "css": "bunx @tailwindcss/cli -i src/web/styles/index.css -o public/app.css",
+    "css:watch": "bunx @tailwindcss/cli -i src/web/styles/index.css -o public/app.css --watch",
     "cp": "bun run src/cli/main.ts",
-    "dev": "bun --watch src/web/server.ts"
+    "dev": "bun --watch src/web/server.ts",
+    "assets": "bun run css && bun run scripts",
+    "scripts": "bun run tools/build-scripts.ts",
+    "preview": "bun run tools/preview.ts"
   },
   "dependencies": {
     "@mozilla/readability": "0.6.0",
@@ -27,8 +30,8 @@
     "@tailwindcss/typography": "0.5.20",
     "@types/bun": "1.4.0",
     "@types/jsdom": "30.0.0",
-    "daisyui": "5.7.17",
     "oxlint": "1.79.0",
+    "playwright-core": "1.63.0",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2"
   }

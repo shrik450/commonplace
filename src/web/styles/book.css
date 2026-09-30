@@ -1,0 +1,653 @@
+/* The commonplace book: clippings kept in a cloth-bound book. Without a
+   script it is one long page. `book.js` marks the book as paged, measures
+   it, and sets which spread shows; this file lays out the columns and draws
+   the turning leaf. */
+@layer components {
+  .book {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .book-cover {
+    position: relative;
+    width: 100%;
+    max-width: 1076px;
+    padding: 12px 14px 16px;
+    background: var(--weave), var(--color-cloth-deep);
+    border-radius: 8px;
+    box-shadow:
+      var(--lift-3),
+      inset 0 1px 0 var(--color-cloth-edge-hi),
+      inset 0 0 0 1px var(--color-cloth-umbra);
+  }
+
+  .book-ribbon {
+    position: absolute;
+    top: -4px;
+    right: 44px;
+    z-index: 6;
+    width: 22px;
+    height: 96px;
+    background: var(--color-cloth);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 86%, 0 100%);
+    filter: drop-shadow(1px 2px 1px var(--color-cloth-umbra));
+  }
+
+  .book-spread {
+    --pages: 2;
+    --pad-x: 52px;
+    --pad-y: 44px;
+    position: relative;
+    background: var(--grain), var(--color-paper);
+    border-radius: 3px;
+    box-shadow: var(--paper-edge);
+  }
+
+  .book-page {
+    display: none;
+  }
+
+  .book-flow {
+    padding: var(--pad-y) var(--pad-x);
+  }
+
+  .folio,
+  .corner {
+    display: none;
+  }
+
+  /* Paged: the book fills the window, and each page is one column of the
+     flow, seen through a page-sized window. */
+  .book[data-paged] {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .book[data-paged] .book-cover {
+    flex: 1;
+    min-height: 0;
+    width: min(100%, calc((100dvh - 200px) * 1.5));
+  }
+
+  .book[data-paged] .book-spread {
+    height: 100%;
+    background: none;
+    box-shadow: none;
+    perspective: 5200px;
+  }
+
+  .book[data-paged] .book-page {
+    display: block;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    background: var(--grain), var(--color-paper);
+  }
+
+  /* A few offset edges under each page read as the stacked leaves. */
+  .book-page-left {
+    left: 0;
+    border-radius: 3px 0 0 3px;
+    box-shadow:
+      inset -18px 0 16px -16px var(--color-penumbra),
+      inset 0 1px 0 var(--color-edge-hi),
+      -1px 1px 0 var(--color-manila-edge),
+      -2px 2px 0 var(--color-paper),
+      -3px 3px 0 var(--color-manila-edge),
+      -4px 4px 0 var(--color-paper),
+      -4px 5px 2px var(--color-cloth-umbra);
+  }
+
+  .book-page-right {
+    right: 0;
+    border-radius: 0 3px 3px 0;
+    box-shadow:
+      inset 18px 0 16px -16px var(--color-penumbra),
+      inset 0 1px 0 var(--color-edge-hi),
+      1px 1px 0 var(--color-manila-edge),
+      2px 2px 0 var(--color-paper),
+      3px 3px 0 var(--color-manila-edge),
+      4px 4px 0 var(--color-paper),
+      4px 5px 2px var(--color-cloth-umbra);
+  }
+
+  .book[data-paged] .book-window {
+    position: absolute;
+    inset: var(--pad-y) var(--pad-x);
+    overflow: hidden;
+  }
+
+  .book[data-paged] .book-flow {
+    position: relative;
+    height: 100%;
+    padding: 0;
+    column-count: var(--pages);
+    column-gap: calc(var(--pad-x) * 2);
+    column-fill: auto;
+    translate: calc(var(--spread-index, 0) * (var(--flow-width, 0) + var(--gap, 0)) * -1px) 0;
+  }
+
+  .book[data-paged] .folio {
+    display: block;
+    position: absolute;
+    bottom: 16px;
+    font-size: var(--text-micro);
+    font-weight: var(--font-weight-label);
+    letter-spacing: 0.08em;
+    color: var(--color-ink-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .folio[data-folio="left"] { left: var(--pad-x); }
+  .folio[data-folio="right"] { right: var(--pad-x); }
+
+  /* The corners lift when you reach for them. */
+  .book[data-paged] .corner {
+    display: block;
+    position: absolute;
+    bottom: 0;
+    z-index: 4;
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+
+  .book[data-paged] .corner:disabled,
+  .book[data-paged] .corner[hidden] {
+    display: none;
+  }
+
+  .corner::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    width: 0;
+    height: 0;
+    transition: width 180ms var(--spring), height 180ms var(--spring);
+  }
+
+  .corner-next { right: 0; }
+  .corner-prev { left: 0; }
+
+  .corner-next::after {
+    right: 0;
+    background: linear-gradient(315deg, transparent 50%, var(--color-paper-fold) 50%);
+    box-shadow: -2px -2px 4px var(--color-umbra);
+  }
+
+  .corner-prev::after {
+    left: 0;
+    background: linear-gradient(45deg, transparent 50%, var(--color-paper-fold) 50%);
+    box-shadow: 2px -2px 4px var(--color-umbra);
+  }
+
+  .corner:hover::after,
+  .corner:focus-visible::after {
+    width: 34px;
+    height: 34px;
+  }
+
+  /* A turning leaf carries real pages: the page it lifts on its front, the
+     page it lands as on its back. Nothing beneath swaps while you watch. */
+  .leaf {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    z-index: 5;
+    transform-style: preserve-3d;
+    pointer-events: none;
+    animation: var(--turn) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  .leaf[data-leaf="right"] {
+    left: 50%;
+    transform-origin: left center;
+    animation-name: turn-forward;
+  }
+
+  .leaf[data-leaf="left"] {
+    left: 0;
+    transform-origin: right center;
+    animation-name: turn-back;
+  }
+
+  .leaf[data-leaf="single"] {
+    left: 0;
+    width: 100%;
+    transform-origin: left center;
+    animation-name: turn-forward;
+  }
+
+  .leaf[data-leaf="single"][data-direction="-1"] {
+    animation-name: turn-return;
+  }
+
+  @keyframes turn-forward {
+    from { transform: rotateY(0deg); }
+    to { transform: rotateY(-180deg); }
+  }
+
+  @keyframes turn-back {
+    from { transform: rotateY(0deg); }
+    to { transform: rotateY(180deg); }
+  }
+
+  @keyframes turn-return {
+    from { transform: rotateY(-180deg); }
+    to { transform: rotateY(0deg); }
+  }
+
+  .leaf-face {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    backface-visibility: hidden;
+    background: var(--grain), var(--color-paper);
+  }
+
+  .leaf-face[data-role="back"] {
+    transform: rotateY(180deg);
+  }
+
+  .leaf-face[data-side="left"] {
+    border-radius: 3px 0 0 3px;
+    box-shadow: inset -18px 0 16px -16px var(--color-penumbra);
+  }
+
+  .leaf-face[data-side="right"] {
+    border-radius: 0 3px 3px 0;
+    box-shadow: inset 18px 0 16px -16px var(--color-penumbra);
+  }
+
+  .leaf-face[data-side="single"] {
+    border-radius: 3px;
+  }
+
+  .leaf-face[data-role="under"] {
+    right: auto;
+    width: 50%;
+    z-index: 4;
+  }
+
+  .leaf-face[data-role="under"][data-side="right"] {
+    left: 50%;
+  }
+
+  .leaf-window {
+    position: absolute;
+    top: var(--pad-y);
+    bottom: var(--pad-y);
+    left: var(--pad-x);
+    width: calc(var(--column, 0) * 1px);
+    overflow: hidden;
+  }
+
+  .book[data-paged] .leaf-window .book-flow {
+    width: calc(var(--flow-width, 0) * 1px);
+    translate: calc(var(--page) * (var(--column, 0) + var(--gap, 0)) * -1px) 0;
+  }
+
+  .leaf-face .folio {
+    display: block;
+  }
+
+  /* The title page. */
+  .title-page {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 32px 0 48px;
+  }
+
+  .book[data-paged] .title-page {
+    height: 100%;
+    padding: 0;
+    break-after: column;
+  }
+
+  .title-page h1 {
+    font-family: var(--font-reading);
+    font-weight: var(--font-weight-medium);
+    font-style: italic;
+    font-size: var(--text-display);
+    letter-spacing: -0.02em;
+    font-variation-settings: "opsz" 72;
+  }
+
+  .title-page p {
+    margin-top: 10px;
+    font-size: var(--text-control);
+    color: var(--color-ink-muted);
+  }
+
+  .title-page .title-page-focus {
+    font-family: var(--font-reading);
+    font-size: var(--text-quote);
+    color: var(--color-ink);
+    text-wrap: balance;
+  }
+
+  .flourish {
+    margin: 22px 0;
+    font-size: var(--text-heading);
+    letter-spacing: 0.6em;
+    color: var(--color-accent);
+  }
+
+  .book-empty {
+    max-width: 44ch;
+    margin: 0 auto;
+    padding: 24px 0;
+    text-align: center;
+    font-size: var(--text-body);
+    line-height: 1.6;
+    color: var(--color-ink-muted);
+  }
+
+  .book-empty p + p {
+    margin-top: 10px;
+  }
+
+  /* Loci: the clippings from one page, under its title. */
+  .locus {
+    margin-bottom: 20px;
+  }
+
+  .locus-lead {
+    break-inside: avoid;
+  }
+
+  .locus-head {
+    margin-bottom: 16px;
+    padding-top: 4px;
+  }
+
+  .locus-head a {
+    text-decoration: none;
+  }
+
+  .locus-head h2 {
+    font-family: var(--font-reading);
+    font-size: var(--text-heading);
+    font-weight: var(--font-weight-heading);
+    line-height: 1.2;
+    font-variation-settings: "opsz" 36;
+    overflow-wrap: anywhere;
+    transition: color var(--fade);
+  }
+
+  .locus-head a:hover h2 {
+    color: var(--color-accent);
+  }
+
+  .locus-source {
+    display: block;
+    margin-top: 3px;
+    font-size: var(--text-caption);
+    color: var(--color-ink-muted);
+  }
+
+  /* A clipping is a scrap of paper with a torn edge, taped or clipped in,
+     set slightly askew. */
+  .clipping {
+    position: relative;
+    break-inside: avoid;
+    margin: 0 0 12px;
+    padding-top: 20px;
+    filter: drop-shadow(0 1px 0.5px var(--color-umbra)) drop-shadow(0 4px 5px var(--color-umbra));
+  }
+
+  /* Each scrap's tilt goes with its edge, so a scrap sits the same way on
+     every visit. */
+  .clipping:is([data-edge="0"], [data-edge="2"], [data-edge="4"]) {
+    rotate: -0.7deg;
+    margin-right: 4%;
+  }
+
+  .clipping:is([data-edge="1"], [data-edge="3"], [data-edge="5"]) {
+    rotate: 0.6deg;
+    margin-left: 5%;
+  }
+
+  .clipping-paper {
+    padding: 20px 22px 16px;
+    background: var(--grain), var(--color-paper-lifted);
+    font-family: var(--font-reading);
+    font-size: var(--text-quote);
+    line-height: 1.55;
+  }
+
+  .clipping[data-fastener="clip"] .clipping-paper {
+    padding-top: 34px;
+  }
+
+  .clipping-quote {
+    overflow-wrap: anywhere;
+  }
+
+  .clipping-note {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px dashed var(--color-manila-edge);
+    font-style: italic;
+    font-size: var(--text-plain);
+    color: var(--color-note);
+  }
+
+  .clipping-note svg {
+    flex: none;
+    margin-top: 4px;
+    color: var(--color-accent);
+  }
+
+  .clipping-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+    font-family: var(--font-chrome);
+    font-size: var(--text-caption);
+    color: var(--color-ink-muted);
+  }
+
+  .clipping-foot a {
+    font-weight: var(--font-weight-label);
+  }
+
+  /* Writing a note on the clipping: the form takes the place of the note and
+     of the link that opened it. */
+  .clipping[data-editing] :is(.clipping-note, [data-note-edit]) {
+    display: none;
+  }
+
+  .note-editor {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px dashed var(--color-manila-edge);
+    font-family: var(--font-chrome);
+    font-size: var(--text-plain);
+  }
+
+  .note-editor label {
+    display: grid;
+    gap: 6px;
+  }
+
+  .note-editor label span {
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-label);
+    color: var(--color-ink-muted);
+  }
+
+  .note-editor-error {
+    font-size: var(--text-control);
+    color: var(--color-accent);
+  }
+
+  .note-editor-error[hidden] {
+    display: none;
+  }
+
+  .note-editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .note-editor-actions a {
+    margin-left: auto;
+    font-size: var(--text-label);
+  }
+
+  .tape {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    z-index: 2;
+    width: 86px;
+    height: 22px;
+    margin-left: -43px;
+    background: color-mix(in oklab, var(--color-manila) 78%, transparent);
+    rotate: -3deg;
+    clip-path: polygon(3% 0, 97% 4%, 100% 30%, 96% 55%, 100% 100%, 2% 96%, 0 60%, 4% 35%);
+  }
+
+  .paperclip {
+    position: absolute;
+    top: 0;
+    left: 6px;
+    z-index: 2;
+    rotate: -8deg;
+    filter: drop-shadow(1.5px 1.5px 0.5px var(--color-umbra));
+  }
+
+  /* The bar under the book: views, the turn buttons, and volumes. */
+  .book-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 16px;
+    width: min(100%, 1076px);
+  }
+
+  .book-chips,
+  .book-turns,
+  .book-volumes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .book-chips .control-quiet {
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-label);
+    margin-left: 6px;
+  }
+
+  .book-turns[hidden] {
+    display: none;
+  }
+
+  .book-volumes {
+    gap: 16px;
+    font-size: var(--text-label);
+  }
+
+  .book-count {
+    min-width: 120px;
+    text-align: center;
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-label);
+    color: var(--color-ink-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .chip {
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-label);
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--color-manila-edge);
+    color: var(--color-ink-muted);
+    text-decoration: none;
+    transition: background-color var(--fade), color var(--fade);
+  }
+
+  .chip:hover {
+    background: var(--color-manila);
+    color: var(--color-ink);
+  }
+
+  .chip[aria-current="page"] {
+    background: var(--color-ink);
+    border-color: var(--color-ink);
+    color: var(--color-paper);
+  }
+
+  @media (max-width: 820px) {
+    .book-spread {
+      --pages: 1;
+      --pad-x: 28px;
+      --pad-y: 32px;
+    }
+
+    .book[data-paged] .book-cover {
+      width: 100%;
+    }
+
+    .book[data-paged] .book-page-left {
+      width: 100%;
+      border-radius: 3px;
+      box-shadow:
+        inset 0 1px 0 var(--color-edge-hi),
+        1px 1px 0 var(--color-manila-edge),
+        2px 2px 0 var(--color-paper),
+        3px 3px 0 var(--color-manila-edge),
+        4px 4px 0 var(--color-paper),
+        4px 5px 2px var(--color-cloth-umbra);
+    }
+
+    .book[data-paged] .book-page-right,
+    .folio[data-folio="right"] {
+      display: none;
+    }
+
+    .title-page h1 {
+      font-size: var(--text-title);
+    }
+
+    .clipping[data-edge] {
+      margin-inline: 0;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .book-count {
+      min-width: 0;
+    }
+  }
+
+  /* Each torn edge, generated once and fixed so a scrap keeps its shape. */
+  .clipping[data-edge="0"] .clipping-paper { clip-path: polygon(0% 0.28%, 2.5% 0.75%, 5% 0.75%, 7.5% 0.93%, 10% 0.20%, 12.5% 0.25%, 15% 0.16%, 17.5% 0.25%, 20% 0.81%, 22.5% 0.14%, 25% 0.58%, 27.5% 0.24%, 30% 0.32%, 32.5% 0.47%, 35% 0.92%, 37.5% 0.67%, 40% 0.02%, 42.5% 0.30%, 45% 0.16%, 47.5% 0.96%, 50% 0.89%, 52.5% 0.89%, 55% 0.91%, 57.5% 0.82%, 60% 1.04%, 62.5% 0.87%, 65% 0.28%, 67.5% 0.93%, 70% 0.54%, 72.5% 0.83%, 75% 0.62%, 77.5% 0.47%, 80% 0.40%, 82.5% 0.47%, 85% 0.35%, 87.5% 0.13%, 90% 0.90%, 92.5% 0.88%, 95% 1.08%, 97.5% 0.76%, 100% 0.61%, calc(100% - 2.2px) 0%, calc(100% - 0.4px) 4%, calc(100% - 2.0px) 8%, calc(100% - 1.3px) 12%, calc(100% - 0.5px) 16%, calc(100% - 0.6px) 20%, calc(100% - 1.6px) 24%, calc(100% - 0.8px) 28%, calc(100% - 1.4px) 32%, calc(100% - 1.8px) 36%, calc(100% - 1.2px) 40%, calc(100% - 0.4px) 44%, calc(100% - 1.5px) 48%, calc(100% - 0.7px) 52%, calc(100% - 0.7px) 56%, calc(100% - 0.6px) 60%, calc(100% - 1.1px) 64%, calc(100% - 0.2px) 68%, calc(100% - 2.0px) 72%, calc(100% - 2.9px) 76%, calc(100% - 1.2px) 80%, calc(100% - 2.2px) 84%, calc(100% - 2.8px) 88%, calc(100% - 0.1px) 92%, calc(100% - 0.4px) 96%, calc(100% - 2.4px) 100%, 100% calc(100% - 0.92%), 97.5% calc(100% - 0.70%), 95% calc(100% - 0.18%), 92.5% calc(100% - 0.45%), 90% calc(100% - 0.96%), 87.5% calc(100% - 0.97%), 85% calc(100% - 0.88%), 82.5% calc(100% - 0.22%), 80% calc(100% - 0.94%), 77.5% calc(100% - 0.41%), 75% calc(100% - 0.79%), 72.5% calc(100% - 0.15%), 70% calc(100% - 1.07%), 67.5% calc(100% - 0.66%), 65% calc(100% - 0.79%), 62.5% calc(100% - 0.23%), 60% calc(100% - 0.68%), 57.5% calc(100% - 0.64%), 55% calc(100% - 0.65%), 52.5% calc(100% - 0.40%), 50% calc(100% - 0.80%), 47.5% calc(100% - 0.38%), 45% calc(100% - 0.32%), 42.5% calc(100% - 0.18%), 40% calc(100% - 0.75%), 37.5% calc(100% - 0.12%), 35% calc(100% - 0.25%), 32.5% calc(100% - 0.08%), 30% calc(100% - 0.71%), 27.5% calc(100% - 0.61%), 25% calc(100% - 0.60%), 22.5% calc(100% - 0.04%), 20% calc(100% - 0.48%), 17.5% calc(100% - 0.38%), 15% calc(100% - 0.10%), 12.5% calc(100% - 0.00%), 10% calc(100% - 1.10%), 7.5% calc(100% - 0.13%), 5% calc(100% - 0.33%), 2.5% calc(100% - 0.30%), 0% calc(100% - 0.66%), 0.2px 100%, 1.4px 96%, 1.1px 92%, 2.5px 88%, 0.0px 84%, 1.0px 80%, 1.5px 76%, 2.9px 72%, 1.6px 68%, 1.4px 64%, 2.0px 60%, 0.9px 56%, 0.1px 52%, 1.5px 48%, 2.7px 44%, 2.2px 40%, 0.8px 36%, 2.1px 32%, 2.5px 28%, 0.8px 24%, 1.8px 20%, 1.1px 16%, 0.7px 12%, 0.9px 8%, 0.6px 4%, 1.1px 0%); }
+  .clipping[data-edge="1"] .clipping-paper { clip-path: polygon(0% 0.26%, 2.5% 0.51%, 5% 0.64%, 7.5% 1.02%, 10% 1.06%, 12.5% 1.01%, 15% 0.49%, 17.5% 0.84%, 20% 0.04%, 22.5% 0.28%, 25% 0.45%, 27.5% 0.73%, 30% 0.95%, 32.5% 0.21%, 35% 0.59%, 37.5% 0.99%, 40% 0.16%, 42.5% 0.22%, 45% 0.23%, 47.5% 0.38%, 50% 0.91%, 52.5% 0.44%, 55% 0.59%, 57.5% 0.60%, 60% 0.30%, 62.5% 0.37%, 65% 0.56%, 67.5% 0.35%, 70% 0.59%, 72.5% 0.06%, 75% 0.00%, 77.5% 0.91%, 80% 0.97%, 82.5% 0.38%, 85% 0.56%, 87.5% 0.23%, 90% 0.72%, 92.5% 0.98%, 95% 0.26%, 97.5% 1.06%, 100% 0.07%, calc(100% - 0.3px) 0%, calc(100% - 0.4px) 4%, calc(100% - 0.3px) 8%, calc(100% - 2.7px) 12%, calc(100% - 1.5px) 16%, calc(100% - 2.4px) 20%, calc(100% - 1.1px) 24%, calc(100% - 0.1px) 28%, calc(100% - 1.9px) 32%, calc(100% - 0.3px) 36%, calc(100% - 2.9px) 40%, calc(100% - 1.8px) 44%, calc(100% - 1.8px) 48%, calc(100% - 2.1px) 52%, calc(100% - 2.2px) 56%, calc(100% - 1.5px) 60%, calc(100% - 1.8px) 64%, calc(100% - 2.2px) 68%, calc(100% - 0.1px) 72%, calc(100% - 3.0px) 76%, calc(100% - 2.1px) 80%, calc(100% - 1.6px) 84%, calc(100% - 0.4px) 88%, calc(100% - 3.0px) 92%, calc(100% - 2.8px) 96%, calc(100% - 0.0px) 100%, 100% calc(100% - 1.00%), 97.5% calc(100% - 0.03%), 95% calc(100% - 0.09%), 92.5% calc(100% - 0.62%), 90% calc(100% - 0.81%), 87.5% calc(100% - 0.24%), 85% calc(100% - 0.28%), 82.5% calc(100% - 0.08%), 80% calc(100% - 0.17%), 77.5% calc(100% - 0.15%), 75% calc(100% - 0.15%), 72.5% calc(100% - 0.25%), 70% calc(100% - 0.88%), 67.5% calc(100% - 0.77%), 65% calc(100% - 0.69%), 62.5% calc(100% - 0.73%), 60% calc(100% - 0.23%), 57.5% calc(100% - 0.40%), 55% calc(100% - 0.25%), 52.5% calc(100% - 0.08%), 50% calc(100% - 1.08%), 47.5% calc(100% - 1.09%), 45% calc(100% - 0.92%), 42.5% calc(100% - 1.08%), 40% calc(100% - 0.48%), 37.5% calc(100% - 1.08%), 35% calc(100% - 0.87%), 32.5% calc(100% - 0.71%), 30% calc(100% - 0.22%), 27.5% calc(100% - 0.42%), 25% calc(100% - 0.08%), 22.5% calc(100% - 0.81%), 20% calc(100% - 0.99%), 17.5% calc(100% - 0.88%), 15% calc(100% - 1.09%), 12.5% calc(100% - 0.82%), 10% calc(100% - 0.05%), 7.5% calc(100% - 1.02%), 5% calc(100% - 1.01%), 2.5% calc(100% - 1.01%), 0% calc(100% - 0.83%), 0.4px 100%, 2.0px 96%, 2.0px 92%, 0.1px 88%, 2.8px 84%, 2.7px 80%, 2.4px 76%, 0.3px 72%, 0.4px 68%, 1.4px 64%, 1.3px 60%, 0.7px 56%, 1.9px 52%, 1.1px 48%, 0.5px 44%, 0.2px 40%, 2.2px 36%, 1.8px 32%, 2.5px 28%, 1.3px 24%, 0.4px 20%, 0.2px 16%, 1.3px 12%, 0.7px 8%, 0.3px 4%, 1.7px 0%); }
+  .clipping[data-edge="2"] .clipping-paper { clip-path: polygon(0% 0.44%, 2.5% 0.06%, 5% 1.08%, 7.5% 0.23%, 10% 0.17%, 12.5% 0.56%, 15% 0.81%, 17.5% 0.42%, 20% 0.93%, 22.5% 0.53%, 25% 0.91%, 27.5% 0.02%, 30% 0.60%, 32.5% 0.92%, 35% 0.28%, 37.5% 0.16%, 40% 0.64%, 42.5% 0.89%, 45% 0.07%, 47.5% 0.14%, 50% 0.01%, 52.5% 0.13%, 55% 0.06%, 57.5% 1.02%, 60% 0.01%, 62.5% 0.61%, 65% 0.44%, 67.5% 0.66%, 70% 0.27%, 72.5% 0.56%, 75% 0.54%, 77.5% 0.96%, 80% 0.97%, 82.5% 0.13%, 85% 0.69%, 87.5% 0.45%, 90% 0.19%, 92.5% 0.14%, 95% 0.10%, 97.5% 0.85%, 100% 0.94%, calc(100% - 2.8px) 0%, calc(100% - 0.8px) 4%, calc(100% - 0.5px) 8%, calc(100% - 2.2px) 12%, calc(100% - 0.5px) 16%, calc(100% - 0.8px) 20%, calc(100% - 1.4px) 24%, calc(100% - 2.4px) 28%, calc(100% - 2.6px) 32%, calc(100% - 1.7px) 36%, calc(100% - 0.7px) 40%, calc(100% - 2.0px) 44%, calc(100% - 1.7px) 48%, calc(100% - 1.7px) 52%, calc(100% - 1.3px) 56%, calc(100% - 1.2px) 60%, calc(100% - 0.8px) 64%, calc(100% - 1.9px) 68%, calc(100% - 0.1px) 72%, calc(100% - 2.7px) 76%, calc(100% - 0.1px) 80%, calc(100% - 0.5px) 84%, calc(100% - 0.8px) 88%, calc(100% - 1.0px) 92%, calc(100% - 0.1px) 96%, calc(100% - 3.0px) 100%, 100% calc(100% - 0.49%), 97.5% calc(100% - 0.48%), 95% calc(100% - 0.51%), 92.5% calc(100% - 1.08%), 90% calc(100% - 0.02%), 87.5% calc(100% - 0.19%), 85% calc(100% - 0.78%), 82.5% calc(100% - 0.67%), 80% calc(100% - 0.15%), 77.5% calc(100% - 0.75%), 75% calc(100% - 0.76%), 72.5% calc(100% - 0.61%), 70% calc(100% - 0.37%), 67.5% calc(100% - 0.40%), 65% calc(100% - 0.91%), 62.5% calc(100% - 0.86%), 60% calc(100% - 0.79%), 57.5% calc(100% - 0.03%), 55% calc(100% - 0.87%), 52.5% calc(100% - 0.46%), 50% calc(100% - 0.71%), 47.5% calc(100% - 0.52%), 45% calc(100% - 1.04%), 42.5% calc(100% - 0.68%), 40% calc(100% - 0.68%), 37.5% calc(100% - 0.64%), 35% calc(100% - 0.21%), 32.5% calc(100% - 0.72%), 30% calc(100% - 0.93%), 27.5% calc(100% - 0.04%), 25% calc(100% - 1.06%), 22.5% calc(100% - 0.31%), 20% calc(100% - 0.10%), 17.5% calc(100% - 0.67%), 15% calc(100% - 0.69%), 12.5% calc(100% - 0.29%), 10% calc(100% - 0.54%), 7.5% calc(100% - 0.73%), 5% calc(100% - 0.56%), 2.5% calc(100% - 0.66%), 0% calc(100% - 0.90%), 0.2px 100%, 1.5px 96%, 1.3px 92%, 2.0px 88%, 2.0px 84%, 2.1px 80%, 0.5px 76%, 2.0px 72%, 1.9px 68%, 2.2px 64%, 0.7px 60%, 0.7px 56%, 0.9px 52%, 1.4px 48%, 1.7px 44%, 0.4px 40%, 3.0px 36%, 1.4px 32%, 1.1px 28%, 0.4px 24%, 1.2px 20%, 0.2px 16%, 2.8px 12%, 2.5px 8%, 0.9px 4%, 0.2px 0%); }
+  .clipping[data-edge="3"] .clipping-paper { clip-path: polygon(0% 0.50%, 2.5% 0.95%, 5% 0.78%, 7.5% 0.68%, 10% 0.63%, 12.5% 0.46%, 15% 0.01%, 17.5% 0.48%, 20% 0.84%, 22.5% 0.86%, 25% 0.99%, 27.5% 0.05%, 30% 0.43%, 32.5% 0.08%, 35% 0.20%, 37.5% 0.08%, 40% 0.58%, 42.5% 0.73%, 45% 0.07%, 47.5% 0.07%, 50% 0.01%, 52.5% 0.07%, 55% 0.74%, 57.5% 0.11%, 60% 1.07%, 62.5% 0.91%, 65% 0.01%, 67.5% 0.40%, 70% 0.73%, 72.5% 0.89%, 75% 0.74%, 77.5% 0.44%, 80% 0.92%, 82.5% 1.06%, 85% 0.83%, 87.5% 0.58%, 90% 0.75%, 92.5% 0.39%, 95% 0.61%, 97.5% 0.93%, 100% 0.94%, calc(100% - 2.1px) 0%, calc(100% - 0.7px) 4%, calc(100% - 0.4px) 8%, calc(100% - 2.7px) 12%, calc(100% - 1.3px) 16%, calc(100% - 1.7px) 20%, calc(100% - 0.0px) 24%, calc(100% - 1.1px) 28%, calc(100% - 2.2px) 32%, calc(100% - 2.3px) 36%, calc(100% - 0.2px) 40%, calc(100% - 0.0px) 44%, calc(100% - 1.6px) 48%, calc(100% - 1.9px) 52%, calc(100% - 0.0px) 56%, calc(100% - 1.3px) 60%, calc(100% - 0.4px) 64%, calc(100% - 0.8px) 68%, calc(100% - 1.1px) 72%, calc(100% - 0.3px) 76%, calc(100% - 1.9px) 80%, calc(100% - 2.4px) 84%, calc(100% - 0.6px) 88%, calc(100% - 0.2px) 92%, calc(100% - 2.4px) 96%, calc(100% - 0.6px) 100%, 100% calc(100% - 0.31%), 97.5% calc(100% - 0.04%), 95% calc(100% - 0.89%), 92.5% calc(100% - 0.43%), 90% calc(100% - 0.35%), 87.5% calc(100% - 0.99%), 85% calc(100% - 1.04%), 82.5% calc(100% - 0.48%), 80% calc(100% - 0.35%), 77.5% calc(100% - 1.02%), 75% calc(100% - 1.04%), 72.5% calc(100% - 0.34%), 70% calc(100% - 0.63%), 67.5% calc(100% - 0.87%), 65% calc(100% - 0.65%), 62.5% calc(100% - 1.01%), 60% calc(100% - 0.00%), 57.5% calc(100% - 0.89%), 55% calc(100% - 0.38%), 52.5% calc(100% - 1.07%), 50% calc(100% - 0.48%), 47.5% calc(100% - 0.69%), 45% calc(100% - 0.83%), 42.5% calc(100% - 0.71%), 40% calc(100% - 0.95%), 37.5% calc(100% - 0.64%), 35% calc(100% - 0.99%), 32.5% calc(100% - 0.77%), 30% calc(100% - 0.75%), 27.5% calc(100% - 0.44%), 25% calc(100% - 0.51%), 22.5% calc(100% - 0.03%), 20% calc(100% - 1.02%), 17.5% calc(100% - 0.87%), 15% calc(100% - 0.73%), 12.5% calc(100% - 0.73%), 10% calc(100% - 0.88%), 7.5% calc(100% - 0.21%), 5% calc(100% - 0.64%), 2.5% calc(100% - 1.02%), 0% calc(100% - 1.08%), 1.3px 100%, 2.2px 96%, 0.3px 92%, 1.4px 88%, 1.3px 84%, 0.5px 80%, 2.7px 76%, 2.9px 72%, 0.4px 68%, 2.1px 64%, 0.3px 60%, 0.7px 56%, 0.2px 52%, 0.0px 48%, 1.1px 44%, 1.2px 40%, 1.7px 36%, 2.4px 32%, 0.1px 28%, 1.2px 24%, 2.6px 20%, 0.4px 16%, 2.8px 12%, 2.2px 8%, 0.2px 4%, 0.0px 0%); }
+  .clipping[data-edge="4"] .clipping-paper { clip-path: polygon(0% 0.56%, 2.5% 0.56%, 5% 0.76%, 7.5% 0.88%, 10% 1.01%, 12.5% 1.09%, 15% 0.75%, 17.5% 0.69%, 20% 0.93%, 22.5% 0.28%, 25% 0.49%, 27.5% 0.78%, 30% 0.29%, 32.5% 0.36%, 35% 0.06%, 37.5% 0.94%, 40% 0.66%, 42.5% 0.33%, 45% 0.67%, 47.5% 1.03%, 50% 0.03%, 52.5% 0.73%, 55% 0.03%, 57.5% 0.49%, 60% 0.31%, 62.5% 0.71%, 65% 0.57%, 67.5% 0.14%, 70% 0.99%, 72.5% 0.61%, 75% 0.71%, 77.5% 0.33%, 80% 0.82%, 82.5% 0.93%, 85% 0.58%, 87.5% 0.04%, 90% 0.14%, 92.5% 1.03%, 95% 1.03%, 97.5% 0.29%, 100% 0.41%, calc(100% - 1.9px) 0%, calc(100% - 1.0px) 4%, calc(100% - 0.7px) 8%, calc(100% - 0.9px) 12%, calc(100% - 2.7px) 16%, calc(100% - 1.5px) 20%, calc(100% - 0.9px) 24%, calc(100% - 0.8px) 28%, calc(100% - 2.1px) 32%, calc(100% - 1.3px) 36%, calc(100% - 1.7px) 40%, calc(100% - 2.0px) 44%, calc(100% - 2.2px) 48%, calc(100% - 0.0px) 52%, calc(100% - 0.1px) 56%, calc(100% - 1.6px) 60%, calc(100% - 2.3px) 64%, calc(100% - 2.7px) 68%, calc(100% - 2.7px) 72%, calc(100% - 1.9px) 76%, calc(100% - 2.4px) 80%, calc(100% - 1.8px) 84%, calc(100% - 0.6px) 88%, calc(100% - 2.7px) 92%, calc(100% - 1.6px) 96%, calc(100% - 1.3px) 100%, 100% calc(100% - 0.36%), 97.5% calc(100% - 0.10%), 95% calc(100% - 0.59%), 92.5% calc(100% - 0.44%), 90% calc(100% - 0.94%), 87.5% calc(100% - 0.90%), 85% calc(100% - 0.10%), 82.5% calc(100% - 0.79%), 80% calc(100% - 0.43%), 77.5% calc(100% - 1.05%), 75% calc(100% - 1.00%), 72.5% calc(100% - 0.63%), 70% calc(100% - 0.57%), 67.5% calc(100% - 0.32%), 65% calc(100% - 0.47%), 62.5% calc(100% - 0.63%), 60% calc(100% - 0.07%), 57.5% calc(100% - 0.81%), 55% calc(100% - 0.19%), 52.5% calc(100% - 0.32%), 50% calc(100% - 0.07%), 47.5% calc(100% - 0.96%), 45% calc(100% - 0.32%), 42.5% calc(100% - 0.08%), 40% calc(100% - 0.35%), 37.5% calc(100% - 0.95%), 35% calc(100% - 0.63%), 32.5% calc(100% - 0.53%), 30% calc(100% - 0.97%), 27.5% calc(100% - 0.49%), 25% calc(100% - 0.77%), 22.5% calc(100% - 0.89%), 20% calc(100% - 0.05%), 17.5% calc(100% - 0.33%), 15% calc(100% - 0.11%), 12.5% calc(100% - 0.45%), 10% calc(100% - 0.66%), 7.5% calc(100% - 0.08%), 5% calc(100% - 0.72%), 2.5% calc(100% - 0.01%), 0% calc(100% - 0.89%), 0.9px 100%, 0.9px 96%, 1.5px 92%, 2.6px 88%, 1.2px 84%, 0.6px 80%, 2.6px 76%, 2.4px 72%, 0.2px 68%, 0.9px 64%, 0.1px 60%, 2.2px 56%, 1.8px 52%, 0.8px 48%, 1.4px 44%, 1.4px 40%, 2.0px 36%, 2.5px 32%, 0.8px 28%, 0.7px 24%, 0.2px 20%, 2.9px 16%, 2.1px 12%, 1.6px 8%, 1.0px 4%, 1.5px 0%); }
+  .clipping[data-edge="5"] .clipping-paper { clip-path: polygon(0% 0.03%, 2.5% 0.10%, 5% 0.71%, 7.5% 0.85%, 10% 1.01%, 12.5% 0.90%, 15% 0.17%, 17.5% 0.57%, 20% 1.01%, 22.5% 0.31%, 25% 0.06%, 27.5% 0.56%, 30% 0.50%, 32.5% 0.98%, 35% 0.56%, 37.5% 0.27%, 40% 0.87%, 42.5% 1.02%, 45% 0.56%, 47.5% 0.97%, 50% 0.42%, 52.5% 0.86%, 55% 0.65%, 57.5% 0.17%, 60% 0.36%, 62.5% 0.39%, 65% 0.24%, 67.5% 0.91%, 70% 0.66%, 72.5% 0.43%, 75% 0.71%, 77.5% 0.68%, 80% 0.09%, 82.5% 0.40%, 85% 0.74%, 87.5% 0.28%, 90% 0.12%, 92.5% 0.97%, 95% 0.53%, 97.5% 0.45%, 100% 1.09%, calc(100% - 1.8px) 0%, calc(100% - 0.2px) 4%, calc(100% - 0.0px) 8%, calc(100% - 0.2px) 12%, calc(100% - 2.1px) 16%, calc(100% - 2.0px) 20%, calc(100% - 1.9px) 24%, calc(100% - 1.4px) 28%, calc(100% - 1.3px) 32%, calc(100% - 1.3px) 36%, calc(100% - 0.5px) 40%, calc(100% - 1.3px) 44%, calc(100% - 2.7px) 48%, calc(100% - 1.0px) 52%, calc(100% - 2.6px) 56%, calc(100% - 1.0px) 60%, calc(100% - 0.8px) 64%, calc(100% - 0.4px) 68%, calc(100% - 1.7px) 72%, calc(100% - 0.9px) 76%, calc(100% - 2.6px) 80%, calc(100% - 1.7px) 84%, calc(100% - 2.7px) 88%, calc(100% - 0.9px) 92%, calc(100% - 0.7px) 96%, calc(100% - 0.3px) 100%, 100% calc(100% - 1.03%), 97.5% calc(100% - 0.53%), 95% calc(100% - 0.60%), 92.5% calc(100% - 0.41%), 90% calc(100% - 0.20%), 87.5% calc(100% - 0.53%), 85% calc(100% - 0.01%), 82.5% calc(100% - 1.09%), 80% calc(100% - 0.82%), 77.5% calc(100% - 0.23%), 75% calc(100% - 0.06%), 72.5% calc(100% - 0.91%), 70% calc(100% - 0.55%), 67.5% calc(100% - 0.94%), 65% calc(100% - 0.82%), 62.5% calc(100% - 0.56%), 60% calc(100% - 1.03%), 57.5% calc(100% - 0.86%), 55% calc(100% - 0.22%), 52.5% calc(100% - 1.00%), 50% calc(100% - 0.10%), 47.5% calc(100% - 0.79%), 45% calc(100% - 0.06%), 42.5% calc(100% - 0.75%), 40% calc(100% - 0.87%), 37.5% calc(100% - 0.32%), 35% calc(100% - 0.24%), 32.5% calc(100% - 0.99%), 30% calc(100% - 0.76%), 27.5% calc(100% - 0.66%), 25% calc(100% - 0.94%), 22.5% calc(100% - 0.27%), 20% calc(100% - 0.69%), 17.5% calc(100% - 0.70%), 15% calc(100% - 0.67%), 12.5% calc(100% - 0.65%), 10% calc(100% - 0.85%), 7.5% calc(100% - 0.41%), 5% calc(100% - 0.28%), 2.5% calc(100% - 0.93%), 0% calc(100% - 0.51%), 2.1px 100%, 2.0px 96%, 0.1px 92%, 0.5px 88%, 0.7px 84%, 1.1px 80%, 0.2px 76%, 2.3px 72%, 0.1px 68%, 1.6px 64%, 2.4px 60%, 0.5px 56%, 2.2px 52%, 1.3px 48%, 2.0px 44%, 1.1px 40%, 2.2px 36%, 1.6px 32%, 0.0px 28%, 0.8px 24%, 0.3px 20%, 2.9px 16%, 0.8px 12%, 0.4px 8%, 1.2px 4%, 0.0px 0%); }
+}

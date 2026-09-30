@@ -1,0 +1,150 @@
+/* The states of every control, in one place. Views name these classes
+   through the constants in `src/web/views/controls.ts`. Hover and active
+   change colour or press the control down; focus draws the accent outline
+   from `base.css`. */
+@layer components {
+  .control-primary,
+  .control {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font: inherit;
+    font-family: var(--font-chrome);
+    font-size: var(--text-control);
+    font-weight: var(--font-weight-label);
+    line-height: 1.2;
+    white-space: nowrap;
+    text-decoration: none;
+    cursor: pointer;
+    border: 0;
+    border-radius: 999px;
+    padding: 9px 16px;
+    transition: background-color var(--fade), color var(--fade), translate 100ms;
+  }
+
+  /* The one primary action: a pill of accent, pressed in when clicked. */
+  .control-primary {
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+    box-shadow:
+      inset 0 1px 0 var(--color-accent-edge),
+      0 1px 0 var(--color-cloth-deep),
+      0 2px 2px var(--color-umbra),
+      0 4px 8px -2px var(--color-penumbra);
+  }
+
+  .control-primary:hover {
+    background: var(--color-accent-strong);
+  }
+
+  .control-primary:active {
+    translate: 0 1px;
+    box-shadow: 0 0 0 var(--color-cloth-deep);
+  }
+
+  /* A normal action: a paper button. */
+  .control {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    box-shadow: var(--lift-1), var(--paper-edge);
+  }
+
+  .control:hover {
+    background: var(--color-manila);
+  }
+
+  .control:active {
+    translate: 0 1px;
+    box-shadow: 0 0 0 0.5px var(--color-umbra), var(--paper-edge);
+  }
+
+  .control:disabled,
+  .control-primary:disabled {
+    opacity: 0.45;
+    cursor: default;
+    translate: none;
+  }
+
+  /* A quiet link: metadata and navigation. */
+  .control-quiet {
+    color: var(--color-ink-muted);
+    text-decoration: none;
+    transition: color var(--fade);
+  }
+
+  .control-quiet:hover {
+    color: var(--color-accent);
+  }
+
+  .control-quiet:active {
+    color: var(--color-accent-strong);
+  }
+
+  /* Fields are written on: a dashed rule that turns solid while you type. */
+  .field {
+    min-width: 0;
+    font: inherit;
+    font-family: var(--font-reading);
+    font-size: var(--text-plain);
+    color: var(--color-ink);
+    background: none;
+    border: 0;
+    border-bottom: 1.5px dashed var(--color-manila-edge);
+    border-radius: 0;
+    padding: 6px 0;
+    transition: border-color var(--fade);
+  }
+
+  textarea.field {
+    border: 1.5px dashed var(--color-manila-edge);
+    border-radius: 4px;
+    padding: 8px 10px;
+    line-height: 1.5;
+    resize: vertical;
+  }
+
+  .field::placeholder {
+    font-style: italic;
+    color: var(--color-ink-faint);
+  }
+
+  .field:hover {
+    border-color: var(--color-ink-faint);
+  }
+
+  /* The focus outline is the accent, so the rule turns solid but stays
+     quiet beside it. */
+  .field:focus {
+    border-style: solid;
+    border-color: var(--color-ink-faint);
+  }
+
+  /* An underlined field has no padding at its sides, so its outline stands
+     a little further off than a button's. */
+  .field:focus-visible {
+    outline-offset: 5px;
+  }
+
+  .field-select {
+    font: inherit;
+    font-size: var(--text-control);
+    color: var(--color-ink);
+    background-color: var(--color-paper);
+    border: 1px solid var(--color-manila-edge);
+    border-radius: 6px;
+    padding: 6px 8px;
+    box-shadow: var(--paper-edge);
+    transition: border-color var(--fade);
+  }
+
+  .field-select:hover {
+    border-color: var(--color-ink-faint);
+  }
+
+  .field-range {
+    width: 100%;
+    accent-color: var(--color-accent);
+    cursor: pointer;
+  }
+}

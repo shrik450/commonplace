@@ -45,6 +45,8 @@ function item(id: typeof ITEM, userId: typeof ALICE, title = "A saved item"): It
     author: null,
     created_at: NOW,
     ingested_at: null,
+    excerpt: "",
+    content_length: 0,
   };
 }
 

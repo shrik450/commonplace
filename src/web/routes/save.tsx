@@ -4,15 +4,10 @@ import { asRequestId, type RequestId } from "../../contracts/ids";
 import type { FetchRequest } from "../../contracts/item";
 import { getSaveRequest } from "../../services/library";
 import { authenticate } from "../../services/auth";
-import { SaveStatusPage } from "../views/save";
-import { ErrorPage, page } from "../views/layout";
-import {
-  authDeps,
-  libraryDeps,
-  toLogin,
-  userSettings,
-  type WebDeps,
-} from "./deps";
+import { SavePage, SaveStatusPage } from "../views/save";
+import { page, type PageContext } from "../views/layout";
+import { authDeps, libraryDeps, pageContext, toLogin, type WebDeps } from "./deps";
+import { errorResponse } from "./errors";
 
 function readRequestId(raw: string): RequestId | null {
   try {
@@ -22,25 +17,21 @@ function readRequestId(raw: string): RequestId | null {
   }
 }
 
-function notFound(settings: ReturnType<typeof userSettings>): Response {
-  return page(
-    <ErrorPage
-      title="Commonplace cannot find that save"
-      message="Your library has no save at this address. The save may have been removed, or the link may be outdated."
-      settings={settings}
-    />,
+function notFound(context: PageContext): Response {
+  return errorResponse(
+    context,
     404,
+    "Commonplace cannot find that save",
+    "Your library has no save at this address. The save may have been removed, or the link may be outdated.",
   );
 }
 
-function badRequest(settings: ReturnType<typeof userSettings>): Response {
-  return page(
-    <ErrorPage
-      title="That save address is invalid"
-      message="A valid save address ends with a save request ID. Open your library, and select the save again."
-      settings={settings}
-    />,
+function badRequest(context: PageContext): Response {
+  return errorResponse(
+    context,
     400,
+    "That save address is invalid",
+    "A valid save address ends with a save request ID. Open your library, and select the save again.",
   );
 }
 
@@ -74,7 +65,13 @@ function apiStatus(save: FetchRequest): Response {
 }
 
 export function saveRoutes(deps: WebDeps) {
-  return new Elysia().get(
+  return new Elysia()
+    .get("/save", async ({ request }) => {
+      const principal = await authenticate(request, authDeps(deps)).catch(() => null);
+      if (principal === null) return toLogin();
+      return page(<SavePage context={pageContext(deps, principal.user.id, request)} />);
+    })
+    .get(
     "/saves/:requestId",
     async ({ request, params }) => {
       const apiClient = isBearerClient(request);
@@ -87,7 +84,7 @@ export function saveRoutes(deps: WebDeps) {
 
       const requestId = readRequestId(params.requestId);
       if (requestId === null) {
-        return apiClient ? apiError("STORE_INVALID_PATH", 400) : badRequest(userSettings(deps, principal.user.id));
+        return apiClient ? apiError("STORE_INVALID_PATH", 400) : badRequest(pageContext(deps, principal.user.id, request));
       }
 
       const save = getSaveRequest(
@@ -96,20 +93,20 @@ export function saveRoutes(deps: WebDeps) {
         requestId,
       );
       if (save === null) {
-        return apiClient ? apiError("STORE_NOT_FOUND", 404) : notFound(userSettings(deps, principal.user.id));
+        return apiClient ? apiError("STORE_NOT_FOUND", 404) : notFound(pageContext(deps, principal.user.id, request));
       }
 
       if (apiClient) return apiStatus(save);
 
       if (save.state === "done") {
-        if (save.item_id === null) return notFound(userSettings(deps, principal.user.id));
+        if (save.item_id === null) return notFound(pageContext(deps, principal.user.id, request));
         return new Response(null, {
           status: 303,
           headers: { location: `/items/${save.item_id}` },
         });
       }
 
-      const response = page(<SaveStatusPage request={save} settings={userSettings(deps, principal.user.id)} />);
+      const response = page(<SaveStatusPage request={save} context={pageContext(deps, principal.user.id, request)} />);
       response.headers.set("cache-control", "no-store");
       return response;
     },

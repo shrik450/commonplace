@@ -1,21 +1,22 @@
-import { ACTION, Layout } from "./layout";
+import { ACTION } from "./controls";
+import { Layout } from "./layout";
+import { Sheet } from "./sheet";
 
 export function HomePage() {
   return (
-    <Layout title="Commonplace">
-      <h1 class="font-reading text-4xl leading-tight text-pretty">
-        Save what you read.
-      </h1>
-      <p class="mt-5 max-w-prose text-base leading-relaxed">
-        Commonplace saves the full article instead of only its link. Read the
-        article in a focused view, search its text, and highlight passages. The
-        saved copy remains available if the original page moves or disappears.
-      </p>
-      <p class="mt-10">
-        <a class={`text-sm ${ACTION}`} href="/library">
-          Go to your library
-        </a>
-      </p>
+    <Layout title="Commonplace" context={null}>
+      <Sheet labelledBy="home-title" folded>
+        <h1 id="home-title" class="sheet-title sheet-title-large">Save what you read.</h1>
+        <p class="sheet-lede">
+          Commonplace saves the full article instead of only its link. Read the
+          article in a focused view, search its text, and clip the passages worth
+          keeping into a commonplace book. The saved copy remains available if the
+          original page moves or disappears.
+        </p>
+        <p class="sheet-actions">
+          <a class={ACTION} href="/library">Go to your library</a>
+        </p>
+      </Sheet>
     </Layout>
   );
 }

@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 
+import { cursorOf, type Cursor, type PagePosition } from "../contracts/cursor";
 import { AppError } from "../contracts/errors";
 import type { ItemId, RequestId, UserId } from "../contracts/ids";
 import {
@@ -13,11 +14,16 @@ import type { TranscriptMap } from "../contracts/transcript";
 import { reanchor } from "../core/anchor";
 import { project } from "../core/project";
 import type { Highlight, ProjectionMode } from "../core/project";
-import { listAnnotations } from "../store/annotations";
+import { countAnnotationsByItem, listAnnotations } from "../store/annotations";
 import { readItemFile } from "../store/files";
 import { searchBlocks } from "../store/fts";
-import { getItem, listItems } from "../store/items";
-import type { Cursor } from "../store/items";
+import {
+  countItems,
+  countItemsNewerThan,
+  getItem,
+  listItems,
+  listItemsAfter,
+} from "../store/items";
 import {
   getFetchRequest,
   listSaveRequests as listStoredSaveRequests,
@@ -66,21 +72,52 @@ function readMap(raw: string, textLength: number): TranscriptMap {
   }
 }
 
-export function listLibrary(
+export type Card = { item: Item; clippings: number };
+
+// One page of the index box. The counts cover the whole library, so the piles
+// can show every card, not only the ones on this page.
+export type LibraryPage = {
+  saves: FetchRequest[];
+  cards: Card[];
+  total: number;
+  newerCount: number;
+  olderCount: number;
+  newer: Cursor | null;
+  older: Cursor | null;
+};
+
+export const SAVE_CARD_LIMIT = 10;
+
+export function libraryPage(
   deps: LibraryDeps,
   userId: UserId,
-  limit: number,
-  before?: Cursor,
-): Item[] {
-  return listItems(deps.db, userId, limit, before);
+  position: PagePosition,
+  size: number,
+): LibraryPage {
+  const items = position.kind === "after"
+    ? listItemsAfter(deps.db, userId, size, position.cursor)
+    : listItems(deps.db, userId, size, position.kind === "before" ? position.cursor : undefined);
+  const total = countItems(deps.db, userId);
+  const first = items[0];
+  const last = items.at(-1);
+  const newerCount = first === undefined
+    ? (position.kind === "newest" ? 0 : total)
+    : countItemsNewerThan(deps.db, userId, cursorOf(first));
+  const olderCount = total - newerCount - items.length;
+  const counts = countAnnotationsByItem(deps.db, userId, items.map((item) => item.id));
+  return {
+    saves: position.kind === "newest" ? listStoredSaveRequests(deps.db, userId, SAVE_CARD_LIMIT) : [],
+    cards: items.map((item) => ({ item, clippings: counts.get(item.id) ?? 0 })),
+    total,
+    newerCount,
+    olderCount,
+    newer: first !== undefined && newerCount > 0 ? cursorOf(first) : null,
+    older: last !== undefined && olderCount > 0 ? cursorOf(last) : null,
+  };
 }
 
-export function listSaveRequests(
-  deps: LibraryDeps,
-  userId: UserId,
-  limit: number,
-): FetchRequest[] {
-  return listStoredSaveRequests(deps.db, userId, limit);
+export function libraryCount(deps: LibraryDeps, userId: UserId): number {
+  return countItems(deps.db, userId);
 }
 
 export function getSaveRequest(
@@ -89,6 +126,10 @@ export function getSaveRequest(
   requestId: RequestId,
 ): FetchRequest | null {
   return getFetchRequest(deps.db, userId, requestId);
+}
+
+export function findItem(deps: LibraryDeps, userId: UserId, itemId: ItemId): Item | null {
+  return getItem(deps.db, userId, itemId);
 }
 
 function requireItem(deps: LibraryDeps, userId: UserId, itemId: ItemId): Item {
