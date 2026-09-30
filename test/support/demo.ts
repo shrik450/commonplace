@@ -53,6 +53,8 @@ async function clip(library: TestLibrary, owner: UserId, itemId: ItemId, quote: 
 }
 
 // Saves `rounds` copies of the demo pages, oldest first, and clips a few.
+// Later copies are titled as further parts, so a card or a search result can
+// be told from its twins.
 // Returns the item IDs newest first, as the library lists them.
 export async function seedDemo(library: TestLibrary, owner: UserId, rounds = 1): Promise<ItemId[]> {
   const ids: ItemId[] = [];
@@ -63,7 +65,7 @@ export async function seedDemo(library: TestLibrary, owner: UserId, rounds = 1):
         library,
         owner,
         `https://www.${page.host}/${page.title.toLowerCase().replaceAll(/[^a-z]+/g, "-")}${suffix}`,
-        articleHtml({ title: page.title, author: page.author, paragraphs: paragraphsFor(index + round, page.lead) }),
+        articleHtml({ title: round === 0 ? page.title : `${page.title}, part ${round + 1}`, author: page.author, paragraphs: paragraphsFor(index + round, page.lead) }),
       );
       ids.push(itemId);
       if (round > 0) continue;
