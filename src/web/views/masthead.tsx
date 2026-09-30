@@ -84,7 +84,6 @@ export function Masthead({ context, current, query }: { context: PageContext | n
               <SettingsIcon size={18} />
               <span class="settings-label">Settings</span>
             </a>
-            <a href="/logout" class={`masthead-link signout-link ${LINK}`}>Sign out</a>
           </>
         )}
       </div>

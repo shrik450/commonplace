@@ -238,10 +238,6 @@
     .search-slip {
       width: 220px;
     }
-
-    .signout-link {
-      display: none;
-    }
   }
 
   /* On a phone the bar keeps the tabs; search and settings become icons, and
