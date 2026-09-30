@@ -65,6 +65,7 @@ functions. Routes and commands stay thin.
 ### Services
 
 - `acquire.ts` invokes `single-file-cli` and checks its output.
+  Capture starts after the page load event. Open background requests do not delay it.
 - `ingest.ts` acquires, sanitizes, walks, stores, and indexes a URL.
 - `library.ts` loads reader data, library pages, and search results.
 - `clippings.ts` makes, edits, and removes clippings, and assembles the
