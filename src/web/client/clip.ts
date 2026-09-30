@@ -1,3 +1,5 @@
+import { submitInPlace } from "./submit";
+
 // Turns a selection in the reader into a clipping. The projected transcript
 // wraps each run of text in an element whose `data-cp-start` is the run's
 // offset in the transcript, and the run's text is exactly that stretch of the
@@ -57,32 +59,6 @@ export function selectionOffsets(container: Element, selection: Selection): Sele
   const end = pointOffset(document, runs, range.endContainer, range.endOffset, "end");
   if (start === null || end === null || end <= start) return null;
   return { start, end };
-}
-
-// A clipping is made in place. The page the server answers with carries the
-// new mark, its number, and the ribbon's count, so the reader's sheet is
-// swapped for that page's sheet and the reader stays where they were.
-type ClippingAnswer = { kind: "saved"; sheet: Element } | { kind: "refused"; message: string };
-
-async function submitClipping(form: HTMLFormElement, fields: URLSearchParams): Promise<ClippingAnswer> {
-  const view = form.ownerDocument.defaultView!;
-  const failed: ClippingAnswer = {
-    kind: "refused",
-    message: "Commonplace couldn't save the clipping. Check your connection, and try again.",
-  };
-  let response: Response;
-  try {
-    response = await view.fetch(form.action, { method: "POST", body: fields });
-  } catch {
-    return failed;
-  }
-  const page = new view.DOMParser().parseFromString(await response.text(), "text/html");
-  const sheet = page.querySelector(".reader-sheet");
-  if (response.ok && new URL(response.url).pathname === view.location.pathname && sheet !== null) {
-    return { kind: "saved", sheet };
-  }
-  const message = page.querySelector("#error-message")?.textContent;
-  return message === undefined || message === null ? failed : { kind: "refused", message };
 }
 
 export function enhanceClipping(document: Document): void {
@@ -181,12 +157,18 @@ export function enhanceClipping(document: Document): void {
     const idle = label?.textContent ?? "";
     if (label !== null) label.textContent = "Saving…";
     const withNote = note.value.trim() !== "";
-    const answer = await submitClipping(form, new URLSearchParams({ start: start.value, end: end.value, note: note.value }));
+    const answer = await submitInPlace(view, form.action, new URLSearchParams({ start: start.value, end: end.value, note: note.value }));
     saving = false;
     reader.removeAttribute("aria-busy");
     if (label !== null) label.textContent = idle;
     if (answer.kind === "refused") return showSlip(answer.message);
-    reader.querySelector(".reader-sheet")?.replaceWith(document.adoptNode(answer.sheet));
+    // The server answers with the reader, now carrying the new mark, its
+    // number, and the ribbon's count. Its sheet replaces this one, so the
+    // reader stays where they were. Any other page, such as the sign-in page
+    // after a session ends, means the clipping wasn't made.
+    const sheet = answer.path === view.location.pathname ? answer.page.querySelector(".reader-sheet") : null;
+    if (sheet === null) return showSlip("Commonplace couldn't save the clipping. Reload the page, and try again.");
+    reader.querySelector(".reader-sheet")?.replaceWith(document.adoptNode(sheet));
     passage = null;
     closeSlip();
     hidePop();

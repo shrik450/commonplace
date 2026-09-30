@@ -203,7 +203,7 @@ describe("clipping from the reader", () => {
     await page.getByRole("button", { name: "Clip it" }).click();
     const alert = page.getByRole("alert");
     await alert.waitFor();
-    expect(await alert.textContent()).toContain("couldn't save the clipping");
+    expect(await alert.textContent()).toContain("couldn't be reached");
     expect(await page.getByRole("group", { name: "Note on this clipping" }).isVisible()).toBe(true);
     await page.keyboard.type("Written while offline.");
     await page.getByRole("button", { name: "Save clipping" }).click();

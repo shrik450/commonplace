@@ -38,19 +38,40 @@ function bookHref(link: BookLink): string {
 function ClippingScrap({ clipping, locale }: { clipping: Annotation; locale: string }) {
   const clipped = variantOf(`${clipping.id}:fastener`, 3) === 1;
   return (
-    <figure class="clipping" data-edge={variantOf(clipping.id, EDGE_VARIANTS)} data-fastener={clipped ? "clip" : "tape"}>
+    <figure class="clipping" data-clipping={clipping.id} data-edge={variantOf(clipping.id, EDGE_VARIANTS)} data-fastener={clipped ? "clip" : "tape"}>
       {clipped ? <Paperclip /> : <span class="tape" aria-hidden="true" />}
       <div class="clipping-paper">
         <blockquote class="clipping-quote"><span class="wash">{clipping.quote}</span></blockquote>
         {clipping.note === null ? null : (
-          <p class="clipping-note"><PenIcon />{clipping.note}</p>
+          <p class="clipping-note"><PenIcon /><span data-clipping-note>{clipping.note}</span></p>
         )}
         <footer class="clipping-foot">
           <time datetime={clipping.created_at}>{readableDate(clipping.created_at, locale)}</time>
-          <a class={LINK} href={`/clippings/${clipping.id}`}>{clipping.note === null ? "Add a note" : "Edit note"}</a>
+          <a class={LINK} href={`/clippings/${clipping.id}`} data-note-edit>{clipping.note === null ? "Add a note" : "Edit note"}</a>
         </footer>
       </div>
     </figure>
+  );
+}
+
+// The form `book.js` lays on a clipping to write its note in place. Without a
+// script the note is written on the clipping's own page.
+function NoteEditor() {
+  return (
+    <template data-note-editor>
+      <form class="note-editor" method="post" data-note-editor-form>
+        <label>
+          <span>Your note</span>
+          <textarea name="note" class={FIELD} rows="3" maxlength={NOTE_MAX_LENGTH} autocomplete="off" placeholder="Why this passage matters, in a line or two…"></textarea>
+        </label>
+        <p class="note-editor-error" role="alert" hidden data-note-error />
+        <div class="note-editor-actions">
+          <button type="submit" class={SUBMIT}><span data-note-label>Save note</span></button>
+          <button type="button" class={ACTION} data-note-cancel>Cancel</button>
+          <a class={LINK} href="" data-note-remove>Remove clipping…</a>
+        </div>
+      </form>
+    </template>
   );
 }
 
@@ -159,6 +180,8 @@ export function BookPage({
             <button type="button" class="corner corner-next" data-turn="1" aria-label="Next page" hidden />
           </div>
         </div>
+        <NoteEditor />
+        <p class="sr-only" role="status" data-note-status />
         <nav class="book-bar" aria-label="Commonplace book">
           <span class="book-chips">
             {chip("by-page", "By page")}

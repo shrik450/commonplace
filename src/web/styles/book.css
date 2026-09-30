@@ -465,6 +465,54 @@
     font-weight: 650;
   }
 
+  /* Writing a note on the clipping: the form takes the place of the note and
+     of the link that opened it. */
+  .clipping[data-editing] :is(.clipping-note, [data-note-edit]) {
+    display: none;
+  }
+
+  .note-editor {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px dashed var(--color-manila-edge);
+    font-family: var(--font-chrome);
+    font-size: 1rem;
+  }
+
+  .note-editor label {
+    display: grid;
+    gap: 6px;
+  }
+
+  .note-editor label span {
+    font-size: 13px;
+    font-weight: 650;
+    color: var(--color-ink-muted);
+  }
+
+  .note-editor-error {
+    font-size: 14px;
+    color: var(--color-accent);
+  }
+
+  .note-editor-error[hidden] {
+    display: none;
+  }
+
+  .note-editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .note-editor-actions a {
+    margin-left: auto;
+    font-size: 13px;
+  }
+
   .tape {
     position: absolute;
     top: 10px;

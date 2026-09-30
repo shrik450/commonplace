@@ -9,6 +9,7 @@ import {
   type PagesPerSpread,
   type TurnPlan,
 } from "./book-pages";
+import { enhanceClippingNotes } from "./clipping-notes";
 
 type Metrics = { perSpread: PagesPerSpread; column: number; gap: number; flowWidth: number; pages: number };
 
@@ -159,6 +160,15 @@ export function enhanceBook(document: Document): void {
     show();
   };
 
+  // A clipping that grew, shrank, or was replaced moves the clippings after
+  // it. The book stays open at `anchor`, or at the same spread without one.
+  const relaid = (anchor: Element | null) => {
+    finish();
+    metrics = measure();
+    if (anchor !== null) at = spreadOfPage(pageOf(anchor), metrics.perSpread);
+    show();
+  };
+
   const openAt = (hash: string) => {
     if (!hash.startsWith("#item-")) return;
     const target = flow.querySelector(`#${view.CSS.escape(hash.slice(1))}`);
@@ -198,6 +208,8 @@ export function enhanceBook(document: Document): void {
     else return;
     event.preventDefault();
   });
+
+  enhanceClippingNotes(flow, relaid);
 
   book.dataset.paged = "";
   metrics = measure();

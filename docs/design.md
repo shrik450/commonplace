@@ -127,8 +127,9 @@ count, and numbered marks in the margin beside each clipping.
 Clipping never leaves the page. Selecting a passage offers "Clip it" and "Add
 a note". A note is written on a slip laid just below the passage, which stays
 washed while the slip is open. Saving marks the passage where it stands, and
-the reader keeps their place. Editing or removing a clipping happens from the
-book.
+the reader keeps their place. In the book, a note is written or edited on the
+clipping itself, and the same form leads to removing the clipping. Without a
+script, each clipping has a page of its own for both.
 
 ### Catalogue
 

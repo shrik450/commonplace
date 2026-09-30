@@ -125,6 +125,15 @@ if (command === "serve") {
         await page.waitForTimeout(900);
       },
     },
+    {
+      name: "clippings-note",
+      path: `/clippings?item=${clipped}`,
+      act: async (page) => {
+        await page.locator("[data-note-edit]").first().click();
+        await page.keyboard.type("Compare with the stream.");
+        await page.waitForTimeout(300);
+      },
+    },
     { name: "clippings-no-script", path: "/clippings", scripts: false, fullPage: true },
     { name: "clippings-item", path: `/clippings?item=${clipped}` },
     { name: "reader", path: `/items/${clipped}`, fullPage: true },
