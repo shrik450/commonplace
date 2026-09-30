@@ -53,6 +53,8 @@ export function buildArgs(request: CaptureRequest): string[] {
     args.push("--blocked-url-pattern", pattern);
   }
   args.push("--browser-executable-path", request.browserPath);
+  // Background requests can keep a loaded page from reaching network idle.
+  args.push("--browser-wait-until", "load");
   args.push(request.url, request.outputPath);
   return args;
 }
