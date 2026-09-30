@@ -300,9 +300,11 @@ describe("writing a note in the book", () => {
     const label = await count(page);
     const id = await page.evaluate(() => {
       const frame = document.querySelector(".book-window")!.getBoundingClientRect();
+      // A scrap sits at a slight tilt, so it is placed by its middle.
       const shown = [...document.querySelectorAll<HTMLElement>("[data-flow] [data-clipping]")].find((scrap) => {
         const box = scrap.getBoundingClientRect();
-        return box.left >= frame.left - 1 && box.right <= frame.right + 1;
+        const middle = box.left + box.width / 2;
+        return middle > frame.left && middle < frame.right;
       })!;
       shown.querySelector<HTMLElement>("[data-note-edit]")!.click();
       return shown.dataset.clipping!;
