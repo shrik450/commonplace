@@ -123,7 +123,7 @@ describe("summary backfill", () => {
     const pages = {
       prose: "<html><body><nav><p>A long navigation paragraph that is not article content, yet runs well beyond eighty characters.</p></nav>" +
         "<article><h1>Title</h1><p>   </p><p>Short.</p><p>" + "Enough prose to quote on a card, well beyond the minimum length for an excerpt. ".repeat(8) + "</p></article></body></html>",
-      astral: "<html><body><article><h1>Symbols</h1><p>" + "Mathematical script letters like 𝒜 and 𝒵 count as one character in SQLite. ".repeat(3) + "</p></article></body></html>",
+      astral: "<html><body><article><h1>Symbols</h1><p>" + "Mathematical script letters like 𝒜 and 𝒵 count as one character in SQLite. ".repeat(9) + "</p></article></body></html>",
       terse: "<html><body><article><p>Too short to quote.</p></article></body></html>",
     };
     const expected = new Map<string, ReturnType<typeof summarize>>();
@@ -155,11 +155,13 @@ describe("summary backfill", () => {
     expect(rows.get("terse")).toEqual(expected.get("terse")!);
     expect(rows.get("terse")!.excerpt).toBe("");
     expect(rows.get("unindexed")).toEqual({ excerpt: "", content_length: 0 });
-    // SQLite counts an astral-plane character once where JavaScript counts two
-    // UTF-16 units. The excerpt still matches; only the length estimate drifts.
+    // SQLite counts an astral-plane character once where JavaScript strings
+    // count two UTF-16 units. Both sides count characters, so they agree, and
+    // the cut never lands inside one.
     const astral = rows.get("astral")!;
-    expect(astral.excerpt).toBe(expected.get("astral")!.excerpt);
-    expect(expected.get("astral")!.content_length - astral.content_length).toBe(6);
+    expect(astral).toEqual(expected.get("astral")!);
+    expect([...astral.excerpt]).toHaveLength(400);
+    expect(astral.excerpt.isWellFormed()).toBe(true);
     db.close();
   });
 });

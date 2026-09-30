@@ -33,6 +33,16 @@ describe("summarize", () => {
     expect(summary.excerpt).toHaveLength(EXCERPT_MAX_LENGTH);
   });
 
+  test("lengths count whole characters, and the cut never splits one", () => {
+    // Each emoji is two UTF-16 units, so a cut by units would land inside one.
+    const summary = summaryOf(`<article><p>${"😀".repeat(EXCERPT_MAX_LENGTH + 25)}</p></article>`);
+    expect([...summary.excerpt]).toHaveLength(EXCERPT_MAX_LENGTH);
+    expect(summary.excerpt.isWellFormed()).toBe(true);
+    expect(summary.excerpt).toBe("😀".repeat(EXCERPT_MAX_LENGTH));
+    expect(summaryOf(`<article><p>${"😀".repeat(60)}</p></article>`).excerpt).toBe("");
+    expect(summaryOf(`<article><p>${"😀".repeat(90)}</p></article>`).content_length).toBe(90);
+  });
+
   test("a page with only short lines has no excerpt but still a length", () => {
     const summary = summaryOf("<article><p>One.</p><p>Two.</p></article>");
     expect(summary.excerpt).toBe("");

@@ -8,7 +8,9 @@ export const EXCERPT_MIN_LENGTH = 80;
 export const EXCERPT_MAX_LENGTH = 400;
 
 // Summarizes the content blocks an item's search index holds: the first block
-// long enough to read as prose, and the total length of the content.
+// long enough to read as prose, and the total length of the content. Lengths
+// count whole characters, as SQLite does, so an excerpt never ends in half of
+// one and the migration's backfill agrees with it.
 export function summarize(transcript: string, map: TranscriptMap): ItemSummary {
   let excerpt = "";
   let contentLength = 0;
@@ -17,9 +19,10 @@ export function summarize(transcript: string, map: TranscriptMap): ItemSummary {
     if (!first.is_content) continue;
     const text = transcript.slice(first.start, block.runs.at(-1)!.end);
     if (text.trim() === "") continue;
-    contentLength += text.length;
-    if (excerpt === "" && text.length >= EXCERPT_MIN_LENGTH) {
-      excerpt = text.slice(0, EXCERPT_MAX_LENGTH);
+    const characters = [...text];
+    contentLength += characters.length;
+    if (excerpt === "" && characters.length >= EXCERPT_MIN_LENGTH) {
+      excerpt = characters.slice(0, EXCERPT_MAX_LENGTH).join("");
     }
   }
   return { excerpt, content_length: contentLength };
