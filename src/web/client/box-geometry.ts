@@ -110,6 +110,8 @@ export function boxFrame(layout: StackLayout, viewport: Viewport, edges: PileEdg
 // how far the card and those behind it rise to make up the rest when the front
 // pile leaves too little room below it. Dropping comes first: a card that stays
 // put keeps the pointer on its title, and nothing covers the card behind it.
+// The card in front only drops as far as leaves its own strip above the pile,
+// so it stays in reach too.
 export type PullOffsets = { up: number; down: number };
 
 export function pullOffsets(
@@ -121,7 +123,8 @@ export function pullOffsets(
 ): PullOffsets {
   const GAP = 6;
   const stripBottom = layout.tops[index]! + layout.strips[index]! - viewport.scrollTop;
-  const room = edges.front - GAP - stripBottom;
+  const nextStrip = layout.strips[index + 1] ?? 0;
+  const room = edges.front - GAP - stripBottom - nextStrip;
   const down = Math.max(0, Math.min(lift, room));
   return { up: lift - down, down };
 }

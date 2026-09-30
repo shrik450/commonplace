@@ -126,18 +126,23 @@ describe("boxFrame", () => {
 
 describe("pullOffsets", () => {
   test("a card with room below stays put, and the cards in front drop the whole lift", () => {
-    expect(pullOffsets(evenStack(), { scrollTop: 0, height: 400 }, 5, 88, { back: 0, front: 400 })).toEqual({ up: 0, down: 88 });
+    expect(pullOffsets(evenStack(), { scrollTop: 0, height: 400 }, 3, 88, { back: 0, front: 400 })).toEqual({ up: 0, down: 88 });
   });
 
-  test("a card near the front pile drops what it can, and rises the rest", () => {
-    expect(pullOffsets(evenStack(), { scrollTop: 0, height: 400 }, 5, 88, { back: 0, front: 360 })).toEqual({ up: 34, down: 54 });
+  test("the card in front drops only as far as keeps its strip above the front pile, and the rest is a rise", () => {
+    expect(pullOffsets(evenStack(), { scrollTop: 0, height: 400 }, 5, 88, { back: 0, front: 400 })).toEqual({ up: 44, down: 44 });
   });
 
-  test("a card already over the front pile's edge rises the whole lift", () => {
+  test("a card whose neighbour already meets the front pile rises the whole lift", () => {
+    expect(pullOffsets(evenStack(), { scrollTop: 0, height: 400 }, 6, 88, { back: 0, front: 400 })).toEqual({ up: 88, down: 0 });
     expect(pullOffsets(evenStack(), { scrollTop: 0, height: 400 }, 7, 88, { back: 0, front: 360 })).toEqual({ up: 88, down: 0 });
   });
 
   test("the room below follows the scroll position", () => {
-    expect(pullOffsets(evenStack(), { scrollTop: 100, height: 400 }, 7, 88, { back: 20, front: 360 })).toEqual({ up: 34, down: 54 });
+    expect(pullOffsets(evenStack(), { scrollTop: 100, height: 400 }, 7, 88, { back: 20, front: 400 })).toEqual({ up: 44, down: 44 });
+  });
+
+  test("the frontmost card, which shows all of itself, stays whole above the pile", () => {
+    expect(pullOffsets(evenStack(), { scrollTop: 0, height: 640 }, 8, 88, { back: 0, front: 640 })).toEqual({ up: 54, down: 34 });
   });
 });

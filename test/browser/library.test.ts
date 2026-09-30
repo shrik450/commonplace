@@ -278,6 +278,38 @@ describe("the index box", () => {
     }
   });
 
+  test("a pulled card never pushes the card in front of it out of reach", async () => {
+    const { page } = await openBox({ reducedMotion: "reduce" });
+    // Whether the card in front of the pulled one can still be pointed at.
+    const nextInReach = () => page.evaluate(() => {
+      const pulled = document.querySelector("[data-stack] > [data-pulled]");
+      const next = pulled?.nextElementSibling;
+      if (pulled === null || next === null || next === undefined) return "nothing pulled";
+      const box = next.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + 60, box.top + 14);
+      return hit !== null && next.contains(hit) ? "in reach" : `covered: ${next.textContent?.slice(0, 30)}`;
+    });
+    for (const top of [1400, 100_000]) {
+      await scrollStack(page, top);
+      const { backPile, frontPile } = await boxState(page);
+      for (let y = backPile.bottom + 20; y < frontPile.top - 4; y += 12) {
+        await page.mouse.move(640, y);
+        await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
+        expect({ top, y, next: await nextInReach() }).toEqual({ top, y, next: expect.stringMatching(/^(in reach|nothing pulled)$/) });
+      }
+      await page.mouse.move(5, 5);
+    }
+    // At the end of a page, the guide to the next one stays on show.
+    const lastItem = page.locator("[data-stack] > [data-card=item]").last();
+    const title = (await lastItem.locator(".card-title").boundingBox())!;
+    await page.mouse.move(title.x + 20, title.y + 8);
+    await page.waitForFunction(() => document.querySelector("[data-stack] > [data-pulled]") !== null);
+    await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
+    expect(await nextInReach()).toBe("in reach");
+    await page.getByRole("link", { name: "Older cards" }).click();
+    await page.waitForURL(/\/library\?before=/);
+  });
+
   test("scrolling drops a pointer pull, and leaving the stack does too", async () => {
     const { page } = await openBox();
     await scrollStack(page, 600);
