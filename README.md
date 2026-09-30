@@ -92,12 +92,19 @@ objects, and form submissions.
 
 ## Running it
 
-Install the pinned dependencies, then build the stylesheet:
+The development shell pins Bun, Chromium for the browser tests, and the
+build tools. Enter it with `nix develop`, or let `direnv` do it. Then install
+the pinned dependencies and build the stylesheet and browser scripts:
 
 ```sh
 bun install
-bun run css
+bun run assets
 ```
+
+To look at the app without an identity provider, `bun run preview serve`
+serves a demo library, already signed in, on port 8411. `bun run preview
+shots` screenshots every view, in both themes and on desktop and phone, into
+`preview/shots`.
 
 Run the checks with:
 

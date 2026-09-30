@@ -43,11 +43,14 @@ case belongs; the test suite does not maintain a source-file allowlist.
 
 | Command | What it does |
 | ------- | ------------ |
-| `bun run verify` | Type check, lint, and test. The one gate. |
+| `nix develop` | Enter the dev shell: Bun, Chromium for the browser tests, and build tools. |
+| `bun run verify` | Type check, lint, build the assets, and test. The one gate. |
 | `bun run cp doctor` | Check config, roots, browser path, and capture tool. |
 | `bun run cp ingest <url> --user <uuid>` | Capture one URL in the foreground. |
 | `bun run serve` | Run the web app. Reads the config; `PORT` overrides 3000. |
-| `bun run css` | Build `public/app.css`. Add `:watch` for development. |
+| `bun run assets` | Build `public/app.css` and the scripts in `public/scripts/`. `bun run css:watch` rebuilds the stylesheet on change. |
+| `bun run preview shots [filter]` | Screenshot every view, both themes, desktop and phone, into `preview/shots`. |
+| `bun run preview serve [host]` | Serve a demo library, signed in, on port 8411. |
 | `docker build -t commonplace .` | Build the image. Pins Bun and installs Chromium. |
 | `docker run` | Run it. Mount the config at `/home/bun/.config/commonplace/config.toml`, mount `/data/db` and `/data/items`, publish 3000. |
 
@@ -60,7 +63,10 @@ output to diagnose a failure.
 
 The suite covers observable behavior, including authentication, tenant
 isolation, queue lifecycle, durable files, ingest outcomes, transcript and Map
-correctness, projection round trips, capture CSP, and reader behavior.
+correctness, projection round trips, capture CSP, and reader behavior. The
+browser tests under `test/browser/` drive the real app in Chromium: the index
+box, the book, clipping from the reader, and every page in both themes. They
+need `nix develop`, which provides the browser.
 
 Do not add tests for source layout, imports, exact SQL or schema snapshots,
 helper internals, tool output formatting, random uniqueness, or incidental
@@ -82,7 +88,7 @@ identify the changed assertion and explain why the specification changed.
 
 Throw `AppError` from `src/contracts/errors.ts`. Every error carries a stable
 code, namespaced by module: `CONFIG_*`, `STORE_*`, `WALK_*`, `INGEST_*`,
-`AUTH_*`, `VIEW_*`, and `EXPORT_*`. Logs contain one JSON object per line. Use
+`AUTH_*`, `VIEW_*`, `CLIP_*`, and `EXPORT_*`. Logs contain one JSON object per line. Use
 the code to search for related failures, and never throw a bare string.
 
 ## Ids
@@ -108,13 +114,16 @@ under `src/web/`. It is the gate for user interface work, and it has two
 halves.
 
 Follow the visual rules in the skill and use the shared `LINK`, `ACTION`,
-`SUBMIT`, and `FIELD` constants from `src/web/views/layout.tsx`.
+`SUBMIT`, and `FIELD` constants from `src/web/views/controls.ts`.
 
 Complete the manual check against
 `.claude/skills/web-design-guidelines/references/web-interface-guidelines.md`,
 the vendored copy of the Vercel Web Interface Guidelines. A machine
 cannot see layout, contrast, or whether a sentence makes sense. Where those
 rules disagree with `docs/design.md`, `docs/design.md` wins.
+
+Look at what you changed. Run `bun run preview shots` and read the
+screenshots of every view you touched, in both themes and at both sizes.
 
 ## Rules for changes
 

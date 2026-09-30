@@ -32,21 +32,29 @@ functions. Routes and commands stay thin.
 - `transcript.ts` defines runs, block grouping, range lookup, and map checks.
 - `item.ts` defines users, web items, annotations, API tokens, and queue rows.
 - `settings.ts` defines the typed account appearance and reading settings.
+- `cursor.ts` defines library positions and parses page links into them.
+- `clipping.ts` parses the fields of a clipping form. The interface calls an
+  annotation a clipping.
 - `config.ts` parses the application configuration.
 
 ### Core
 
 - `sanitize.ts` removes unsafe markup and owns the shared block-element list.
 - `walk.ts` extracts metadata and builds the transcript and Map in one pass.
-- `project.ts` renders content runs and highlight marks from the transcript.
+- `project.ts` renders content runs and highlight marks from the transcript,
+  and marks where each highlight starts.
 - `anchor.ts` re-anchors a saved quote when its offsets no longer match.
+- `clip.ts` decides whether a selection can be a clipping, and trims it.
+- `summarize.ts` picks a card's excerpt and measures its content length.
+- `shuffle.ts` orders a list by a seed, for the shuffled book.
 
 ### Store
 
 - `db.ts` opens SQLite, applies migrations, and translates write errors.
 - `config.ts` reads the config file and calls the contract parser.
-- `items.ts` reads and updates item metadata.
-- `annotations.ts` reads annotations for rendering.
+- `items.ts` reads and updates item metadata, and pages through it by cursor.
+- `annotations.ts` stores annotations, counts them per item, and lists them
+  for the commonplace book.
 - `users.ts` stores users and hashed API tokens.
 - `settings.ts` stores validated settings with a user-owned primary key.
 - `queue.ts` owns URL ingest jobs, leases, and cleanup state.
@@ -58,7 +66,9 @@ functions. Routes and commands stay thin.
 
 - `acquire.ts` invokes `single-file-cli` and checks its output.
 - `ingest.ts` acquires, sanitizes, walks, stores, and indexes a URL.
-- `library.ts` loads reader data and search results.
+- `library.ts` loads reader data, library pages, and search results.
+- `clippings.ts` makes, edits, and removes clippings, and assembles the
+  commonplace book in volumes.
 - `auth.ts` handles OIDC, signed sessions, and API tokens.
 - `worker.ts` provides queue draining, lease cleanup, and worker lifecycle.
 
@@ -67,10 +77,14 @@ server starts it in the same process because the queue is intentionally local.
 
 ### Web and CLI
 
-The web layer renders server-side HTML for the home page, library, search,
-reader, structured text, saved copy, sign-in, and settings. A same-origin
-first-party script provides reader previews and serialized saving; forms remain
-usable without it. The structured text view retains safe HTML semantics
+The web layer renders server-side HTML for the home page, library, the
+commonplace book, search, reader, structured text, saved copy, sign-in, and
+settings. Every page works without a script. Small same-origin scripts in
+`src/web/client/`, bundled into `public/scripts/`, enhance the index box, the
+book, the save card, clipping, and the settings preview. Each keeps its
+arithmetic in a pure module with unit tests, and its DOM work in a thin shell
+that the browser tests drive. `src/web/styles/` holds one stylesheet per
+object, over shared tokens. The structured text view retains safe HTML semantics
 and uses the transcript and Map for ordered text. The saved copy remains
 authenticated, serves `original.html`, and uses a strict policy with inline CSS
 and embedded data images and fonts only.
@@ -94,7 +108,8 @@ Annotations retain transcript offsets and their quote in SQLite. Rendering
 re-anchors the quote against the current transcript and projects it through the
 current Map. No DOM path or document position enters the database.
 
-Schema version 5 adds named, self-hosted reading fonts and maps existing font
+Schema version 6 stores each item's card excerpt and content length, and
+backfills them from the search index. Schema version 5 adds named, self-hosted reading fonts and maps existing font
 choices to their named replacements. Schema version 4 adds numeric reading
 controls and a monospace font. Schema version 3 adds durable per-user settings.
 Schema version 2 migrates old databases by retaining only article rows with a non-null URL. It discards book
