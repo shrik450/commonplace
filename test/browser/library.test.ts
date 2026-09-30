@@ -86,6 +86,22 @@ async function clearCardPoint(page: Page, nth: number): Promise<{ x: number; y: 
   }, nth);
 }
 
+// The slivers narrow with depth, so the corners of a pile's box are bare.
+// Lists the cards found there.
+function cardsInPileCorners(): string[] {
+  const found: string[] = [];
+  for (const side of ["back", "front"]) {
+    const pile = document.querySelector(`[data-pile=${side}]`)!.getBoundingClientRect();
+    if (pile.height < 12) continue;
+    const y = side === "back" ? pile.top + 3 : pile.bottom - 3;
+    for (const x of [pile.left + 2, pile.right - 2]) {
+      const card = document.elementsFromPoint(x, y).find((element) => element.closest("[data-stack] > li") !== null);
+      if (card !== undefined) found.push(`${side} pile at ${Math.round(x)},${Math.round(y)}`);
+    }
+  }
+  return found;
+}
+
 describe("the index box", () => {
   test("fills the window: the page stays still and the stack scrolls", async () => {
     const { page, errors } = await openBox();
@@ -242,6 +258,24 @@ describe("the index box", () => {
       expect({ top, down }).toEqual({ top, down: down.map((_, at) => down[0]! + at) });
     }
     expect(errors).toEqual([]);
+  });
+
+  test("no card shows beside a pile's slivers, at rest or while a card is pulled", async () => {
+    const { page } = await openBox({ reducedMotion: "reduce" });
+    const cardsInCorners = async () => {
+      await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
+      return page.evaluate(cardsInPileCorners);
+    };
+    for (const top of [1400, 1412, 1425, 1440, 100_000]) {
+      await scrollStack(page, top);
+      expect({ top, cards: await cardsInCorners() }).toEqual({ top, cards: [] });
+      const { backPile, frontPile } = await boxState(page);
+      for (const y of [frontPile.top - 70, backPile.bottom + 30]) {
+        await page.mouse.move(640, y);
+        expect({ top, y, cards: await cardsInCorners() }).toEqual({ top, y, cards: [] });
+      }
+      await page.mouse.move(5, 5);
+    }
   });
 
   test("scrolling drops a pointer pull, and leaving the stack does too", async () => {

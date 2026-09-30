@@ -46,6 +46,8 @@ export function enhanceIndexBox(document: Document): void {
     if (back === shown.back && front === shown.front) return;
     backPile.style.setProperty("--shown", String(back));
     frontPile.style.setProperty("--shown", String(front));
+    stack.style.setProperty("--back-pile", String(backPile.offsetHeight));
+    stack.style.setProperty("--front-pile", String(frontPile.offsetHeight));
     shown = { back, front };
   };
 

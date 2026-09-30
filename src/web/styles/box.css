@@ -50,6 +50,13 @@
     scrollbar-color: var(--color-cloth) transparent;
   }
 
+  /* A pile's slivers narrow with depth, so anything behind a pile would show
+     at its sides. Cards that a pull moves past a pile's edge go out of sight
+     there, as cards gone into the pile do. */
+  .index-box[data-enhanced] .stack {
+    clip-path: inset(calc(var(--back-pile, 0) * 1px) 0 calc(var(--front-pile, 0) * 1px) 0);
+  }
+
   .stack::before {
     content: "";
     flex: 1 0 12px;
@@ -376,9 +383,12 @@
     filter: drop-shadow(0 -2px 3px var(--color-cloth-umbra));
   }
 
+  /* The script reads a pile's height as soon as it sets the slivers, so a
+     sliver never transitions, not even for the instant reduced motion leaves. */
   .pile i {
     --on: clamp(0, var(--shown) - var(--depth), 1);
     display: block;
+    transition-property: none;
     height: calc(max(2px, 7px - var(--depth) * 0.45px) * var(--on));
     margin-inline: calc(var(--depth) * 1.7px);
     background: linear-gradient(
