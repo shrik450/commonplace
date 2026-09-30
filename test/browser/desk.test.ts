@@ -75,6 +75,11 @@ async function pageProblems(page: Page): Promise<string[]> {
   });
 }
 
+const outlineOf = (page: Page, selector: string) => page.locator(selector).evaluate((element) => {
+  const styles = getComputedStyle(element);
+  return `${styles.outlineStyle} ${styles.outlineWidth} ${styles.outlineColor}`;
+});
+
 describe("the desk around every page", () => {
   test("every page, in both themes and on both sizes, loads cleanly", async () => {
     const clipping = listAnnotations(library.db, ALICE, ids.at(-1)!)[0]!;
@@ -235,6 +240,26 @@ describe("the desk around every page", () => {
     expect(box.y).toBeGreaterThanOrEqual(0);
     await page.keyboard.press("Enter");
     expect(page.url()).toContain("#main");
+  });
+
+  test("a focused field shows the accent outline, and the search slip carries its input's", async () => {
+    const accent = "solid 2px rgb(180, 82, 47)";
+    const save = await open("/save", { reducedMotion: "reduce" });
+    await save.page.getByLabel("Link").focus();
+    await save.page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
+    expect(await outlineOf(save.page, "main input[name=url]")).toBe(accent);
+
+    const box = await open("/library", { reducedMotion: "reduce" });
+    expect(await outlineOf(box.page, "header .search-slip")).not.toBe(accent);
+    await box.page.locator("header .search-slip input").focus();
+    await box.page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
+    expect(await outlineOf(box.page, "header .search-slip")).toBe(accent);
+
+    const clipping = listAnnotations(library.db, ALICE, ids.at(-1)!)[0]!;
+    const note = await open(`/clippings/${clipping.id}`, { reducedMotion: "reduce" });
+    await note.page.getByLabel("Your note").focus();
+    await note.page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
+    expect(await outlineOf(note.page, "textarea[name=note]")).toBe(accent);
   });
 
   test("an empty library invites the first save", async () => {

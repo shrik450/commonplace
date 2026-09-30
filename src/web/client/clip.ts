@@ -146,7 +146,7 @@ export function enhanceClipping(document: Document): void {
     error.hidden = message === null;
     slip.hidden = false;
     note.focus({ preventScroll: true });
-    slip.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    slip.scrollIntoView({ block: "nearest" });
   };
 
   // `label` is the pressed button's label, which reads "Saving…" meanwhile.

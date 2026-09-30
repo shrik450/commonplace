@@ -81,8 +81,7 @@
     color: var(--color-accent-strong);
   }
 
-  /* Fields are written on: a dashed rule that turns solid and accented while
-     you type. */
+  /* Fields are written on: a dashed rule that turns solid while you type. */
   .field {
     min-width: 0;
     font: inherit;
@@ -114,12 +113,17 @@
     border-color: var(--color-ink-faint);
   }
 
-  /* A field's focus is its rule turning solid accent, in place of an
-     outline. */
+  /* The focus outline is the accent, so the rule turns solid but stays
+     quiet beside it. */
   .field:focus {
     border-style: solid;
-    border-color: var(--color-accent);
-    outline: none;
+    border-color: var(--color-ink-faint);
+  }
+
+  /* An underlined field has no padding at its sides, so its outline stands
+     a little further off than a button's. */
+  .field:focus-visible {
+    outline-offset: 5px;
   }
 
   .field-select {

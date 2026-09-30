@@ -108,8 +108,13 @@
   }
 
   .search-slip:focus-within {
-    border-color: var(--color-accent);
     rotate: none;
+  }
+
+  /* The slip is the field you see, so it carries the input's focus outline. */
+  .search-slip:has(input:focus-visible) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 
   .search-slip svg {
