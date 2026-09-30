@@ -46,7 +46,7 @@ export type Migration = { version: number; sql: string };
 
 export type TableInfo = { name: string; sql: string; columns: string[] };
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const MIGRATIONS: readonly Migration[] = [
   {
@@ -266,6 +266,28 @@ export const MIGRATIONS: readonly Migration[] = [
           text_size, line_spacing, paragraph_spacing, text_width
         FROM user_settings_old;
       DROP TABLE user_settings_old;
+    `,
+  },
+  {
+    // Library cards show an excerpt and a reading time without loading the
+    // transcript. This backfill applies the rule in `core/summarize.ts` to
+    // the indexed blocks, which hold the same non-blank block text in the
+    // same order. SQLite counts characters where JavaScript counts UTF-16
+    // units, so a block with astral-plane characters can differ slightly.
+    version: 6,
+    sql: `
+      ALTER TABLE items ADD COLUMN excerpt TEXT NOT NULL DEFAULT '';
+      ALTER TABLE items ADD COLUMN content_length INTEGER NOT NULL DEFAULT 0;
+      UPDATE items SET
+        excerpt = coalesce((
+          SELECT substr(text, 1, 400) FROM blocks_fts
+          WHERE blocks_fts.item_id = items.id AND is_content = 1 AND length(text) >= 80
+          ORDER BY block_index LIMIT 1
+        ), ''),
+        content_length = coalesce((
+          SELECT sum(length(text)) FROM blocks_fts
+          WHERE blocks_fts.item_id = items.id AND is_content = 1
+        ), 0);
     `,
   },
 ];

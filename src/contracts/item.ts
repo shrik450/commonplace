@@ -37,6 +37,13 @@ export type Item = {
   author: string | null;
   created_at: string;
   ingested_at: string | null;
+} & ItemSummary;
+
+// What a library card shows about an item without loading its transcript.
+// `excerpt` is empty when the item has no content block long enough to quote.
+export type ItemSummary = {
+  excerpt: string;
+  content_length: number;
 };
 
 export type Annotation = {
