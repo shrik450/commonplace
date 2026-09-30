@@ -20,8 +20,8 @@
 
   .catalogue-title {
     font-family: var(--font-reading);
-    font-weight: 500;
-    font-size: 40px;
+    font-weight: var(--font-weight-medium);
+    font-size: var(--text-display);
     line-height: 1.1;
     letter-spacing: -0.02em;
     font-variation-settings: "opsz" 72;
@@ -29,14 +29,10 @@
     text-wrap: balance;
   }
 
-  .catalogue-title em {
-    color: var(--color-accent);
-  }
-
   .catalogue-lede {
     margin-top: 8px;
     max-width: 60ch;
-    font-size: 14px;
+    font-size: var(--text-control);
     line-height: 1.5;
     color: var(--color-ink-muted);
   }
@@ -78,14 +74,14 @@
     justify-content: space-between;
     gap: 12px;
     margin-bottom: 6px;
-    font-size: 12px;
-    font-weight: 650;
+    font-size: var(--text-caption);
+    font-weight: var(--font-weight-label);
     color: var(--color-ink-muted);
   }
 
   .result-title {
     color: var(--color-ink);
-    font-weight: 700;
+    font-weight: var(--font-weight-label);
     overflow-wrap: anywhere;
   }
 
@@ -96,7 +92,7 @@
   .result-snippet {
     display: block;
     font-family: var(--font-reading);
-    font-size: 18px;
+    font-size: var(--text-quote);
     line-height: 1.5;
     overflow-wrap: anywhere;
   }
@@ -104,7 +100,7 @@
   .result-aside {
     display: block;
     margin-top: 8px;
-    font-size: 12px;
+    font-size: var(--text-caption);
     font-style: italic;
     color: var(--color-ink-muted);
   }
@@ -117,7 +113,7 @@
     }
 
     .catalogue-title {
-      font-size: 30px;
+      font-size: var(--text-title);
     }
 
     .catalogue-list > li:nth-child(3n + 2) .result-card {

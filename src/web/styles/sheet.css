@@ -62,16 +62,16 @@
   }
 
   .sheet-kicker {
-    font-size: 12px;
-    font-weight: 700;
+    font-size: var(--text-caption);
+    font-weight: var(--font-weight-label);
     letter-spacing: 0.04em;
     color: var(--color-ink-muted);
   }
 
   .sheet-title {
     font-family: var(--font-reading);
-    font-weight: 600;
-    font-size: 30px;
+    font-weight: var(--font-weight-heading);
+    font-size: var(--text-title);
     line-height: 1.15;
     letter-spacing: -0.01em;
     font-variation-settings: "opsz" 48;
@@ -80,7 +80,7 @@
   }
 
   .sheet-title-large {
-    font-size: 44px;
+    font-size: var(--text-display);
     font-variation-settings: "opsz" 72;
   }
 
@@ -91,21 +91,21 @@
   .sheet-lede {
     margin-top: 16px;
     max-width: 62ch;
-    font-size: 15px;
+    font-size: var(--text-body);
     line-height: 1.6;
     text-wrap: pretty;
   }
 
   .sheet-url {
     font-family: var(--font-code);
-    font-size: 13px;
+    font-size: var(--text-label);
     color: var(--color-ink-muted);
     overflow-wrap: anywhere;
   }
 
   .sheet-note {
     margin-top: 10px;
-    font-size: 13px;
+    font-size: var(--text-label);
     line-height: 1.5;
     color: var(--color-ink-muted);
   }
@@ -113,7 +113,7 @@
   .sheet-code {
     margin-top: 28px;
     font-family: var(--font-code);
-    font-size: 12px;
+    font-size: var(--text-caption);
     color: var(--color-ink-muted);
   }
 
@@ -132,15 +132,15 @@
   }
 
   .sheet-heading {
-    font-size: 15px;
-    font-weight: 700;
+    font-size: var(--text-body);
+    font-weight: var(--font-weight-label);
     margin-bottom: 14px;
   }
 
   .sheet-quote {
     margin-top: 22px;
     font-family: var(--font-reading);
-    font-size: 19px;
+    font-size: var(--text-quote);
     line-height: 1.55;
   }
 
@@ -155,7 +155,7 @@
   }
 
   .save-form .field {
-    font-size: 18px;
+    font-size: var(--text-quote);
   }
 
   .note-form {
@@ -166,8 +166,8 @@
 
   .note-form label,
   .setting-label {
-    font-size: 13px;
-    font-weight: 650;
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-label);
     color: var(--color-ink-muted);
   }
 
@@ -179,7 +179,7 @@
   .setting {
     display: grid;
     gap: 8px;
-    font-size: 14px;
+    font-size: var(--text-control);
   }
 
   .setting-label {
@@ -239,7 +239,7 @@
     margin-top: 20px;
     padding: 14px 16px;
     font-family: var(--font-code);
-    font-size: 13px;
+    font-size: var(--text-label);
     overflow-wrap: anywhere;
     user-select: all;
     background: var(--color-paper-aged);
@@ -254,7 +254,7 @@
     }
 
     .sheet-title-large {
-      font-size: 34px;
+      font-size: var(--text-title);
     }
   }
 }

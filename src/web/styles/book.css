@@ -134,8 +134,8 @@
     display: block;
     position: absolute;
     bottom: 16px;
-    font-size: 11px;
-    font-weight: 700;
+    font-size: var(--text-micro);
+    font-weight: var(--font-weight-label);
     letter-spacing: 0.08em;
     color: var(--color-ink-muted);
     font-variant-numeric: tabular-nums;
@@ -316,29 +316,29 @@
 
   .title-page h1 {
     font-family: var(--font-reading);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     font-style: italic;
-    font-size: 44px;
+    font-size: var(--text-display);
     letter-spacing: -0.02em;
     font-variation-settings: "opsz" 72;
   }
 
   .title-page p {
     margin-top: 10px;
-    font-size: 14px;
+    font-size: var(--text-control);
     color: var(--color-ink-muted);
   }
 
   .title-page .title-page-focus {
     font-family: var(--font-reading);
-    font-size: 18px;
+    font-size: var(--text-quote);
     color: var(--color-ink);
     text-wrap: balance;
   }
 
   .flourish {
     margin: 22px 0;
-    font-size: 20px;
+    font-size: var(--text-heading);
     letter-spacing: 0.6em;
     color: var(--color-accent);
   }
@@ -348,7 +348,7 @@
     margin: 0 auto;
     padding: 24px 0;
     text-align: center;
-    font-size: 15px;
+    font-size: var(--text-body);
     line-height: 1.6;
     color: var(--color-ink-muted);
   }
@@ -377,8 +377,8 @@
 
   .locus-head h2 {
     font-family: var(--font-reading);
-    font-size: 21px;
-    font-weight: 600;
+    font-size: var(--text-heading);
+    font-weight: var(--font-weight-heading);
     line-height: 1.2;
     font-variation-settings: "opsz" 36;
     overflow-wrap: anywhere;
@@ -392,7 +392,7 @@
   .locus-source {
     display: block;
     margin-top: 3px;
-    font-size: 12.5px;
+    font-size: var(--text-caption);
     color: var(--color-ink-muted);
   }
 
@@ -422,7 +422,7 @@
     padding: 20px 22px 16px;
     background: var(--grain), var(--color-paper-lifted);
     font-family: var(--font-reading);
-    font-size: 17px;
+    font-size: var(--text-quote);
     line-height: 1.55;
   }
 
@@ -441,7 +441,7 @@
     padding-top: 9px;
     border-top: 1px dashed var(--color-manila-edge);
     font-style: italic;
-    font-size: 16px;
+    font-size: var(--text-plain);
     color: var(--color-note);
   }
 
@@ -457,12 +457,12 @@
     gap: 12px;
     margin-top: 10px;
     font-family: var(--font-chrome);
-    font-size: 11.5px;
+    font-size: var(--text-caption);
     color: var(--color-ink-muted);
   }
 
   .clipping-foot a {
-    font-weight: 650;
+    font-weight: var(--font-weight-label);
   }
 
   /* Writing a note on the clipping: the form takes the place of the note and
@@ -478,7 +478,7 @@
     padding-top: 9px;
     border-top: 1px dashed var(--color-manila-edge);
     font-family: var(--font-chrome);
-    font-size: 1rem;
+    font-size: var(--text-plain);
   }
 
   .note-editor label {
@@ -487,13 +487,13 @@
   }
 
   .note-editor label span {
-    font-size: 13px;
-    font-weight: 650;
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-label);
     color: var(--color-ink-muted);
   }
 
   .note-editor-error {
-    font-size: 14px;
+    font-size: var(--text-control);
     color: var(--color-accent);
   }
 
@@ -510,7 +510,7 @@
 
   .note-editor-actions a {
     margin-left: auto;
-    font-size: 13px;
+    font-size: var(--text-label);
   }
 
   .tape {
@@ -555,8 +555,8 @@
   }
 
   .book-chips .control-quiet {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-label);
     margin-left: 6px;
   }
 
@@ -566,21 +566,21 @@
 
   .book-volumes {
     gap: 16px;
-    font-size: 13px;
+    font-size: var(--text-label);
   }
 
   .book-count {
     min-width: 120px;
     text-align: center;
-    font-size: 13px;
-    font-weight: 650;
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-label);
     color: var(--color-ink-muted);
     font-variant-numeric: tabular-nums;
   }
 
   .chip {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-label);
     padding: 5px 12px;
     border-radius: 999px;
     border: 1px solid var(--color-manila-edge);
@@ -629,7 +629,7 @@
     }
 
     .title-page h1 {
-      font-size: 36px;
+      font-size: var(--text-title);
     }
 
     .clipping[data-edge] {

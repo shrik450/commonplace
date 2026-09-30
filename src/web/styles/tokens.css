@@ -10,6 +10,27 @@
   --font-chrome: system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-code: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
+  /* The type scale. Every size in the interface is one of these steps; the
+     transcript alone sizes itself, from the reading settings. The first five
+     are interface text, the rest are set in the reading font. */
+  --text-micro: 11px;
+  --text-caption: 12px;
+  --text-label: 13px;
+  --text-control: 14px;
+  --text-body: 15px;
+  --text-plain: 16px;
+  --text-quote: 18px;
+  --text-heading: 20px;
+  --text-title: 30px;
+  --text-display: 40px;
+
+  /* Medium for display type, heading for titles, label for interface text
+     that must stand out, stamp for small capitals. */
+  --font-weight-medium: 500;
+  --font-weight-heading: 600;
+  --font-weight-label: 650;
+  --font-weight-stamp: 800;
+
   --color-desk: light-dark(#efe7d8, #14151a);
   --color-desk-glow: light-dark(rgb(255 252 244 / 0.55), rgb(255 184 120 / 0.07));
   --color-paper: light-dark(#fffaf0, #23242c);

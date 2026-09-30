@@ -74,6 +74,30 @@ Follow these color rules:
   spacing, paragraph spacing, and text width.
 - Self-host the Latin variable fonts as WOFF2 files. Use each font's system
   category as its fallback.
+- Every size and weight is a step of the scale in `tokens.css`. Never write a
+  size or a weight as a number in a stylesheet. Add a step only when a new
+  kind of text can't take an existing one.
+
+  | Step | Size | Set in | Used for |
+  | ---- | ---- | ------ | -------- |
+  | `micro` | 11px | interface | stamps, counts, folios |
+  | `caption` | 12px | interface | dates, sources, small links |
+  | `label` | 13px | interface | field labels, bylines, chips |
+  | `control` | 14px | interface | buttons, tabs, ledes |
+  | `body` | 15px | interface | prose on a sheet |
+  | `plain` | 16px | either | fields, notes, excerpts |
+  | `quote` | 18px | reading | clippings, search snippets |
+  | `heading` | 20px | reading | card titles, the brand, book headings |
+  | `title` | 30px | reading | sheet titles, and every large title on a phone |
+  | `display` | 40px | reading | the reader's, the book's, and the search page's title |
+
+  Weights are `medium` (500) for display type and card titles, `heading`
+  (600) for titles, `label` (650) for interface text that must stand out,
+  and `stamp` (800) for small capitals. Regular is the default.
+- The transcript alone sizes itself. Its text follows the reading settings,
+  and its headings are multiples of that size.
+- Italic is for a reader's own words and for excerpts: notes, card excerpts,
+  the book's title page. It is not used for emphasis in interface text.
 - The reading column holds about 68 characters. Set it with `max-width`, in
   `ch`, not with a pixel width.
 

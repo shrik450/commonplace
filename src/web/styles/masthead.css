@@ -26,8 +26,8 @@
     align-items: center;
     gap: 9px;
     font-family: var(--font-reading);
-    font-weight: 650;
-    font-size: 20px;
+    font-weight: var(--font-weight-heading);
+    font-size: var(--text-heading);
     letter-spacing: -0.01em;
     font-variation-settings: "opsz" 36;
     text-decoration: none;
@@ -55,8 +55,8 @@
      little; hovering lowers one, and the current tab hangs lowest. */
   .tab {
     display: block;
-    font-size: 14px;
-    font-weight: 650;
+    font-size: var(--text-control);
+    font-weight: var(--font-weight-label);
     text-decoration: none;
     padding: 28px 16px 10px;
     border-radius: 0 0 8px 8px;
@@ -85,8 +85,8 @@
 
   .tab-count {
     margin-left: 5px;
-    font-size: 11px;
-    font-weight: 700;
+    font-size: var(--text-micro);
+    font-weight: var(--font-weight-label);
     opacity: 0.7;
     font-variant-numeric: tabular-nums;
   }
@@ -125,7 +125,7 @@
     font: inherit;
     font-family: var(--font-reading);
     font-style: italic;
-    font-size: 16px;
+    font-size: var(--text-plain);
     color: var(--color-ink);
   }
 
@@ -157,8 +157,8 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 14px;
-    font-weight: 550;
+    font-size: var(--text-control);
+    font-weight: var(--font-weight-medium);
   }
 
   .settings-link svg {
@@ -210,8 +210,8 @@
 
   .save-card-label {
     display: block;
-    font-size: 11px;
-    font-weight: 800;
+    font-size: var(--text-micro);
+    font-weight: var(--font-weight-stamp);
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--color-accent);
@@ -230,7 +230,7 @@
 
   .save-card-hint {
     margin-top: 10px;
-    font-size: 12px;
+    font-size: var(--text-caption);
     color: var(--color-ink-muted);
   }
 
@@ -274,7 +274,7 @@
 
     .tab {
       padding: 22px 11px 8px;
-      font-size: 13px;
+      font-size: var(--text-label);
       translate: 0 -6px;
     }
 

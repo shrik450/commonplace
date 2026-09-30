@@ -65,7 +65,7 @@ export function SearchPage({
         <header class="catalogue-head">
           <div>
             <h1 id="search-title" class="catalogue-title">
-              {query === "" ? "Search your library" : <>Cards mentioning <em>“{query}”</em></>}
+              {query === "" ? "Search your library" : `Cards mentioning “${query}”`}
             </h1>
             <p class="catalogue-lede">
               {query === ""
