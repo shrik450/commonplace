@@ -1,0 +1,443 @@
+/* The library: a box of index cards seen from the front and above. Cards
+   stand packed, each overlapping the one behind it; lower on the screen is
+   nearer to you. The inside of the back wall is the same cloth, in shade.
+   `index-box.js` measures the stack and sets state; this file draws it. */
+@layer components {
+  .index-box {
+    --rim: 14px;
+    --face: 34px;
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: var(--page-w);
+    margin: 0 auto;
+    padding: var(--rim) var(--rim) 0;
+    background: var(--weave), var(--color-cloth);
+    border-radius: 12px 12px 10px 10px;
+    box-shadow:
+      var(--lift-3),
+      inset 0 1px 0 var(--color-cloth-edge-hi),
+      inset 0 0 0 1px var(--color-cloth-umbra);
+  }
+
+  .box-well {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    background: var(--weave), var(--color-cloth-shade);
+    border-radius: 4px 4px 0 0;
+    box-shadow: 0 0 0 1px var(--color-cloth-umbra), 0 -1px 0 1px var(--color-cloth-edge-hi);
+  }
+
+  /* The stack scrolls inside the box. It leaves room at either end for the
+     piles of cards on other pages, and a short stack rests at the front. */
+  .stack {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: calc(var(--head, 0) * 1px) 0 calc(var(--tail, 0) * 1px);
+    list-style: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 4px 4px 0 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-cloth) transparent;
+  }
+
+  .stack::before {
+    content: "";
+    flex: 1 0 12px;
+  }
+
+  .stack:focus-visible {
+    outline-offset: -3px;
+  }
+
+  .stack > li {
+    flex-shrink: 0;
+  }
+
+  /* The rims shade the cards where they tuck under them. */
+  .box-shade {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    border-radius: 4px 4px 0 0;
+    box-shadow:
+      inset 0 9px 10px -8px var(--color-cloth-umbra),
+      inset 0 -9px 10px -8px var(--color-cloth-umbra);
+  }
+
+  /* Below the front rim hangs the front face, a shade darker because it
+     faces you rather than the light. */
+  .box-front {
+    position: relative;
+    z-index: 4;
+    height: var(--face);
+    margin: var(--rim) calc(-1 * var(--rim)) 0;
+    background:
+      linear-gradient(var(--color-face-shade), var(--color-face-shade)),
+      var(--weave),
+      var(--color-cloth);
+    border-radius: 0 0 10px 10px;
+    box-shadow: inset 0 1px 0 var(--color-cloth-edge-hi), inset 0 -2px 0 var(--color-cloth-umbra);
+  }
+
+  /* Brass guards wrap the four corners. The bottom ones bend over the front
+     edge, bridging the side and the front. */
+  .box-corner {
+    position: absolute;
+    z-index: 5;
+    width: 26px;
+    height: 26px;
+    pointer-events: none;
+    filter: drop-shadow(0 1px 1px var(--color-cloth-umbra));
+  }
+
+  .box-corner::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--color-brass);
+    border-radius: 11px 2px 2px 2px;
+    clip-path: polygon(0 0, 100% 0, 100% 38%, 38% 100%, 0 100%);
+    box-shadow: inset 1px 1px 0 var(--color-brass-edge-hi);
+    scale: var(--mirror, 1) 1;
+  }
+
+  .box-corner::after {
+    content: "";
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--color-brass);
+    box-shadow: inset 0 1px 0 var(--color-brass-edge-hi), 0 0.5px 1px var(--color-cloth-umbra);
+  }
+
+  .box-corner-tl { top: 0; left: 0; }
+  .box-corner-tr { top: 0; right: 0; --mirror: -1; }
+  .box-corner-tl::after { top: 6px; left: 6px; }
+  .box-corner-tr::after { top: 6px; right: 6px; }
+
+  .box-corner-bl,
+  .box-corner-br {
+    bottom: 0;
+    height: calc(26px + var(--face));
+  }
+
+  .box-corner-bl { left: 0; }
+  .box-corner-br { right: 0; --mirror: -1; }
+
+  .box-corner-bl::before,
+  .box-corner-br::before {
+    border-radius: 0 0 0 10px;
+    clip-path: polygon(0 0, 10px 0, 26px 16px, 26px 100%, 0 100%);
+    background: linear-gradient(to bottom, var(--color-brass) 0 26px, var(--color-brass-deep) 26px 27px, var(--color-brass) 27px);
+  }
+
+  .box-corner-bl::after { bottom: calc(var(--face) / 2 - 2.5px); left: 8px; }
+  .box-corner-br::after { bottom: calc(var(--face) / 2 - 2.5px); right: 8px; }
+
+  /* A card is much taller than the strip you see: the rest stands in the
+     box, hidden behind the card in front. `--more` is that hidden part, and
+     `--lift` how much of it a pull shows, in pixels. */
+  .card {
+    --more: 92px;
+    --lift: 88;
+    position: relative;
+    margin-bottom: calc(-1 * var(--more));
+    background: var(--grain), var(--color-paper);
+    border-radius: 5px 5px 0 0;
+    box-shadow:
+      inset 0 1px 0 var(--color-edge-hi),
+      0 -1px 0 var(--color-edge-lo),
+      0 -3px 6px -2px var(--color-cloth-umbra);
+    transition: translate 300ms var(--settle), box-shadow 300ms;
+  }
+
+  /* The frontmost card has nothing in front of it, so all of it shows. */
+  .card:last-child {
+    margin-bottom: 0;
+  }
+
+  .card-link {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 18px;
+    align-items: baseline;
+    padding: 13px 20px 0;
+    text-decoration: none;
+    border-radius: inherit;
+  }
+
+  .card-link:focus-visible {
+    outline-offset: -3px;
+  }
+
+  .card-title {
+    font-family: var(--font-reading);
+    font-size: 19px;
+    line-height: 1.3;
+    font-weight: 500;
+    text-wrap: pretty;
+    overflow-wrap: anywhere;
+    padding-bottom: 12px;
+    transition: color var(--fade);
+  }
+
+  .card-link:hover .card-title {
+    color: var(--color-accent);
+  }
+
+  .card-corner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    font-weight: 650;
+    color: var(--color-ink-muted);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .card-clips {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--color-brass-mark);
+  }
+
+  .card-host {
+    display: none;
+  }
+
+  .card-details {
+    grid-column: 1 / -1;
+    display: block;
+    height: var(--more);
+    padding-top: 10px;
+    overflow: hidden;
+    border-top: 1px dashed var(--color-manila-edge);
+  }
+
+  .card-excerpt {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-family: var(--font-reading);
+    font-style: italic;
+    font-size: 15.5px;
+    line-height: 1.45;
+    color: var(--color-note);
+  }
+
+  .card-meta {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--color-ink-muted);
+  }
+
+  /* A card being saved is striped like a card still in the typewriter. */
+  .card-save {
+    background:
+      var(--grain),
+      repeating-linear-gradient(135deg, var(--color-paper) 0 10px, var(--color-paper-aged) 10px 20px);
+  }
+
+  .card-save .card-title {
+    font-family: var(--font-code);
+    font-size: 14px;
+    font-style: normal;
+    color: var(--color-ink-muted);
+  }
+
+  .card-save .stamp {
+    font-size: 10px;
+    padding: 2px 6px 1px;
+  }
+
+  .card-save[data-state="saving"] .stamp {
+    color: var(--color-ink-muted);
+  }
+
+  /* A guide card is a manila divider leading to the next page of the box. */
+  .card-guide {
+    --more: 0px;
+    --lift: 0;
+    background: var(--weave), var(--color-manila);
+  }
+
+  .card-guide .card-link {
+    padding-bottom: 2px;
+  }
+
+  .card-guide .card-title {
+    font-family: var(--font-chrome);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--color-ink-muted);
+  }
+
+  .card-empty {
+    --more: 0px;
+    display: grid;
+    gap: 12px;
+    padding: 18px 20px 22px;
+  }
+
+  .card-empty .card-title {
+    padding: 0;
+  }
+
+  .card-save-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .card-save-form .field {
+    flex: 1 1 240px;
+  }
+
+  /* Pulling: the cards in front drop to show the pulled card's details. If
+     the front pile is in the way, the card rises to make up the rest, and the
+     cards behind it rise too so none of them is covered. */
+  .card[data-pulled],
+  .card:not([data-fold]):has(~ .card[data-pulled]) {
+    translate: 0 calc(var(--up, 0) * -1px);
+  }
+
+  /* Rising slides the cards over the one folding into the back pile, so its
+     print goes as if it had gone into the pile. */
+  .stack[data-rising] .card[data-fold="back"] > * {
+    opacity: 0;
+  }
+
+  .card[data-pulled] {
+    z-index: 1;
+    background: var(--grain), var(--color-paper-lifted);
+    box-shadow:
+      inset 0 1px 0 var(--color-edge-hi),
+      0 -1px 0 var(--color-edge-lo),
+      0 -8px 16px -6px var(--color-cloth-umbra);
+  }
+
+  .card[data-pulled] ~ .card {
+    translate: 0 calc(var(--down, 0) * 1px);
+  }
+
+  /* Without the script, the cards in front drop a fixed amount. */
+  .index-box:not([data-enhanced]) .card:not(:last-child):is(:hover, :focus-within) ~ .card {
+    translate: 0 calc(var(--lift) * 1px);
+  }
+
+  /* Touch screens can't pull, so a resting card keeps its site in view. */
+  @media (hover: none) and (pointer: coarse) {
+    .card-host {
+      display: block;
+      grid-column: 1;
+      margin: -9px 0 12px;
+      font-size: 12.5px;
+      color: var(--color-ink-muted);
+    }
+  }
+
+  /* The piles. Cards you've passed lean against the back wall: under each
+     lit top edge shows a sliver of its face. Further back is thinner and
+     narrower, in perspective. Cards ahead lean against the front wall. The
+     script sets how many slivers show; this draws each by its depth. */
+  .pile {
+    --shown: 0;
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .pile-back {
+    top: 0;
+    filter: drop-shadow(0 3px 3px var(--color-cloth-umbra));
+  }
+
+  .pile-front {
+    bottom: 0;
+    filter: drop-shadow(0 -2px 3px var(--color-cloth-umbra));
+  }
+
+  .pile i {
+    --on: clamp(0, var(--shown) - var(--depth), 1);
+    display: block;
+    height: calc(max(2px, 7px - var(--depth) * 0.45px) * var(--on));
+    margin-inline: calc(var(--depth) * 1.7px);
+    background: linear-gradient(
+      to bottom,
+      var(--color-paper-lifted) 0 1px,
+      var(--color-paper) 1px,
+      color-mix(in oklab, var(--color-paper), var(--color-cloth-shade) 22%) 100%
+    );
+    border-radius: 2px 2px 0 0;
+    filter: brightness(calc(1 - var(--depth) * 0.03));
+  }
+
+  /* Folding: a card crossing a pile's edge folds about the line where it
+     meets the pile, until its strip is the height of the pile's largest
+     sliver and the pile takes over. Its print fades as it goes. */
+  .card[data-fold] {
+    --sliver: 7;
+    --tilt: calc(acos(min(1, var(--sliver) / var(--strip))) * var(--fold));
+    translate: none;
+    transition: none;
+    clip-path: inset(-10px -10px calc(100% - var(--strip) * 1px) -10px);
+    background:
+      var(--grain),
+      color-mix(in oklab, var(--color-paper), var(--color-cloth-shade) calc(var(--fold) * 18%));
+  }
+
+  .card[data-fold="back"] {
+    transform-origin: 50% calc(var(--strip) * 1px);
+    transform: perspective(900px) rotateX(var(--tilt));
+  }
+
+  .card[data-fold="front"] {
+    transform-origin: 50% 0;
+    transform: perspective(900px) rotateX(calc(-1 * var(--tilt)));
+  }
+
+  .card[data-fold] > * {
+    opacity: calc(1 - var(--fold) * 1.6);
+  }
+
+  /* A card gone into a pile disappears but stays in the tab order: focusing
+     it scrolls it into view, where it comes back. */
+  .card[data-hidden] {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  @media (max-width: 720px) {
+    .index-box {
+      --rim: 10px;
+      --face: 28px;
+    }
+
+    .card-link {
+      padding: 11px 14px 0;
+    }
+
+    .card-title {
+      font-size: 17.5px;
+    }
+  }
+}

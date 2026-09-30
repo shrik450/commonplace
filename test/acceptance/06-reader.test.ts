@@ -14,6 +14,7 @@ import type { Item, User } from "../../src/contracts/item";
 import { anchorQuote, reanchor } from "../../src/core/anchor";
 import { project } from "../../src/core/project";
 import { sanitize } from "../../src/core/sanitize";
+import { summarize } from "../../src/core/summarize";
 import { walk } from "../../src/core/walk";
 import { createApiToken, signPayload } from "../../src/services/auth";
 import { captureFile, readerPage, searchLibrary } from "../../src/services/library";
@@ -106,6 +107,7 @@ async function environment(
     author: null,
     created_at: "2026-01-01T00:00:00.000Z",
     ingested_at: "2026-01-01T00:00:00.000Z",
+    ...summarize(transcript, map),
   };
   insertItem(db, item);
   const blocks = new Map<number, { start: number; end: number; is_content: boolean }>();
@@ -371,7 +373,10 @@ describe("authenticated reader routes", () => {
     expect(document.querySelector(".cp-table-wrap")?.getAttribute("aria-label")).toBe("Scrollable table");
     expect(document.querySelector('img[alt="Standalone diagram"]')?.getAttribute("src")).toStartWith("data:image/png");
     expect(document.querySelector("hr")).not.toBeNull();
-    expect(document.querySelector("script")).toBeNull();
+    // The page loads first-party scripts; none of the captured page's may
+    // reach the transcript.
+    expect(document.querySelector(".cp-transcript script")).toBeNull();
+    expect([...document.querySelectorAll("script")].every((script) => script.getAttribute("src")?.startsWith("/scripts/"))).toBe(true);
     expect(document.querySelector("iframe")).toBeNull();
   });
 

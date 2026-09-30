@@ -2,14 +2,14 @@ import { Elysia } from "elysia";
 
 import { AppError } from "../../contracts/errors";
 import { asTokenId } from "../../contracts/ids";
-import { parseSettings, type UserSettings } from "../../contracts/settings";
+import { parseSettings } from "../../contracts/settings";
 import { authenticate, createApiToken, revokeApiToken } from "../../services/auth";
 import type { ApiToken } from "../../contracts/item";
 import { listApiTokens } from "../../store/users";
 import { updateUserSettings } from "../../store/settings";
-import { ErrorPage, page } from "../views/layout";
+import { ErrorPage, page, type PageContext } from "../views/layout";
 import { NewTokenPage, RevokeTokenPage, SettingsPage } from "../views/settings";
-import { authDeps, preferredLocale, toLogin, userSettings, type WebDeps } from "./deps";
+import { authDeps, pageContext, toLogin, type WebDeps } from "./deps";
 
 type MessageKey = "VIEW_MISSING_FIELD" | "VIEW_INVALID_VALUE" | "STORE_NOT_FOUND";
 
@@ -26,7 +26,7 @@ function messageFor(code: string): string {
   return "Return to settings, and try the token action again.";
 }
 
-function settingsError(error: AppError, settings: UserSettings): Response {
+function settingsError(error: AppError, context: PageContext): Response {
   return page(
     <ErrorPage
       title="Settings could not be saved"
@@ -34,13 +34,13 @@ function settingsError(error: AppError, settings: UserSettings): Response {
       code={error.code}
       href="/settings"
       linkLabel="Back to settings"
-      settings={settings}
+      context={context}
     />,
     400,
   );
 }
 
-function tokenError(error: AppError, settings: UserSettings): Response {
+function tokenError(error: AppError, context: PageContext): Response {
   return page(
     <ErrorPage
       title="Commonplace could not update the token"
@@ -48,7 +48,7 @@ function tokenError(error: AppError, settings: UserSettings): Response {
       code={error.code}
       href="/settings"
       linkLabel="Back to settings"
-      settings={settings}
+      context={context}
     />,
     400,
   );
@@ -64,7 +64,7 @@ export function settingsRoutes(deps: WebDeps) {
 
       const tokens = listApiTokens(deps.db, principal.user.id);
       return page(
-        <SettingsPage tokens={tokens} locale={preferredLocale(request)} settings={userSettings(deps, principal.user.id)} />,
+        <SettingsPage tokens={tokens} context={pageContext(deps, principal.user.id, request)} />,
       );
     })
     .post("/settings", async ({ request }) => {
@@ -74,7 +74,7 @@ export function settingsRoutes(deps: WebDeps) {
       try {
         updateUserSettings(deps.db, parseSettings(principal.user.id, Object.fromEntries(fields)));
       } catch (error) {
-        if (error instanceof AppError) return settingsError(error, userSettings(deps, principal.user.id));
+        if (error instanceof AppError) return settingsError(error, pageContext(deps, principal.user.id, request));
         throw error;
       }
       const acceptsJson = request.headers.get("accept")?.includes("application/json") ?? false;
@@ -96,17 +96,17 @@ export function settingsRoutes(deps: WebDeps) {
           (candidate) => candidate.id === tokenId,
         );
       } catch (error) {
-        if (error instanceof AppError) return tokenError(error, userSettings(deps, principal.user.id));
+        if (error instanceof AppError) return tokenError(error, pageContext(deps, principal.user.id, request));
         throw error;
       }
       if (token === undefined) {
         return tokenError(
           new AppError("STORE_NOT_FOUND", "no such token", { id: params.id }),
-          userSettings(deps, principal.user.id),
+          pageContext(deps, principal.user.id, request),
         );
       }
       return page(
-        <RevokeTokenPage token={token} locale={preferredLocale(request)} settings={userSettings(deps, principal.user.id)} />,
+        <RevokeTokenPage token={token} context={pageContext(deps, principal.user.id, request)} />,
       );
     })
     .post("/settings/tokens", async ({ request }) => {
@@ -120,7 +120,7 @@ export function settingsRoutes(deps: WebDeps) {
       if (name === "") {
         return tokenError(
           new AppError("VIEW_MISSING_FIELD", "a token needs a name", { field: "name" }),
-          userSettings(deps, principal.user.id),
+          pageContext(deps, principal.user.id, request),
         );
       }
 
@@ -131,7 +131,7 @@ export function settingsRoutes(deps: WebDeps) {
         name,
         deps.now(),
       );
-      return page(<NewTokenPage name={name} secret={secret} settings={userSettings(deps, principal.user.id)} />);
+      return page(<NewTokenPage name={name} secret={secret} context={pageContext(deps, principal.user.id, request)} />);
     })
     .post("/settings/tokens/:id/delete", async ({ request, params }) => {
       const principal = await authenticate(request, authDeps(deps)).catch(
@@ -142,7 +142,7 @@ export function settingsRoutes(deps: WebDeps) {
       try {
         revokeApiToken(deps.db, principal.user.id, asTokenId(params.id));
       } catch (error) {
-        if (error instanceof AppError) return tokenError(error, userSettings(deps, principal.user.id));
+        if (error instanceof AppError) return tokenError(error, pageContext(deps, principal.user.id, request));
         throw error;
       }
       return new Response(null, {

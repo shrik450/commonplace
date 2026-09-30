@@ -24,7 +24,7 @@ COPY package.json bun.lock bunfig.toml ./
 RUN bun install --frozen-lockfile
 
 COPY . .
-RUN bun run css
+RUN bun run assets
 
 # Mount these volumes to preserve the database and captured files across
 # container replacements.

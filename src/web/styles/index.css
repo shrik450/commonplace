@@ -1,0 +1,17 @@
+/* One file per material object. Components use the tokens in `tokens.css`
+   and never name a colour, shadow, or duration of their own. */
+@import "tailwindcss";
+@import "./tokens.css";
+@import "./fonts.css";
+@import "./base.css";
+@import "./controls.css";
+@import "./masthead.css";
+@import "./sheet.css";
+@import "./box.css";
+@import "./book.css";
+@import "./catalogue.css";
+@import "./transcript.css";
+
+@plugin "@tailwindcss/typography" {
+  className: cp-transcript;
+}

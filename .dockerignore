@@ -10,3 +10,7 @@ test/fixtures/real
 *.db
 *.db-wal
 *.db-shm
+public/scripts
+preview
+.scratch
+.direnv

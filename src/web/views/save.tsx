@@ -1,7 +1,8 @@
 import type { FetchRequest } from "../../contracts/item";
 import { MAX_ATTEMPTS } from "../../store/queue";
-import { ACTION, CONTENT_LINK, Layout, PageHeading } from "./layout";
-import type { UserSettings } from "../../contracts/settings";
+import { ACTION, FIELD, SUBMIT } from "./controls";
+import { Layout, type PageContext } from "./layout";
+import { Sheet } from "./sheet";
 
 export function saveStateLabel(request: FetchRequest): string {
   if (request.state === "queued") return "Waiting to save…";
@@ -10,7 +11,7 @@ export function saveStateLabel(request: FetchRequest): string {
   return "Saved";
 }
 
-function attemptDetail(request: FetchRequest): string | null {
+export function attemptDetail(request: FetchRequest): string | null {
   if (request.state === "claimed") {
     return `Attempt ${request.attempts} of ${MAX_ATTEMPTS}.`;
   }
@@ -23,55 +24,60 @@ function attemptDetail(request: FetchRequest): string | null {
   return null;
 }
 
-export function SaveRequestRow({ request }: { request: FetchRequest }) {
-  const detail = attemptDetail(request);
+// The save form as a page of its own, for phones and for readers without
+// scripts.
+export function SavePage({ context }: { context: PageContext }) {
   return (
-    <li class="cp-rule py-4">
-      <a href={`/saves/${request.id}`} class={`block ${CONTENT_LINK}`}>
-        <span class="block break-words" translate="no">
-          {request.url}
-        </span>
-        <span class="text-secondary mt-1.5 block text-xs break-words">
-          {saveStateLabel(request)}
-          {detail === null ? null : ` · ${detail}`}
-          {request.error_code === null ? null : ` · Error code: ${request.error_code}`}
-        </span>
-      </a>
-    </li>
+    <Layout title="Save a page" context={context}>
+      <Sheet labelledBy="save-title" narrow>
+        <form class="save-form" action="/items" method="post">
+          <h1 id="save-title" class="sheet-title">Save a page</h1>
+          <label class="save-card-label" for="save-url">Link</label>
+          <input
+            id="save-url"
+            class={FIELD}
+            type="url"
+            name="url"
+            required
+            autocomplete="url"
+            spellcheck="false"
+            placeholder="https://example.com/an-essay…"
+          />
+          <p>
+            <button type="submit" class={SUBMIT}>Save page</button>
+          </p>
+          <p class="sheet-note">
+            Commonplace keeps a full copy and files it in your library. You can close this page while it saves.
+          </p>
+        </form>
+      </Sheet>
+    </Layout>
   );
 }
 
-export function SaveStatusPage({ request, settings }: { request: FetchRequest; settings: UserSettings }) {
+export function SaveStatusPage({ request, context }: { request: FetchRequest; context: PageContext }) {
   const active = request.state === "queued" || request.state === "claimed";
   const detail = attemptDetail(request);
   return (
-    <Layout title="Save status" refreshSeconds={active ? 2 : undefined} settings={settings}>
-      <PageHeading>Save status</PageHeading>
-      <section class="cp-rule pb-6">
-        <h2 class="text-base font-semibold">{saveStateLabel(request)}</h2>
-        <p class="text-secondary mt-3 max-w-prose text-sm break-words" translate="no">
-          {request.url}
-        </p>
-        {detail === null ? null : (
-          <p class="text-secondary mt-3 text-xs">{detail}</p>
-        )}
+    <Layout title="Save status" context={context} refreshSeconds={active ? 2 : undefined}>
+      <Sheet labelledBy="status-title" narrow>
+        <p class="sheet-kicker">Save status</p>
+        <h1 id="status-title" class="sheet-title">{saveStateLabel(request)}</h1>
+        <p class="sheet-lede sheet-url" translate="no">{request.url}</p>
+        {detail === null ? null : <p class="sheet-note">{detail}</p>}
         {request.state === "failed" ? (
-          <p class="mt-4 max-w-prose text-sm leading-relaxed">
+          <p class="sheet-lede">
             Check that the address is still reachable, then return to your
             library and submit it again.
           </p>
         ) : null}
         {request.error_code === null ? null : (
-          <p class="text-secondary mt-4 font-mono text-xs" translate="no">
-            Error code: {request.error_code}
-          </p>
+          <p class="sheet-code" translate="no">Error code: {request.error_code}</p>
         )}
-      </section>
-      <p class="mt-8">
-        <a href="/library" class={`text-sm ${ACTION}`}>
-          Back to your library
-        </a>
-      </p>
+        <p class="sheet-actions">
+          <a href="/library" class={ACTION}>Back to your library</a>
+        </p>
+      </Sheet>
     </Layout>
   );
 }

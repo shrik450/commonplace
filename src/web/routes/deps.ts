@@ -1,15 +1,12 @@
 import { Database } from "bun:sqlite";
 
 import type { Config } from "../../contracts/config";
-import type { LibraryDeps } from "../../services/library";
-import { getUserSettings } from "../../store/settings";
 import type { UserId } from "../../contracts/ids";
+import { libraryCount, type LibraryDeps } from "../../services/library";
+import { getUserSettings } from "../../store/settings";
+import type { PageContext } from "../views/layout";
 
 export type WebDeps = { db: Database; config: Config; now: () => Date };
-
-export function userSettings(deps: WebDeps, userId: UserId) {
-  return getUserSettings(deps.db, userId);
-}
 
 export function libraryDeps(deps: WebDeps): LibraryDeps {
   return { db: deps.db, itemsRoot: deps.config.items_root };
@@ -51,6 +48,16 @@ export function preferredLocale(request: Request): string {
     }
   }
   return FALLBACK_LOCALE;
+}
+
+// Everything a signed-in page draws around its content, read once per request.
+export function pageContext(deps: WebDeps, userId: UserId, request: Request): PageContext {
+  return {
+    settings: getUserSettings(deps.db, userId),
+    locale: preferredLocale(request),
+    cardCount: libraryCount(libraryDeps(deps), userId),
+    today: deps.now(),
+  };
 }
 
 // Redirect signed-out browser requests to the interactive sign-in flow.

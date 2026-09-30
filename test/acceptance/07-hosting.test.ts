@@ -119,6 +119,8 @@ function savedItem(userId: typeof ALICE, url: string): Item {
     author: null,
     created_at: toIso(now()),
     ingested_at: toIso(now()),
+    excerpt: "",
+    content_length: 0,
   };
 }
 
@@ -360,7 +362,7 @@ describe("save endpoint", () => {
   test("shows at most ten active or failed saves in the tenant library", async () => {
     const env = await environment("save-library");
     const app = buildApp({ db: env.db, config: { ...config, items_root: env.itemsRoot }, now });
-    insertItem(env.db, savedItem(ALICE, "https://example.com/saved-page"));
+    const saved = insertItem(env.db, savedItem(ALICE, "https://example.com/saved-page"));
     for (let index = 0; index < 11; index += 1) {
       const request = enqueueFetch(
         env.db,
@@ -383,8 +385,9 @@ describe("save endpoint", () => {
     expect(library.status).toBe(200);
     const body = await library.text();
     expect(body.match(/\/saves\//g)).toHaveLength(10);
-    expect(body).toContain("Save activity");
-    expect(body).toContain("Saved pages");
+    expect(body).toContain("Save failed");
+    expect(body).toContain("Waiting to save…");
+    expect(body).toContain(`href="/items/${saved.id}"`);
     expect(body).toContain("https://example.com/alice-10");
     expect(body).not.toContain("https://example.com/alice-0");
     expect(body).not.toContain("https://example.com/bob");
@@ -508,7 +511,7 @@ describe("token management", () => {
       else expect(rendered).not.toContain("data-theme=");
     }
 
-    const script = await app.handle(new Request("http://localhost/reader-settings.js"));
+    const script = await app.handle(new Request("http://localhost/scripts/reading-settings.js"));
     expect(script.status).toBe(200);
     expect(script.headers.get("content-type")).toContain("text/javascript");
     expect((await script.text()).length).toBeGreaterThan(0);
