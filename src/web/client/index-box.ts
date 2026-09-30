@@ -9,11 +9,19 @@ import {
   type StackLayout,
   type Viewport,
 } from "./box-geometry";
+import { fetchPage } from "./submit";
+
+type Side = "newer" | "older";
+
+// The box loads the next page of cards once fewer than this many loaded cards
+// are left in the direction of travel.
+const CARDS_BEFORE_LOADING = 40;
 
 // Brings the index box to life: cards fold into the piles as they scroll past,
 // the piles show how many cards lie behind and ahead, and a hovered or focused
-// card is pulled up to show its details. The script only measures and sets
-// state; `box.css` draws every part of it.
+// card is pulled up to show its details. Nearing either end of the loaded
+// cards loads the next page of them. The script only measures and sets state;
+// `box.css` draws every part of it.
 export function enhanceIndexBox(document: Document): void {
   const view = document.defaultView;
   const box = document.querySelector("[data-index-box]");
@@ -28,10 +36,13 @@ export function enhanceIndexBox(document: Document): void {
     !(frontPile instanceof view.HTMLElement)
   ) return;
 
-  const cards = [...stack.children].filter((card): card is HTMLElement => card instanceof view.HTMLElement);
+  const status = box.querySelector("[data-box-status]");
+  const stackCards = () => [...stack.children].filter((card): card is HTMLElement => card instanceof view.HTMLElement);
+  let cards = stackCards();
   if (cards.length === 0) return;
-  const newerCount = Number(box.dataset.newerCount ?? 0);
-  const olderCount = Number(box.dataset.olderCount ?? 0);
+  // How many cards lie beyond the loaded ones, at either end.
+  let newerCount = Number(box.dataset.newerCount ?? 0);
+  let olderCount = Number(box.dataset.olderCount ?? 0);
 
   let layout: StackLayout = { tops: [], strips: [] };
   let shown = { back: -1, front: -1 };
@@ -131,6 +142,8 @@ export function enhanceIndexBox(document: Document): void {
     apply(boxFrame(layout, current, pileEdges()));
     const focused = focusedCard();
     if (focused !== null && focused !== pulled) pull(focused);
+    if (counts.ahead < CARDS_BEFORE_LOADING) void extend("older");
+    if (counts.passed < CARDS_BEFORE_LOADING) void extend("newer");
   };
 
   const schedule = () => {
@@ -146,11 +159,88 @@ export function enhanceIndexBox(document: Document): void {
     render();
   };
 
+  // Cards were added or removed, so every card's place in the stack is new.
+  const restack = () => {
+    for (const card of cards) {
+      delete card.dataset.hidden;
+      delete card.dataset.fold;
+      card.style.removeProperty("--fold");
+      card.style.removeProperty("--strip");
+    }
+    cards = stackCards();
+    frame = { hiddenBefore: 0, hiddenFrom: cards.length - 1, folds: [] };
+    relayout();
+  };
+
+  // Loads the next page of cards on one side and files them in the stack.
+  // The page comes from the guide card's own link, so a box that can't load
+  // it keeps the guide, which still leads there.
+  let loading = false;
+  const gaveUp = { newer: false, older: false };
+  const extend = async (side: Side) => {
+    const guide = stack.querySelector(`[data-guide="${side}"]`);
+    const link = guide?.querySelector("a");
+    if (loading || gaveUp[side] || guide === null || !(link instanceof view.HTMLAnchorElement)) return;
+    loading = true;
+    const answer = await fetchPage(view, link.href);
+    loading = false;
+    const page = answer.kind === "accepted" ? answer.page.querySelector("[data-index-box]") : null;
+    const held = new Set(cards.map((card) => card.dataset.cursor));
+    const fresh = page === null ? [] : [...page.querySelectorAll("[data-stack] > [data-card=item]")]
+      .filter((card) => !held.has(card.getAttribute("data-cursor") ?? undefined))
+      .map((card) => document.adoptNode(card));
+    if (page === null || fresh.length === 0) {
+      gaveUp[side] = true;
+      return;
+    }
+    // The cards in view stay where they are while cards arrive behind them.
+    // The guide is replaced, so the place is kept by a card that stays.
+    const inView = cards.slice(frame.hiddenBefore).find((card) => card.dataset.card !== "guide");
+    const top = inView?.offsetTop ?? 0;
+    // A box opened part way through the library starts under its guide. Once
+    // the newer cards replace the guide, its first card stands at the back
+    // pile's edge, as the address says.
+    const opening = side === "newer" && stack.scrollTop === 0;
+    for (const card of [...fresh, ...stack.querySelectorAll("#end")]) card.removeAttribute("id");
+    if (side === "older") guide.before(...fresh);
+    else guide.after(...fresh);
+    const nextGuide = page.querySelector(`[data-guide="${side}"]`);
+    if (nextGuide === null) guide.remove();
+    else guide.replaceWith(document.adoptNode(nextGuide));
+    if (side === "older") olderCount = Number(page.getAttribute("data-older-count") ?? 0);
+    else newerCount = Number(page.getAttribute("data-newer-count") ?? 0);
+    restack();
+    if (inView !== undefined && opening) {
+      // The pile grows as cards go behind it, so its edge is read twice.
+      for (let pass = 0; pass < 2; pass += 1) {
+        stack.scrollTop = inView.offsetTop - backPile.offsetHeight;
+        render();
+      }
+    } else if (inView !== undefined) {
+      stack.scrollTop += inView.offsetTop - top;
+    }
+    if (status !== null) status.textContent = `${fresh.length} ${side} cards loaded.`;
+    schedule();
+  };
+
+  // The address names the first card in view, so coming back to the library,
+  // or reloading it, opens the box there.
+  let addressed = 0;
+  const address = () => {
+    const behind = cards.slice(0, frame.hiddenBefore).findLast((card) => card.dataset.cursor !== undefined);
+    const atStart = behind === undefined && stack.querySelector("[data-guide=newer]") === null;
+    if (behind === undefined && !atStart) return;
+    const path = behind === undefined ? "/library" : `/library?before=${encodeURIComponent(behind.dataset.cursor ?? "")}`;
+    if (path !== view.location.pathname + view.location.search) view.history.replaceState(view.history.state, "", path);
+  };
+
   // A pointer pull belongs to where the pointer rests, so scrolling drops it.
   // A keyboard pull follows the focused card, and `render` restores it.
   stack.addEventListener("scroll", () => {
     pull(null);
     schedule();
+    view.clearTimeout(addressed);
+    addressed = view.setTimeout(address, 250);
   }, { passive: true });
   if (view.matchMedia("(hover: hover)").matches) {
     stack.addEventListener("pointerover", (event) => {

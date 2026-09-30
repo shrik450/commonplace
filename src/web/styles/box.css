@@ -45,6 +45,9 @@
     list-style: none;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* The script keeps the cards in view in place when more load behind
+       them; the browser's own anchoring would move them a second time. */
+    overflow-anchor: none;
     border-radius: 4px 4px 0 0;
     scrollbar-width: thin;
     scrollbar-color: var(--color-cloth) transparent;

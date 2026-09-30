@@ -130,8 +130,14 @@ it, the card and the cards behind it rise together.
 Cards you have scrolled past lean against the back wall, and cards still ahead
 lean against the front. Each pile shows how many cards it holds, compressed so
 a large library stays readable. A card folds into a pile as it crosses the
-pile's edge. The piles count the whole library, not only the loaded page.
-Guide cards at either end lead to newer and older pages.
+pile's edge. The piles count the whole library, not only the loaded cards.
+
+The box scrolls through the whole library. Nearing either end of the loaded
+cards loads the next page of them, and the cards in view don't move when it
+arrives. The address names the first card in view, so reloading the library,
+or coming back to it, opens the box there. Guide cards at either end lead to
+the newer and older pages; they show only without a script, or when a page
+fails to load.
 
 Pending and failed saves are cards at the front of the first page.
 

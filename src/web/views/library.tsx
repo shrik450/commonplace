@@ -1,4 +1,4 @@
-import { formatCursor } from "../../contracts/cursor";
+import { cursorOf, formatCursor } from "../../contracts/cursor";
 import type { FetchRequest } from "../../contracts/item";
 import type { Card, LibraryPage } from "../../services/library";
 import { FIELD, SUBMIT } from "./controls";
@@ -33,7 +33,7 @@ function ItemCard({ card, context, id }: { card: Card; context: PageContext; id?
     clippings > 0 ? counted(clippings, "clipping", "clippings") : null,
   ].filter((part) => part !== null && part !== "");
   return (
-    <li class="card" data-card="item" id={id}>
+    <li class="card" data-card="item" data-cursor={formatCursor(cursorOf(item))} id={id}>
       <a
         class="card-link"
         href={`/items/${item.id}`}
@@ -80,10 +80,11 @@ function SaveCard({ request }: { request: FetchRequest }) {
 }
 
 // A guide card stands between pages of the box, like the tabbed dividers in a
-// card catalogue.
-function GuideCard({ href, children, id }: { href: string; children: string; id?: string }) {
+// card catalogue. With the script the box loads the next page as you near a
+// guide, so a guide only shows when that fails or there is no script.
+function GuideCard({ side, href, children, id }: { side: "newer" | "older"; href: string; children: string; id?: string }) {
   return (
-    <li class="card card-guide" data-card="guide" id={id}>
+    <li class="card card-guide" data-card="guide" data-guide={side} id={id}>
       <a class="card-link" href={href}>
         <span class="card-title">{children}</span>
       </a>
@@ -129,7 +130,7 @@ export function LibraryView({ library, context }: { library: LibraryPage; contex
         <div class="box-well">
           <ol class="stack" data-stack tabindex="0" aria-label="Saved pages, newest first">
             {library.newer === null ? null : (
-              <GuideCard href={`/library?after=${encodeURIComponent(formatCursor(library.newer))}#end`}>Newer cards</GuideCard>
+              <GuideCard side="newer" href={`/library?after=${encodeURIComponent(formatCursor(library.newer))}#end`}>Newer cards</GuideCard>
             )}
             {empty ? <EmptyCard /> : null}
             {library.saves.map((request) => <SaveCard request={request} />)}
@@ -141,9 +142,10 @@ export function LibraryView({ library, context }: { library: LibraryPage; contex
               />
             ))}
             {library.older === null ? null : (
-              <GuideCard id="end" href={`/library?before=${encodeURIComponent(formatCursor(library.older))}`}>Older cards</GuideCard>
+              <GuideCard side="older" id="end" href={`/library?before=${encodeURIComponent(formatCursor(library.older))}`}>Older cards</GuideCard>
             )}
           </ol>
+          <p class="sr-only" role="status" data-box-status />
           <Pile side="back" />
           <Pile side="front" />
           <div class="box-shade" aria-hidden="true" />

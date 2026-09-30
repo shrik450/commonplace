@@ -26,9 +26,19 @@ afterAll(async () => {
   await library.close();
 });
 
-async function openBox(options: Parameters<typeof visit>[3] = {}, path = "/library"): Promise<Visit> {
+const FURTHER_PAGES = "**/library?*";
+
+// Most tests study one page of cards, so the box is kept from loading more:
+// its requests for further pages are answered with a page that holds no
+// cards. `pages: "all"` lets them through.
+async function openBox(options: Parameters<typeof visit>[3] = {}, path = "/library", pages: "one" | "all" = "one"): Promise<Visit> {
   const current = await visit(browser, served, ALICE, options);
   visits.push(current);
+  if (pages === "one") {
+    await current.page.route(FURTHER_PAGES, (route) => (route.request().resourceType() === "document"
+      ? route.continue()
+      : route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>No cards</title>" })));
+  }
   await current.page.goto(`${served.origin}${path}`, { waitUntil: "networkidle" });
   // With scripts off, the page's own promises and frames never run.
   if (options.scripts === false) await current.page.waitForTimeout(300);
@@ -100,6 +110,18 @@ function cardsInPileCorners(): string[] {
     }
   }
   return found;
+}
+
+const itemCount = (page: Page) => page.locator("[data-stack] > [data-card=item]").count();
+
+// The first card showing below the back pile.
+async function firstInView(page: Page): Promise<{ cursor: string | null; title: string }> {
+  return page.evaluate(() => {
+    const pile = document.querySelector("[data-pile=back]")!.getBoundingClientRect();
+    const card = [...document.querySelectorAll("[data-stack] > [data-card=item]")]
+      .find((candidate) => !candidate.hasAttribute("data-hidden") && !candidate.hasAttribute("data-fold") && candidate.getBoundingClientRect().top >= pile.bottom - 1)!;
+    return { cursor: card.getAttribute("data-cursor"), title: card.querySelector(".card-title")!.textContent ?? "" };
+  });
 }
 
 describe("the index box", () => {
@@ -340,24 +362,86 @@ describe("the index box", () => {
     expect(outline).toBe("solid");
   });
 
-  test("guide cards page through the library, and a newer page lands at its end", async () => {
-    const { page, errors } = await openBox();
+  test("nearing the end of the loaded cards loads the rest, and the box ends at the oldest card", async () => {
+    const { page, errors } = await openBox({}, "/library", "all");
+    expect(await itemCount(page)).toBe(200);
+    expect((await boxState(page)).frontPile.height).toBeGreaterThan(10);
     await scrollStack(page, 100_000);
-    await page.getByRole("link", { name: "Older cards" }).click();
-    await page.waitForLoadState("networkidle");
-    expect(page.url()).toContain("/library?before=");
-    expect(await page.locator("[data-stack] a[href^='/items/']").count()).toBe(28);
-    const newer = await boxState(page);
-    expect(newer.backPile.height).toBeGreaterThan(20);
+    await page.waitForFunction(() => document.querySelectorAll("[data-stack] > [data-card=item]").length === 228);
+    expect(await page.locator("[data-box-status]").textContent()).toBe("28 older cards loaded.");
+    expect(await page.locator("[data-stack] > [data-card=guide]").count()).toBe(0);
+    // The cards that were in view stayed put while the new ones arrived.
+    const held = await boxState(page);
+    expect(held.cards.filter((card) => !card.hidden && card.top < held.frontPile.top).length).toBeGreaterThan(5);
 
-    await page.getByRole("link", { name: "Newer cards" }).click();
-    await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(200);
-    expect(page.url()).toContain("/library?after=");
-    const atEnd = await page.locator("[data-stack]").evaluate((stack) => stack.scrollHeight - stack.clientHeight - stack.scrollTop);
-    expect(atEnd).toBeLessThan(4);
-    expect(await page.locator("[data-stack] a[href^='/items/']").count()).toBe(200);
+    await scrollStack(page, 100_000);
+    const state = await boxState(page);
+    const last = state.cards.at(-1)!;
+    expect(state.frontPile.height).toBe(0);
+    expect(last.hidden).toBe(false);
+    expect(last.bottom).toBeLessThanOrEqual(state.stack.bottom + 1);
+    expect(await page.locator("[data-stack] > li").last().getAttribute("data-card")).toBe("item");
+    const cursors = await page.locator("[data-stack] > [data-card=item]").evaluateAll((cards) => cards.map((card) => card.getAttribute("data-cursor")));
+    expect(new Set(cursors).size).toBe(228);
     expect(errors).toEqual([]);
+  });
+
+  test("the address follows the first card in view, and reloading opens the box there", async () => {
+    const { page, errors } = await openBox({}, "/library", "all");
+    await scrollStack(page, 3000);
+    await page.waitForURL(/\/library\?before=/);
+    const reading = await firstInView(page);
+    expect(reading.title.length).toBeGreaterThan(3);
+
+    await page.reload({ waitUntil: "networkidle" });
+    // The newer cards load behind the ones in view, which don't move.
+    await page.waitForFunction(() => document.querySelectorAll("[data-stack] > [data-card=item]").length === 228);
+    await scrollStack(page, await page.locator("[data-stack]").evaluate((stack) => stack.scrollTop));
+    // The card that was folding into the pile is whole again, so the card
+    // being read sits one card below the pile's edge.
+    const place = await page.evaluate((cursor) => {
+      const card = document.querySelector(`[data-stack] > [data-cursor="${cursor}"]`)!;
+      const pile = document.querySelector("[data-pile=back]")!.getBoundingClientRect();
+      return { hidden: card.hasAttribute("data-hidden"), below: Math.round(card.getBoundingClientRect().top - pile.bottom), pile: pile.height };
+    }, reading.cursor);
+    expect(place.hidden).toBe(false);
+    expect(place.below).toBeGreaterThanOrEqual(0);
+    expect(place.below).toBeLessThan(90);
+    expect(place.pile).toBeGreaterThan(20);
+
+    await scrollStack(page, 0);
+    await page.waitForURL(`${served.origin}/library`);
+    expect(await page.locator("[data-stack] > li").first().getAttribute("data-card")).toBe("item");
+    expect((await boxState(page)).backPile.height).toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("a box that can't load more keeps its guide card, which leads to the next page", async () => {
+    const { page } = await openBox({}, "/library", "all");
+    await page.route(FURTHER_PAGES, (route) => (route.request().resourceType() === "document" ? route.continue() : route.abort("internetdisconnected")));
+    await scrollStack(page, 100_000);
+    await page.waitForTimeout(300);
+    expect(await itemCount(page)).toBe(200);
+    await page.unroute(FURTHER_PAGES);
+    await page.getByRole("link", { name: "Older cards" }).click();
+    await page.waitForURL(/\/library\?before=/);
+    // The page it leads to holds the older cards, and loads the newer ones
+    // behind them now that it can.
+    await page.waitForFunction(() => document.querySelectorAll("[data-stack] > [data-card=item]").length === 228);
+    expect(await page.locator("[data-stack] > [data-card=guide]").count()).toBe(0);
+  });
+
+  test("without a script, guide cards page through the library", async () => {
+    const { page } = await openBox({ scripts: false });
+    await page.getByRole("link", { name: "Older cards" }).click();
+    await page.waitForURL(/\/library\?before=/);
+    expect(await itemCount(page)).toBe(28);
+    await page.getByRole("link", { name: "Newer cards" }).click();
+    await page.waitForURL(/\/library\?after=.*#end$/);
+    expect(await itemCount(page)).toBe(200);
+    // The link lands on the end of the newer page, next to where you were.
+    const atEnd = await page.locator("[data-stack]").evaluate((stack) => stack.scrollHeight - stack.clientHeight - stack.scrollTop);
+    expect(atEnd).toBeLessThan(60);
   });
 
   test("without a script the stack still scrolls, and a hovered card shows its details", async () => {

@@ -19,6 +19,13 @@ const scrollStack = (to: number) => async (page: Page) => {
   }, to);
   await page.waitForTimeout(150);
 };
+// Scrolls to the oldest card. Nearing the end of the loaded cards loads more,
+// so this scrolls again once they have arrived.
+const scrollToEnd = async (page: Page) => {
+  await scrollStack(100_000)(page);
+  await page.waitForLoadState("networkidle");
+  await scrollStack(100_000)(page);
+};
 // Moves the pointer onto the nth card clear of the back pile, counting from
 // the front when negative. Locator hover would scroll the stack first, and
 // scrolling drops a pull.
@@ -92,19 +99,15 @@ if (command === "serve") {
         await hoverCard(page, 0);
       },
     },
-    { name: "library-end", path: "/library", act: scrollStack(100_000) },
+    { name: "library-end", path: "/library", act: scrollToEnd },
     {
       name: "library-pulled-end",
       path: "/library",
       act: async (page) => {
-        await scrollStack(100_000)(page);
+        await scrollToEnd(page);
         await hoverCard(page, -2);
       },
     },
-    { name: "library-page-2", path: "/library", act: async (page) => {
-      await page.getByRole("link", { name: "Older cards" }).click();
-      await page.waitForLoadState("networkidle");
-    } },
     { name: "library-empty", path: "/library", user: BOB },
     { name: "library-no-script", path: "/library", scripts: false },
     { name: "clippings", path: "/clippings" },
