@@ -12,6 +12,7 @@ import { clippingRoutes } from "./routes/clippings";
 import type { WebDeps } from "./routes/deps";
 import { itemRoutes } from "./routes/item";
 import { itemSaveRoutes } from "./routes/items";
+import { pageNoteRoutes } from "./routes/page-notes";
 import { saveRoutes } from "./routes/save";
 import { libraryRoutes } from "./routes/library";
 import { settingsRoutes } from "./routes/settings";
@@ -38,6 +39,7 @@ export function buildApp(deps: WebDeps) {
     .use(settingsRoutes(deps))
     .use(itemRoutes(deps))
     .use(clippingRoutes(deps))
+    .use(pageNoteRoutes(deps))
     .use(saveRoutes(deps));
 }
 

@@ -105,6 +105,14 @@ export async function readItemFile(
   }
 }
 
+export async function removeItemDir(
+  itemsRoot: string,
+  userId: UserId,
+  itemId: ItemId,
+): Promise<void> {
+  await rm(itemDir(itemsRoot, userId, itemId), { recursive: true, force: true });
+}
+
 export async function sweepOrphans(
   itemsRoot: string,
   known: Set<string>,

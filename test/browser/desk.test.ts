@@ -3,6 +3,7 @@ import type { Browser, Page } from "playwright-core";
 
 import type { ItemId } from "../../src/contracts/ids";
 import { listAnnotations } from "../../src/store/annotations";
+import { listPageNotesForItems } from "../../src/store/page-notes";
 import { DESKTOP, launch, PHONE, serve, visit, type Served, type Visit, type VisitOptions } from "../support/browser";
 import { seedDemo } from "../support/demo";
 import { ALICE, BOB, openLibrary, postForm, type TestLibrary } from "../support/library";
@@ -83,6 +84,7 @@ const outlineOf = (page: Page, selector: string) => page.locator(selector).evalu
 describe("the desk around every page", () => {
   test("every page, in both themes and on both sizes, loads cleanly", async () => {
     const clipping = listAnnotations(library.db, ALICE, ids.at(-1)!)[0]!;
+    const [pageNote] = listPageNotesForItems(library.db, ALICE, [ids.at(-2)!]);
     const paths = [
       "/library",
       "/clippings",
@@ -96,6 +98,9 @@ describe("the desk around every page", () => {
       "/save",
       `/clippings/${clipping.id}`,
       `/clippings/${clipping.id}/delete`,
+      `/items/${ids[0]}/delete`,
+      `/page-notes/${pageNote!.id}`,
+      `/page-notes/${pageNote!.id}/delete`,
     ];
     for (const colorScheme of ["light", "dark"] as const) {
       for (const [viewport, hasTouch] of [[DESKTOP, false], [PHONE, true]] as const) {

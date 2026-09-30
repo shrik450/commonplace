@@ -4,6 +4,7 @@ export const CLIENT_SCRIPTS = [
   "index-box",
   "book",
   "save-card",
+  "submit-shortcut",
   "clip",
   "reading-settings",
 ] as const;

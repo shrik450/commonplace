@@ -6,6 +6,7 @@ type Branded<K extends string> = string & { readonly [brand]: K };
 export type UserId = Branded<"UserId">;
 export type ItemId = Branded<"ItemId">;
 export type AnnotationId = Branded<"AnnotationId">;
+export type PageNoteId = Branded<"PageNoteId">;
 export type TokenId = Branded<"TokenId">;
 export type RequestId = Branded<"RequestId">;
 
@@ -42,6 +43,10 @@ export function newAnnotationId(): AnnotationId {
   return brandOf("AnnotationId", Bun.randomUUIDv7());
 }
 
+export function newPageNoteId(): PageNoteId {
+  return brandOf("PageNoteId", Bun.randomUUIDv7());
+}
+
 export function newTokenId(): TokenId {
   return brandOf("TokenId", Bun.randomUUIDv7());
 }
@@ -60,6 +65,10 @@ export function asItemId(value: string): ItemId {
 
 export function asAnnotationId(value: string): AnnotationId {
   return brandOf("AnnotationId", value);
+}
+
+export function asPageNoteId(value: string): PageNoteId {
+  return brandOf("PageNoteId", value);
 }
 
 export function asTokenId(value: string): TokenId {

@@ -10,7 +10,7 @@ const ITEM_COLUMNS = `
   id, user_id, url, title, author, created_at, ingested_at, excerpt, content_length
 `;
 
-type ItemRow = {
+export type ItemRow = {
   id: string;
   user_id: string;
   url: string;
@@ -22,7 +22,7 @@ type ItemRow = {
   content_length: number;
 };
 
-function itemOf(row: ItemRow): Item {
+export function itemOf(row: ItemRow): Item {
   return { ...row, id: asItemId(row.id), user_id: asUserId(row.user_id) };
 }
 
@@ -141,6 +141,16 @@ export function countItemsNewerThan(
        WHERE user_id = ? AND (created_at, id) > (?, ?)`,
     )
     .get(userId, cursor.created_at, cursor.id)!.count;
+}
+
+export function deleteItem(db: Database, userId: UserId, id: ItemId): void {
+  const changes = write(
+    db,
+    "DELETE FROM items WHERE user_id = ? AND id = ?",
+    [userId, id],
+    { user_id: userId, id },
+  );
+  requireRow(changes, userId, id);
 }
 
 // This unscoped query is used only by the orphan sweep.

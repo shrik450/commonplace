@@ -4,12 +4,14 @@ import { AppError } from "../../contracts/errors";
 import { asItemId } from "../../contracts/ids";
 import type { ItemId } from "../../contracts/ids";
 import { authenticate } from "../../services/auth";
-import { captureFile, readerPage } from "../../services/library";
+import { captureFile, findCard, readerPage } from "../../services/library";
+import { removePage } from "../../services/removal";
 import type { ProjectionMode } from "../../core/project";
 import { page, type PageContext } from "../views/layout";
 import { ReaderPageView } from "../views/reader";
+import { RemovePagePage } from "../views/removal";
 import { authDeps, libraryDeps, pageContext, toLogin, type WebDeps } from "./deps";
-import { errorResponse } from "./errors";
+import { errorResponse, seeOther } from "./errors";
 
 function readItemId(raw: string): ItemId | null {
   try {
@@ -66,6 +68,7 @@ async function itemPageResponse(
         item={view.item}
         html={view.html}
         annotations={view.annotations}
+        pageNotes={view.pageNotes}
         mode={mode}
         context={context}
       />,
@@ -77,7 +80,35 @@ async function itemPageResponse(
 }
 
 export function itemRoutes(deps: WebDeps) {
+  const signedIn = async (request: Request) => {
+    const principal = await authenticate(request, authDeps(deps)).catch(() => null);
+    if (principal === null) return null;
+    return { userId: principal.user.id, context: pageContext(deps, principal.user.id, request) };
+  };
+
   return new Elysia()
+    .get("/items/:id/delete", async ({ request, params }) => {
+      const session = await signedIn(request);
+      if (session === null) return toLogin();
+      const itemId = readItemId(params.id);
+      if (itemId === null) return badRequest(session.context);
+      const card = findCard(libraryDeps(deps), session.userId, itemId);
+      if (card === null) return notFound(session.context);
+      return page(<RemovePagePage card={card} context={session.context} />);
+    })
+    .post("/items/:id/delete", async ({ request, params }) => {
+      const session = await signedIn(request);
+      if (session === null) return toLogin();
+      const itemId = readItemId(params.id);
+      if (itemId === null) return badRequest(session.context);
+      try {
+        await removePage(libraryDeps(deps), session.userId, itemId);
+      } catch (error) {
+        if (error instanceof Error && missing(error)) return notFound(session.context);
+        throw error;
+      }
+      return seeOther("/library");
+    })
     .get("/items/:id", ({ request, params }) =>
       itemPageResponse(request, params.id, deps, "reader"),
     )

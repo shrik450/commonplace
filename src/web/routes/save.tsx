@@ -4,10 +4,12 @@ import { asRequestId, type RequestId } from "../../contracts/ids";
 import type { FetchRequest } from "../../contracts/item";
 import { getSaveRequest } from "../../services/library";
 import { authenticate } from "../../services/auth";
+import { removeSave, saveRemoval, type SaveRemoval } from "../../services/removal";
+import { RemoveSavePage } from "../views/removal";
 import { SavePage, SaveStatusPage } from "../views/save";
-import { page, type PageContext } from "../views/layout";
+import { ErrorPage, page, type PageContext } from "../views/layout";
 import { authDeps, libraryDeps, pageContext, toLogin, type WebDeps } from "./deps";
-import { errorResponse } from "./errors";
+import { errorResponse, seeOther } from "./errors";
 
 function readRequestId(raw: string): RequestId | null {
   try {
@@ -64,7 +66,40 @@ function apiStatus(save: FetchRequest): Response {
   );
 }
 
+// Why a save can't be removed, and where to go instead.
+function kept(context: PageContext, removal: Exclude<SaveRemoval, { kind: "removable" }>): Response {
+  if (removal.kind === "saved") {
+    return page(
+      <ErrorPage
+        context={context}
+        title="This save has finished"
+        message="The page is in your library now. To take it out, remove the page itself."
+        href={`/items/${removal.itemId}/delete`}
+        linkLabel="Remove page…"
+      />,
+      409,
+    );
+  }
+  return page(
+    <ErrorPage
+      context={context}
+      title="This save is refreshing a page in your library"
+      message="Stopping it partway would leave that page half replaced. Wait a minute for it to finish, then remove the page if you don’t want it."
+      href={`/items/${removal.itemId}`}
+      linkLabel="Open the page"
+    />,
+    409,
+  );
+}
+
 export function saveRoutes(deps: WebDeps) {
+  const signedIn = async (request: Request) => {
+    const principal = await authenticate(request, authDeps(deps)).catch(() => null);
+    if (principal === null) return null;
+    return { userId: principal.user.id, context: pageContext(deps, principal.user.id, request) };
+  };
+
+
   return new Elysia()
     .get("/save", async ({ request }) => {
       const principal = await authenticate(request, authDeps(deps)).catch(() => null);
@@ -106,9 +141,31 @@ export function saveRoutes(deps: WebDeps) {
         });
       }
 
-      const response = page(<SaveStatusPage request={save} context={pageContext(deps, principal.user.id, request)} />);
+      const removable = saveRemoval(libraryDeps(deps), save).kind === "removable";
+      const response = page(<SaveStatusPage request={save} removable={removable} context={pageContext(deps, principal.user.id, request)} />);
       response.headers.set("cache-control", "no-store");
       return response;
     },
-  );
+  )
+    .get("/saves/:requestId/delete", async ({ request, params }) => {
+      const session = await signedIn(request);
+      if (session === null) return toLogin();
+      const requestId = readRequestId(params.requestId);
+      if (requestId === null) return badRequest(session.context);
+      const save = getSaveRequest(libraryDeps(deps), session.userId, requestId);
+      if (save === null) return notFound(session.context);
+      const removal = saveRemoval(libraryDeps(deps), save);
+      if (removal.kind !== "removable") return kept(session.context, removal);
+      return page(<RemoveSavePage save={save} context={session.context} />);
+    })
+    .post("/saves/:requestId/delete", async ({ request, params }) => {
+      const session = await signedIn(request);
+      if (session === null) return toLogin();
+      const requestId = readRequestId(params.requestId);
+      if (requestId === null) return badRequest(session.context);
+      const removal = removeSave(libraryDeps(deps), session.userId, requestId);
+      if (removal === null) return notFound(session.context);
+      if (removal.kind !== "removable") return kept(session.context, removal);
+      return seeOther("/library");
+    });
 }

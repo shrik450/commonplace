@@ -4,10 +4,10 @@ function changed(field: HTMLTextAreaElement): boolean {
   return field.value.trim() !== field.defaultValue.trim();
 }
 
-// Writes a clipping's note on the clipping itself. Without this script the
-// "Add a note" link leads to the clipping's own page, which has the same form.
-// `relaid` tells the book that a clipping changed size or was replaced, and
-// which clipping to stay open at.
+// Writes a note on the book's entry itself: a clipping's note, or a page
+// note. Without this script the edit link leads to the entry's own page,
+// which has the same form. `relaid` tells the book that an entry changed size
+// or was replaced, and which entry to stay open at.
 export function enhanceClippingNotes(flow: HTMLElement, relaid: (anchor: Element | null) => void): void {
   const document = flow.ownerDocument;
   const view = document.defaultView;
@@ -16,9 +16,12 @@ export function enhanceClippingNotes(flow: HTMLElement, relaid: (anchor: Element
   if (view === null || !(template instanceof view.HTMLTemplateElement) || !(status instanceof view.HTMLElement)) return;
 
   const scrapOf = (element: Element): HTMLElement | null => {
-    const scrap = element.closest("[data-clipping]");
+    const scrap = element.closest("[data-clipping], [data-page-note]");
     return scrap instanceof view.HTMLElement ? scrap : null;
   };
+  const selectorOf = (scrap: HTMLElement): string => scrap.dataset.clipping === undefined
+    ? `[data-page-note="${view.CSS.escape(scrap.dataset.pageNote ?? "")}"]`
+    : `[data-clipping="${view.CSS.escape(scrap.dataset.clipping)}"]`;
   const fieldOf = (scope: Element): HTMLTextAreaElement | null => {
     const field = scope.querySelector("[data-note-editor-form] textarea");
     return field instanceof view.HTMLTextAreaElement ? field : null;
@@ -33,7 +36,8 @@ export function enhanceClippingNotes(flow: HTMLElement, relaid: (anchor: Element
     if (field === null || !(remove instanceof view.HTMLAnchorElement)) return;
     form.action = link.href;
     remove.href = `${link.href}/delete`;
-    field.defaultValue = scrap.querySelector("[data-clipping-note]")?.textContent ?? "";
+    if (link.dataset.removeLabel !== undefined) remove.textContent = link.dataset.removeLabel;
+    field.defaultValue = scrap.querySelector("[data-note-text]")?.textContent ?? "";
     link.closest("footer")?.before(form);
     scrap.dataset.editing = "";
     relaid(scrap);
@@ -49,16 +53,15 @@ export function enhanceClippingNotes(flow: HTMLElement, relaid: (anchor: Element
     if (link instanceof view.HTMLElement) link.focus();
   };
 
-  // The saved clipping is drawn by the server, like every other: the book's
-  // current view is fetched again and the clipping taken from it. A clipping
-  // the view no longer holds, such as one whose note was cleared in "With
+  // The saved entry is drawn by the server, like every other: the book's
+  // current view is fetched again and the entry taken from it. An entry the
+  // view no longer holds, such as a clipping whose note was cleared in "With
   // notes", means the view itself changed, so all of it is replaced.
   const redraw = async (scrap: HTMLElement): Promise<string | null> => {
     const answer = await fetchPage(view, view.location.href);
     const fresh = answer.kind === "accepted" ? answer.page.querySelector("[data-flow]") : null;
     if (fresh === null) return "The note is saved, but the book couldn't be redrawn. Reload the page to see it.";
-    const id = view.CSS.escape(scrap.dataset.clipping ?? "");
-    const redrawn = fresh.querySelector(`[data-clipping="${id}"]`);
+    const redrawn = fresh.querySelector(selectorOf(scrap));
     if (redrawn === null) {
       flow.replaceChildren(...[...fresh.children].map((child) => document.adoptNode(child)));
       relaid(null);
@@ -115,7 +118,6 @@ export function enhanceClippingNotes(flow: HTMLElement, relaid: (anchor: Element
   flow.addEventListener("keydown", (event) => {
     const field = event.target;
     if (!(field instanceof view.HTMLTextAreaElement) || field.form === null) return;
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) field.form.requestSubmit();
     // Escape puts away an untouched note. Edits are only thrown away on
     // purpose, with Cancel.
     const scrap = event.key === "Escape" && !changed(field) ? scrapOf(field) : null;

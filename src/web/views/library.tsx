@@ -3,7 +3,7 @@ import type { FetchRequest } from "../../contracts/item";
 import type { Card, LibraryPage } from "../../services/library";
 import { FIELD, SUBMIT } from "./controls";
 import { cardDate, counted, hostOf, readingMinutes } from "./format";
-import { ScissorsIcon } from "./icons";
+import { PenIcon, ScissorsIcon } from "./icons";
 import { Layout, type PageContext } from "./layout";
 import { attemptDetail, saveStateLabel } from "./save";
 
@@ -24,13 +24,14 @@ function Pile({ side }: { side: "back" | "front" }) {
 }
 
 function ItemCard({ card, context, id }: { card: Card; context: PageContext; id?: string }) {
-  const { item, clippings } = card;
+  const { item, clippings, pageNotes } = card;
   const host = hostOf(item.url);
   const meta = [
     host,
     item.author,
     `${readingMinutes(item.content_length)} min read`,
     clippings > 0 ? counted(clippings, "clipping", "clippings") : null,
+    pageNotes > 0 ? counted(pageNotes, "page note", "page notes") : null,
   ].filter((part) => part !== null && part !== "");
   return (
     <li class="card" data-card="item" data-cursor={formatCursor(cursorOf(item))} id={id}>
@@ -44,6 +45,9 @@ function ItemCard({ card, context, id }: { card: Card; context: PageContext; id?
         <span class="card-corner">
           {clippings > 0 ? (
             <span class="card-clips" aria-hidden="true"><ScissorsIcon />{String(clippings)}</span>
+          ) : null}
+          {pageNotes > 0 ? (
+            <span class="card-clips" aria-hidden="true"><PenIcon size={13} />{String(pageNotes)}</span>
           ) : null}
           <time datetime={item.created_at}>{cardDate(item.created_at, context.locale, context.today)}</time>
         </span>

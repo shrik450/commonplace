@@ -89,6 +89,70 @@
     margin-top: 12px;
   }
 
+  /* Notes on the page as a whole, written at the end of it in the reader's
+     own hand: italic, under a rule. */
+  .page-notes {
+    max-width: var(--cp-text-width, 68ch);
+    margin-top: 44px;
+    padding-top: 26px;
+    border-top: 1px solid var(--color-rule);
+    scroll-margin-top: 24px;
+  }
+
+  .page-notes-title {
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-label);
+    color: var(--color-ink-muted);
+  }
+
+  .page-notes-list {
+    display: grid;
+    gap: 18px;
+    margin-top: 16px;
+  }
+
+  .page-notes-body {
+    display: flex;
+    gap: 8px;
+    font-family: var(--font-reading);
+    font-size: var(--text-quote);
+    font-style: italic;
+    line-height: 1.55;
+    color: var(--color-note);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+  }
+
+  .page-notes-body svg {
+    flex: none;
+    margin-top: 6px;
+    color: var(--color-accent);
+  }
+
+  .page-notes-foot {
+    margin-top: 4px;
+    padding-inline-start: 23px;
+    font-size: var(--text-caption);
+    color: var(--color-ink-muted);
+  }
+
+  .page-notes-form {
+    display: grid;
+    gap: 8px;
+    margin-top: 22px;
+  }
+
+  .page-notes-form label {
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-label);
+    color: var(--color-ink-muted);
+  }
+
+  .reader-foot {
+    margin-top: 40px;
+    font-size: var(--text-caption);
+  }
+
   /* The selection pop-up: a small dark bar above what you selected. */
   .clip-pop {
     position: absolute;

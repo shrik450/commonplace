@@ -49,3 +49,12 @@ export function variantOf(key: string, variants: number): number {
   }
   return (hash >>> 0) % variants;
 }
+
+// How many clippings and page notes, naming page notes only when there are
+// some. `noted` says the clippings are those with a note.
+export function entryCount(clippings: number, pageNotes: number, noted = false): string {
+  const parts: string[] = [];
+  if (clippings > 0 || pageNotes === 0) parts.push(`${counted(clippings, "clipping", "clippings")}${noted ? " with notes" : ""}`);
+  if (pageNotes > 0) parts.push(counted(pageNotes, "page note", "page notes"));
+  return parts.join(" and ");
+}

@@ -465,10 +465,60 @@
     font-weight: var(--font-weight-label);
   }
 
-  /* Writing a note on the clipping: the form takes the place of the note and
-     of the link that opened it. */
-  .clipping[data-editing] :is(.clipping-note, [data-note-edit]) {
+  /* A page note is a square-cut slip of note paper, taped in after the
+     page's clippings. It has nothing printed on it, only the note. */
+  .slip {
+    position: relative;
+    break-inside: avoid;
+    margin: 0 0 12px;
+    padding-top: 20px;
+    filter: drop-shadow(0 1px 0.5px var(--color-umbra)) drop-shadow(0 4px 5px var(--color-umbra));
+  }
+
+  .slip[data-tilt="0"] {
+    rotate: 0.5deg;
+    margin-left: 3%;
+  }
+
+  .slip[data-tilt="1"] {
+    rotate: -0.5deg;
+    margin-right: 3%;
+  }
+
+  .slip-paper {
+    padding: 22px 22px 16px;
+    background: var(--grain), var(--color-paper-lifted);
+    border-radius: 2px;
+  }
+
+  .slip-note {
+    display: flex;
+    gap: 8px;
+    font-family: var(--font-reading);
+    font-size: var(--text-quote);
+    font-style: italic;
+    line-height: 1.55;
+    color: var(--color-note);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+  }
+
+  .slip-note svg {
+    flex: none;
+    margin-top: 6px;
+    color: var(--color-accent);
+  }
+
+  /* Writing a note on an entry: the form takes the place of the note and of
+     the link that opened it. */
+  :is(.clipping, .slip)[data-editing] :is(.clipping-note, .slip-note, [data-note-edit]) {
     display: none;
+  }
+
+  .slip[data-editing] .note-editor {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
   }
 
   .note-editor {
@@ -632,7 +682,8 @@
       font-size: var(--text-title);
     }
 
-    .clipping[data-edge] {
+    .clipping[data-edge],
+    .slip[data-tilt] {
       margin-inline: 0;
     }
   }

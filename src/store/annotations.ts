@@ -9,7 +9,7 @@ import {
   type ItemId,
   type UserId,
 } from "../contracts/ids";
-import type { Annotation, Item } from "../contracts/item";
+import type { Annotation } from "../contracts/item";
 import { write } from "./db";
 
 const ANNOTATION_COLUMNS = `
@@ -137,91 +137,24 @@ export function countAnnotationsByItem(
   return counts;
 }
 
-export type AnnotationFilter = { notesOnly: boolean; itemId: ItemId | null };
-
-export type ClippedItem = { item: Item; count: number };
-
-// A filter as SQL: conditions to append to a WHERE clause, and their values.
-type FilterSql = { sql: string; params: string[] };
-
-function filterSql(filter: AnnotationFilter): FilterSql {
-  const clauses: string[] = [];
-  const params: string[] = [];
-  if (filter.notesOnly) clauses.push("a.note IS NOT NULL AND a.note <> ''");
-  if (filter.itemId !== null) {
-    clauses.push("a.item_id = ?");
-    params.push(filter.itemId);
-  }
-  return { sql: clauses.map((clause) => ` AND ${clause}`).join(""), params };
-}
-
-// Lists every item with at least one matching annotation, newest first, with
-// how many match.
-export function listClippedItems(
-  db: Database,
-  userId: UserId,
-  filter: AnnotationFilter,
-): ClippedItem[] {
-  const where = filterSql(filter);
-  return db
-    .query<
-      {
-        id: string;
-        user_id: string;
-        url: string;
-        title: string;
-        author: string | null;
-        created_at: string;
-        ingested_at: string | null;
-        excerpt: string;
-        content_length: number;
-        count: number;
-      },
-      string[]
-    >(
-      `SELECT i.id, i.user_id, i.url, i.title, i.author, i.created_at, i.ingested_at,
-              i.excerpt, i.content_length, count(*) AS count
-       FROM annotations a JOIN items i ON i.id = a.item_id AND i.user_id = a.user_id
-       WHERE a.user_id = ?${where.sql}
-       GROUP BY i.id
-       ORDER BY i.created_at DESC, i.id DESC`,
-    )
-    .all(userId, ...where.params)
-    .map(({ count, ...row }) => ({
-      item: { ...row, id: asItemId(row.id), user_id: asUserId(row.user_id) },
-      count,
-    }));
-}
-
-// Lists the matching annotations on the given items, in reading order within
-// each item.
+// Lists the annotations on the given items, in reading order within each
+// item. `notesOnly` keeps those with a note.
 export function listAnnotationsForItems(
   db: Database,
   userId: UserId,
   itemIds: readonly ItemId[],
-  filter: AnnotationFilter,
+  notesOnly: boolean,
 ): Annotation[] {
   if (itemIds.length === 0) return [];
-  const where = filterSql(filter);
+  const noted = notesOnly ? " AND a.note IS NOT NULL AND a.note <> ''" : "";
   return db
     .query<AnnotationRow, string[]>(
       `SELECT a.id, a.user_id, a.item_id, a.start_offset, a.end_offset, a.quote,
               a.note, a.created_at, a.updated_at
        FROM annotations a
-       WHERE a.user_id = ? AND a.item_id IN (${itemIds.map(() => "?").join(", ")})${where.sql}
+       WHERE a.user_id = ? AND a.item_id IN (${itemIds.map(() => "?").join(", ")})${noted}
        ORDER BY a.item_id, a.start_offset ASC, a.id ASC`,
     )
-    .all(userId, ...itemIds, ...where.params)
+    .all(userId, ...itemIds)
     .map(annotationOf);
-}
-
-export type AnnotationTotals = { clippings: number; pages: number; since: string | null };
-
-export function annotationTotals(db: Database, userId: UserId): AnnotationTotals {
-  return db
-    .query<AnnotationTotals, [string]>(
-      `SELECT count(*) AS clippings, count(DISTINCT item_id) AS pages, min(created_at) AS since
-       FROM annotations WHERE user_id = ?`,
-    )
-    .get(userId)!;
 }

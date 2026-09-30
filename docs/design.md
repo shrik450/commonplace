@@ -120,10 +120,10 @@ Follow these color rules:
 
 The library is a box of index cards seen from the front and above. Cards stand
 packed, each overlapping the one behind it, and lower on screen is nearer to
-you. At rest a card shows its title, its clippings mark, and its date. Pulling
+you. At rest a card shows its title, its clippings and page notes marks, and its date. Pulling
 a card, by hover or keyboard focus, tips the cards in front of it forward and
 shows what is printed below: an excerpt, the site, the author, the reading
-time, and the clippings count. The pulled card stays where it stood, so the
+time, and the clippings and page notes counts. The pulled card stays where it stood, so the
 card behind it is still in reach. Where the front pile leaves no room below
 it, the card and the cards behind it rise together.
 
@@ -139,27 +139,33 @@ or coming back to it, opens the box there. Guide cards at either end lead to
 the newer and older pages; they show only without a script, or when a page
 fails to load.
 
-Pending and failed saves are cards at the front of the first page.
+Pending and failed saves are cards at the front of the first page. A save's
+status page leads to removing it.
 
 ### Commonplace book
 
 Clippings are kept in a cloth-bound book: two pages when the window is wide,
 one when it is narrow. Each clipping is a deckle-edged scrap, taped or clipped
-in, under the title of the page it came from. Pages turn with a real leaf.
-Without a script, the book is one scrolling page.
+in, under the title of the page it came from. A page note is written, not cut
+from print: a square-cut slip of note paper, taped in after the page's
+clippings. Pages turn with a real leaf. Without a script, the book is one
+scrolling page.
 
 ### Sheet
 
 Reading, settings, forms, and messages sit on a sheet of paper on the desk.
-The reader's sheet has a folded corner, a ribbon bookmark with its clippings
-count, and numbered marks in the margin beside each clipping.
+The reader's sheet has a folded corner, a ribbon bookmark with its count of
+clippings and page notes, and numbered marks in the margin beside each
+clipping. Notes on the page as a whole are written at the end of the sheet,
+under a rule, above the form for another. "Remove page…" closes the sheet.
 
 Clipping never leaves the page. Selecting a passage offers "Clip it" and "Add
 a note". A note is written on a slip laid just below the passage, which stays
 washed while the slip is open. Saving marks the passage where it stands, and
 the reader keeps their place. In the book, a note is written or edited on the
-clipping itself, and the same form leads to removing the clipping. Without a
-script, each clipping has a page of its own for both.
+clipping itself, and the same form leads to removing the clipping. A page note
+is edited the same way, on its slip. Without a script, each clipping and page
+note has a page of its own for both.
 
 ### Catalogue
 

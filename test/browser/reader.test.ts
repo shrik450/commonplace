@@ -285,3 +285,51 @@ describe("clipping from the reader", () => {
     expect(errors).toEqual([]);
   });
 });
+
+describe("the end of the page", () => {
+  test("a note written below the text lands there, and the reader opens at the notes", async () => {
+    const itemId = ids[0]!;
+    const { page, errors } = await open(`/items/${itemId}`);
+    await page.getByLabel("Write a note on this page").fill("A note on the whole page.");
+    await page.getByRole("button", { name: "Save note" }).click();
+    await page.waitForURL(/#page-notes$/);
+    const notes = page.locator("#page-notes [data-page-note]");
+    expect(await notes.allTextContents()).toEqual([expect.stringContaining("A note on the whole page.")]);
+    expect(await page.locator("#page-notes").evaluate((section) => {
+      const box = section.getBoundingClientRect();
+      return box.top < innerHeight && box.bottom > 0;
+    })).toBe(true);
+    expect(await page.getByLabel("Add another note").isVisible()).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test("Ctrl+Enter saves a page note, on the reader and on the note's own page", async () => {
+    const itemId = ids[2]!;
+    const { page, errors } = await open(`/items/${itemId}`);
+    await page.getByLabel(/note on this page|another note/).fill("Sent from the keyboard.");
+    await page.keyboard.press("Control+Enter");
+    await page.waitForURL(/#page-notes$/);
+    const note = page.locator("#page-notes [data-page-note]").filter({ hasText: "Sent from the keyboard." });
+    expect(await note.count()).toBe(1);
+
+    await note.getByRole("link", { name: "Edit note" }).click();
+    await page.waitForURL(/\/page-notes\/[0-9a-f-]+$/);
+    await page.getByLabel("Your note").fill("Edited from the keyboard.");
+    await page.keyboard.press("Control+Enter");
+    await page.waitForURL(/#page-notes$/);
+    expect(await page.locator("#page-notes").textContent()).toContain("Edited from the keyboard.");
+    expect(errors).toEqual([]);
+  });
+
+  test("Remove page… asks first, then the page leaves the library", async () => {
+    const itemId = ids[8]!;
+    const { page, errors } = await open(`/items/${itemId}`);
+    await page.getByRole("link", { name: "Remove page…" }).click();
+    await page.waitForURL(/\/delete$/);
+    expect(await page.getByRole("heading", { level: 1 }).textContent()).toMatch(/^Remove “.+” from your library\?$/);
+    await page.getByRole("button", { name: "Remove page" }).click();
+    await page.waitForURL(/\/library$/);
+    expect(await page.locator(`a[href="/items/${itemId}"]`).count()).toBe(0);
+    expect(errors).toEqual([]);
+  });
+});

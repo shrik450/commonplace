@@ -1,17 +1,19 @@
 import { NOTE_MAX_LENGTH } from "../../contracts/clipping";
-import type { Annotation, Item } from "../../contracts/item";
+import type { Annotation, Item, PageNote } from "../../contracts/item";
 import type { ProjectionMode } from "../../core/project";
 import { ACTION, FIELD, LINK, SUBMIT } from "./controls";
-import { counted, hostOf, readableDate } from "./format";
+import { entryCount, hostOf, readableDate } from "./format";
 import { PenIcon, ScissorsIcon } from "./icons";
 import { raw } from "./jsx-runtime";
 import { Layout, type PageContext } from "./layout";
+import { PageNotesSection } from "./page-notes";
 import { SheetBacking } from "./sheet";
 
 export type ReaderProps = {
   item: Item;
   html: string;
   annotations: Annotation[];
+  pageNotes: PageNote[];
   mode: ProjectionMode;
   context: PageContext;
 };
@@ -57,10 +59,11 @@ function ClipForm({ item }: { item: Item }) {
   );
 }
 
-export function ReaderPageView({ item, html, annotations, mode, context }: ReaderProps) {
+export function ReaderPageView({ item, html, annotations, pageNotes, mode, context }: ReaderProps) {
   const host = hostOf(item.url);
   const { settings } = context;
   const reading = mode === "reader";
+  const entries = annotations.length + pageNotes.length;
   return (
     <Layout title={item.title} context={context} scripts={reading ? ["clip"] : []}>
       <div
@@ -76,13 +79,13 @@ export function ReaderPageView({ item, html, annotations, mode, context }: Reade
         <SheetBacking />
         <article class="sheet sheet-folded reader-sheet" aria-labelledby="reader-title">
           <span class="sheet-fold" aria-hidden="true" />
-          {annotations.length === 0 ? null : (
+          {entries === 0 ? null : (
             <a
               class="ribbon"
               href={`/clippings?item=${item.id}`}
-              aria-label={`${counted(annotations.length, "clipping", "clippings")} from this page`}
+              aria-label={`${entryCount(annotations.length, pageNotes.length)} from this page`}
             >
-              <span class="ribbon-cloth">{String(annotations.length)}</span>
+              <span class="ribbon-cloth">{String(entries)}</span>
             </a>
           )}
           <nav class="kicker" aria-label="Other views of this page">
@@ -102,6 +105,8 @@ export function ReaderPageView({ item, html, annotations, mode, context }: Reade
           </p>
           {/* The projection comes from the archived page rather than this interface. */}
           <div class="reader-text" data-cp-projected>{raw(html)}</div>
+          <PageNotesSection item={item} notes={pageNotes} locale={context.locale} />
+          <p class="reader-foot"><a class={LINK} href={`/items/${item.id}/delete`}>Remove page…</a></p>
         </article>
         {reading ? <ClipForm item={item} /> : null}
       </div>

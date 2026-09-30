@@ -33,8 +33,8 @@ functions. Routes and commands stay thin.
 - `item.ts` defines users, web items, annotations, API tokens, and queue rows.
 - `settings.ts` defines the typed account appearance and reading settings.
 - `cursor.ts` defines library positions and parses page links into them.
-- `clipping.ts` parses the fields of a clipping form. The interface calls an
-  annotation a clipping.
+- `clipping.ts` parses the fields of a clipping form and of a page note. The
+  interface calls an annotation a clipping.
 - `config.ts` parses the application configuration.
 
 ### Core
@@ -55,6 +55,9 @@ functions. Routes and commands stay thin.
 - `items.ts` reads and updates item metadata, and pages through it by cursor.
 - `annotations.ts` stores annotations, counts them per item, and lists them
   for the commonplace book.
+- `page-notes.ts` stores notes on whole pages and counts them per item.
+- `book.ts` reads across clippings and page notes: which pages the
+  commonplace book holds, and its totals.
 - `users.ts` stores users and hashed API tokens.
 - `settings.ts` stores validated settings with a user-owned primary key.
 - `queue.ts` owns URL ingest jobs, leases, and cleanup state.
@@ -68,7 +71,10 @@ functions. Routes and commands stay thin.
 - `ingest.ts` acquires, sanitizes, walks, stores, and indexes a URL.
 - `library.ts` loads reader data, library pages, and search results.
 - `clippings.ts` makes, edits, and removes clippings, and assembles the
-  commonplace book in volumes.
+  commonplace book in volumes from clippings and page notes.
+- `page-notes.ts` writes, edits, and removes notes on whole pages.
+- `removal.ts` removes a page with everything that belongs to it, and removes
+  a save when stopping it can't leave a page half replaced.
 - `auth.ts` handles OIDC, signed sessions, and API tokens.
 - `worker.ts` provides queue draining, lease cleanup, and worker lifecycle.
 
@@ -81,7 +87,8 @@ The web layer renders server-side HTML for the home page, library, the
 commonplace book, search, reader, structured text, saved copy, sign-in, and
 settings. Every page works without a script. Small same-origin scripts in
 `src/web/client/`, bundled into `public/scripts/`, enhance the index box, the
-book, the save card, clipping, and the settings preview. Each keeps its
+book, the save card, clipping, and the settings preview, and let Ctrl or
+Cmd+Enter send any note with its form's primary button. Each keeps its
 arithmetic in a pure module with unit tests, and its DOM work in a thin shell
 that the browser tests drive. `src/web/styles/` holds one stylesheet per
 object, over shared tokens. The structured text view retains safe HTML semantics
@@ -100,15 +107,19 @@ The CLI has two operator commands:
 Each item directory lives at `items/<user_id>/<item_id>/`. Each capture produces
 the current transcript and Map. They remain stable until the next recapture of
 that URL. A recapture reuses the item ID and replaces the four capture files.
-The database stores metadata, users, tokens, annotations, and queue state.
+The database stores metadata, users, tokens, annotations, page notes, and
+queue state.
 Ingest writes files before committing the item row. A lease-aware sweep removes
-abandoned directories but protects active queue reservations.
+abandoned directories but protects active queue reservations. Removing a page
+commits first and deletes its directory after. The sweep collects whatever a
+failed deletion, or a save cancelled mid-capture, leaves behind.
 
 Annotations retain transcript offsets and their quote in SQLite. Rendering
 re-anchors the quote against the current transcript and projects it through the
 current Map. No DOM path or document position enters the database.
 
-Schema version 6 stores each item's card excerpt and content length, and
+Schema version 7 adds page notes, which hang from their item and store no
+position. Schema version 6 stores each item's card excerpt and content length, and
 backfills them from the search index. Schema version 5 adds named, self-hosted reading fonts and maps existing font
 choices to their named replacements. Schema version 4 adds numeric reading
 controls and a monospace font. Schema version 3 adds durable per-user settings.

@@ -3,6 +3,7 @@ import type { Browser, Page } from "playwright-core";
 
 import type { ItemId } from "../../src/contracts/ids";
 import { listAnnotations } from "../../src/store/annotations";
+import { listPageNotesForItems } from "../../src/store/page-notes";
 import { launch, PHONE, serve, visit, type Served, type Visit, type VisitOptions } from "../support/browser";
 import { seedDemo } from "../support/demo";
 import { ALICE, openLibrary, type TestLibrary } from "../support/library";
@@ -284,7 +285,7 @@ describe("writing a note in the book", () => {
     const { page } = await openBook({}, "/clippings?notes=1");
     const before = await page.locator("[data-flow] [data-clipping]").count();
     expect(before).toBeGreaterThan(1);
-    await page.getByRole("link", { name: "Edit note" }).first().click();
+    await page.locator("[data-clipping] [data-note-edit]").first().click();
     await page.getByLabel("Your note").fill("");
     await page.getByRole("button", { name: "Save note" }).click();
     await noteStatus(page, "Note removed.");
@@ -318,6 +319,32 @@ describe("writing a note in the book", () => {
     await settle(page);
     expect(await inWindow(page, `[data-clipping="${id}"] .clipping-note`)).toBe(true);
     expect(label).toMatch(/^Page \d+ of \d+$/);
+  });
+
+  test("a page note is edited on its slip, and a blank one is refused", async () => {
+    // Page 10 has a page note and no clippings.
+    const itemId = demoPage(10);
+    const bodies = () => listPageNotesForItems(library.db, ALICE, [itemId]).map((note) => note.body);
+    const [before] = bodies();
+    const { page } = await openBook({}, `/clippings?item=${itemId}`);
+    const address = page.url();
+    await page.locator("[data-page-note] [data-note-edit]").click();
+    const field = page.getByLabel("Your note");
+    expect(await field.inputValue()).toBe(before!);
+    expect(await page.getByRole("link", { name: "Remove note…" }).getAttribute("href")).toMatch(/\/page-notes\/[0-9a-f-]+\/delete$/);
+
+    await field.fill("");
+    await page.getByRole("button", { name: "Save note" }).click();
+    await page.getByRole("alert").waitFor();
+    expect(await page.getByRole("alert").textContent()).toContain("Write something in the note");
+    expect(bodies()).toEqual([before!]);
+
+    await field.fill("Rewritten on the slip.");
+    await page.getByRole("button", { name: "Save note" }).click();
+    await noteStatus(page, "Note saved.");
+    expect(page.url()).toBe(address);
+    expect(bodies()).toEqual(["Rewritten on the slip."]);
+    expect(await page.locator(".slip-note").allTextContents()).toEqual(["Rewritten on the slip."]);
   });
 
   test("without a script, Add a note leads to the clipping's own page", async () => {

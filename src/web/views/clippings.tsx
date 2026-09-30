@@ -1,9 +1,9 @@
 import { formatCursor, type Cursor } from "../../contracts/cursor";
 import { NOTE_MAX_LENGTH } from "../../contracts/clipping";
-import type { Annotation, Item } from "../../contracts/item";
+import type { Annotation, Item, PageNote } from "../../contracts/item";
 import type { Book, BookFilter, Clipping, Locus } from "../../services/clippings";
 import { ACTION, FIELD, LINK, SUBMIT } from "./controls";
-import { counted, hostOf, monthOf, readableDate, variantOf } from "./format";
+import { counted, entryCount, hostOf, monthOf, readableDate, variantOf } from "./format";
 import { Paperclip, PenIcon } from "./icons";
 import { Layout, type PageContext } from "./layout";
 import { Sheet } from "./sheet";
@@ -43,11 +43,28 @@ function ClippingScrap({ clipping, locale }: { clipping: Annotation; locale: str
       <div class="clipping-paper">
         <blockquote class="clipping-quote"><span class="wash">{clipping.quote}</span></blockquote>
         {clipping.note === null ? null : (
-          <p class="clipping-note"><PenIcon /><span data-clipping-note>{clipping.note}</span></p>
+          <p class="clipping-note"><PenIcon /><span data-note-text>{clipping.note}</span></p>
         )}
         <footer class="clipping-foot">
           <time datetime={clipping.created_at}>{readableDate(clipping.created_at, locale)}</time>
           <a class={LINK} href={`/clippings/${clipping.id}`} data-note-edit>{clipping.note === null ? "Add a note" : "Edit note"}</a>
+        </footer>
+      </div>
+    </figure>
+  );
+}
+
+// A page note is written, not cut from print: a square-cut slip of note
+// paper, taped in after the page's clippings.
+function PageNoteSlip({ note, locale }: { note: PageNote; locale: string }) {
+  return (
+    <figure class="slip" data-page-note={note.id} data-tilt={variantOf(note.id, 2)}>
+      <span class="tape" aria-hidden="true" />
+      <div class="slip-paper">
+        <p class="slip-note"><PenIcon /><span data-note-text>{note.body}</span></p>
+        <footer class="clipping-foot">
+          <time datetime={note.created_at}>{readableDate(note.created_at, locale)}</time>
+          <a class={LINK} href={`/page-notes/${note.id}`} data-note-edit data-remove-label="Remove note…">Edit note</a>
         </footer>
       </div>
     </figure>
@@ -77,7 +94,10 @@ function NoteEditor() {
 
 function LocusSection({ locus, locale, anchored }: { locus: Locus; locale: string; anchored: boolean }) {
   const host = hostOf(locus.item.url);
-  const [first, ...rest] = locus.clippings;
+  const [first, ...rest] = [
+    ...locus.clippings.map((clipping) => <ClippingScrap clipping={clipping} locale={locale} />),
+    ...locus.pageNotes.map((note) => <PageNoteSlip note={note} locale={locale} />),
+  ];
   return (
     <section class="locus" data-locus id={anchored ? `item-${locus.item.id}` : undefined}>
       {/* A page's title never ends a page of the book: it keeps its first clipping. */}
@@ -86,9 +106,9 @@ function LocusSection({ locus, locale, anchored }: { locus: Locus; locale: strin
           <a href={`/items/${locus.item.id}`}><h2>{locus.item.title}</h2></a>
           <span class="locus-source">{[host, `saved ${readableDate(locus.item.created_at, locale)}`].filter((part) => part !== null).join(" · ")}</span>
         </header>
-        {first === undefined ? null : <ClippingScrap clipping={first} locale={locale} />}
+        {first ?? null}
       </div>
-      {rest.map((clipping) => <ClippingScrap clipping={clipping} locale={locale} />)}
+      {rest}
     </section>
   );
 }
@@ -97,41 +117,41 @@ function LocusSection({ locus, locale, anchored }: { locus: Locus; locale: strin
 // one page's clippings, or those with notes.
 function TitlePage({ book, filter, focus, context }: { book: Book; filter: BookFilter; focus: Item | null; context: PageContext }) {
   const volume = book.newer !== null || book.older !== null;
-  const noted = filter.notesOnly ? " with notes" : "";
+  const inView = entryCount(book.clippings, book.pageNotes, filter.notesOnly);
   return (
     <div class="title-page">
       <h1 id="book-title">Commonplace book</h1>
       <div class="flourish" aria-hidden="true">· · ·</div>
       {focus === null ? (
-        <p>{counted(book.totals.clippings, "clipping", "clippings")} from {counted(book.totals.pages, "page", "pages")}</p>
+        <p>{entryCount(book.totals.clippings, book.totals.pageNotes)} from {counted(book.totals.pages, "page", "pages")}</p>
       ) : (
         <>
           <p class="title-page-focus">From “{focus.title}”</p>
-          <p>{counted(book.clippings, "clipping", "clippings")}{noted} from this page</p>
+          <p>{inView} from this page</p>
         </>
       )}
-      {focus === null && filter.notesOnly ? <p>Showing the {counted(book.clippings, "clipping", "clippings")} with notes</p> : null}
+      {focus === null && filter.notesOnly ? <p>Showing the {inView}</p> : null}
       {book.totals.since === null ? null : <p>Kept since {monthOf(book.totals.since, context.locale)}</p>}
-      {volume ? <p>This volume holds {counted(book.clippings, "clipping", "clippings")}{noted}.</p> : null}
+      {volume ? <p>This volume holds {inView}.</p> : null}
     </div>
   );
 }
 
 // Why a view of the book holds nothing: the book itself is empty, the page it
-// is narrowed to has no clippings, or none of the clippings in view has a note.
+// is narrowed to has no entries, or nothing in view has a note.
 type Emptiness = "book" | "page" | "notes";
 
 function EmptyBook({ why }: { why: Emptiness }) {
   return (
     <div class="book-empty">
       {why === "page" ? (
-        <p>This page has no clippings. Choose “All pages” to see the rest of your book.</p>
+        <p>This page has no clippings or notes. Choose “All pages” to see the rest of your book.</p>
       ) : why === "notes" ? (
         <p>No clippings here have a note. Choose “By page” to see every clipping.</p>
       ) : (
         <>
           <p><b>Your commonplace book is empty.</b></p>
-          <p>While you read a saved page, select a passage and choose “Clip it”. The clipping lands here, under the title of the page it came from.</p>
+          <p>While you read a saved page, select a passage and choose “Clip it”, or write a note at the end of the page. Either lands here, under the title of the page it came from.</p>
         </>
       )}
     </div>
@@ -176,7 +196,7 @@ export function BookPage({
               <div class="book-flow" data-flow>
                 <TitlePage book={book} filter={filter} focus={focus} context={context} />
                 {book.loci.length === 0
-                  ? <EmptyBook why={book.totals.clippings === 0 ? "book" : filter.notesOnly ? "notes" : "page"} />
+                  ? <EmptyBook why={book.totals.clippings + book.totals.pageNotes === 0 ? "book" : filter.notesOnly ? "notes" : "page"} />
                   : book.loci.map((locus) => <LocusSection locus={locus} locale={context.locale} anchored={view !== "shuffle"} />)}
               </div>
             </div>

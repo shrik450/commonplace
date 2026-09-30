@@ -8,6 +8,7 @@ import {
   type Annotation,
   type FetchRequest,
   type Item,
+  type PageNote,
 } from "../contracts/item";
 import { validateMap } from "../contracts/transcript";
 import type { TranscriptMap } from "../contracts/transcript";
@@ -15,6 +16,7 @@ import { reanchor } from "../core/anchor";
 import { project } from "../core/project";
 import type { Highlight, ProjectionMode } from "../core/project";
 import { countAnnotationsByItem, listAnnotations } from "../store/annotations";
+import { countPageNotesByItem, listPageNotesForItems } from "../store/page-notes";
 import { readItemFile } from "../store/files";
 import { searchBlocks } from "../store/fts";
 import {
@@ -40,6 +42,7 @@ export type LoadedItem = {
 
 export type ReaderPage = LoadedItem & {
   annotations: Annotation[];
+  pageNotes: PageNote[];
   html: string;
 };
 
@@ -72,7 +75,7 @@ function readMap(raw: string, textLength: number): TranscriptMap {
   }
 }
 
-export type Card = { item: Item; clippings: number };
+export type Card = { item: Item; clippings: number; pageNotes: number };
 
 // One page of the index box. The counts cover the whole library, so the piles
 // can show every card, not only the ones on this page.
@@ -104,10 +107,12 @@ export function libraryPage(
     ? (position.kind === "newest" ? 0 : total)
     : countItemsNewerThan(deps.db, userId, cursorOf(first));
   const olderCount = total - newerCount - items.length;
-  const counts = countAnnotationsByItem(deps.db, userId, items.map((item) => item.id));
+  const itemIds = items.map((item) => item.id);
+  const clippings = countAnnotationsByItem(deps.db, userId, itemIds);
+  const pageNotes = countPageNotesByItem(deps.db, userId, itemIds);
   return {
     saves: position.kind === "newest" ? listStoredSaveRequests(deps.db, userId, SAVE_CARD_LIMIT) : [],
-    cards: items.map((item) => ({ item, clippings: counts.get(item.id) ?? 0 })),
+    cards: items.map((item) => ({ item, clippings: clippings.get(item.id) ?? 0, pageNotes: pageNotes.get(item.id) ?? 0 })),
     total,
     newerCount,
     olderCount,
@@ -130,6 +135,16 @@ export function getSaveRequest(
 
 export function findItem(deps: LibraryDeps, userId: UserId, itemId: ItemId): Item | null {
   return getItem(deps.db, userId, itemId);
+}
+
+export function findCard(deps: LibraryDeps, userId: UserId, itemId: ItemId): Card | null {
+  const item = getItem(deps.db, userId, itemId);
+  if (item === null) return null;
+  return {
+    item,
+    clippings: countAnnotationsByItem(deps.db, userId, [itemId]).get(itemId) ?? 0,
+    pageNotes: countPageNotesByItem(deps.db, userId, [itemId]).get(itemId) ?? 0,
+  };
 }
 
 function requireItem(deps: LibraryDeps, userId: UserId, itemId: ItemId): Item {
@@ -199,6 +214,7 @@ export async function readerPage(
 ): Promise<ReaderPage> {
   const loaded = await loadTranscript(deps, userId, itemId);
   const annotations = listAnnotations(deps.db, userId, itemId);
+  const pageNotes = listPageNotesForItems(deps.db, userId, [itemId]);
   const html = project({
     sanitizedHtml: loaded.sanitized,
     transcript: loaded.transcript,
@@ -206,7 +222,7 @@ export async function readerPage(
     highlights: placeAnnotations(loaded.transcript, annotations),
     mode,
   });
-  return { ...loaded, annotations, html };
+  return { ...loaded, annotations, pageNotes, html };
 }
 
 export function splitSnippet(snippet: string): SnippetPart[] {

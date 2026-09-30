@@ -4,6 +4,9 @@ import type { Page } from "playwright-core";
 
 import { DESKTOP, launch, PHONE, serve, visit, type Viewport } from "../test/support/browser";
 import { seedDemo } from "../test/support/demo";
+import { newRequestId } from "../src/contracts/ids";
+import { listPageNotesForItems } from "../src/store/page-notes";
+import { enqueueFetch } from "../src/store/queue";
 import { ALICE, BOB, openLibrary, sessionCookie } from "../test/support/library";
 
 // Renders every view of a demo library for a visual review.
@@ -49,6 +52,21 @@ const library = await openLibrary("preview", join(out, "library"));
 const ids = await seedDemo(library, ALICE, 12);
 const reader = ids.find((id) => id !== undefined)!;
 const clipped = ids.at(-18)!;
+// A page with a note and no clippings.
+const noted = ids.at(-11)!;
+const [pageNote] = listPageNotesForItems(library.db, ALICE, [clipped]);
+// A save the preview never runs, so it waits at the front of the box.
+const waiting = enqueueFetch(library.db, {
+  id: newRequestId(),
+  user_id: ALICE,
+  item_id: null,
+  url: "https://example.com/an-essay-saved-by-mistake",
+  state: "queued",
+  lease_expires_at: null,
+  attempts: 0,
+  error_code: null,
+  created_at: library.clock.now.toISOString(),
+});
 
 if (command === "serve") {
   // Signs every request in as the demo reader, since the preview has no
@@ -139,6 +157,15 @@ if (command === "serve") {
     },
     { name: "clippings-no-script", path: "/clippings", scripts: false, fullPage: true },
     { name: "clippings-item", path: `/clippings?item=${clipped}` },
+    { name: "clippings-page-note", path: `/clippings?item=${noted}` },
+    {
+      name: "clippings-page-note-editing",
+      path: `/clippings?item=${noted}`,
+      act: async (page) => {
+        await page.locator("[data-page-note] [data-note-edit]").first().click();
+        await page.waitForTimeout(300);
+      },
+    },
     { name: "reader", path: `/items/${clipped}`, fullPage: true },
     {
       name: "reader-selection",
@@ -170,6 +197,12 @@ if (command === "serve") {
       },
     },
     { name: "reader-structured", path: `/items/${clipped}/raw` },
+    { name: "reader-page-notes", path: `/items/${clipped}#page-notes` },
+    { name: "page-note", path: `/page-notes/${pageNote!.id}` },
+    { name: "remove-page-note", path: `/page-notes/${pageNote!.id}/delete` },
+    { name: "remove-page", path: `/items/${clipped}/delete` },
+    { name: "save-status", path: `/saves/${waiting.id}` },
+    { name: "remove-save", path: `/saves/${waiting.id}/delete` },
     { name: "search", path: "/search?q=memory", fullPage: true },
     { name: "search-empty", path: "/search" },
     { name: "settings", path: "/settings", fullPage: true },

@@ -35,7 +35,7 @@ function themeOf(settings: UserSettings | undefined): keyof typeof DESK_COLORS |
 export function Layout({ title, context, current, query, scripts = [], refreshSeconds, children }: LayoutProps) {
   const settings = context?.settings;
   const theme = themeOf(settings);
-  const loaded: ClientScript[] = context === null ? [...scripts] : ["save-card", ...scripts];
+  const loaded: ClientScript[] = context === null ? [...scripts] : ["save-card", "submit-shortcut", ...scripts];
   return (
     <html lang="en" data-theme={theme}>
       <head>

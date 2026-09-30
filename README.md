@@ -40,13 +40,13 @@ Ingest writes these four files under
 - `transcript.txt` — the current text stream.
 - `map.json` — the current transcript-to-DOM Map.
 
-SQLite stores users, per-user settings, item metadata, annotations, API token
+SQLite stores users, per-user settings, item metadata, annotations, page notes, API token
 hashes, and the queue. The database and item files can live on separate
 configured roots.
 Ingest writes files before it commits the item row. A lease-aware sweep removes
 abandoned directories while protecting active work.
 
-Schema version 5 adds named, self-hosted reading fonts. Schema version 4 adds
+Schema version 7 adds page notes. Schema version 5 adds named, self-hosted reading fonts. Schema version 4 adds
 numeric reading controls and a monospace font. Schema version 3 adds per-user
 settings. Schema version 2 migrates old databases
 by retaining only article rows with a non-null URL. It discards book rows,
@@ -63,6 +63,8 @@ The web app provides:
 - a library and full-text search;
 - URL saving from the library or an API token;
 - a reader, structured text view, and authenticated saved copy;
+- clippings, notes on whole pages, and the commonplace book that keeps both;
+- removal of a saved page, or of a save that hasn't finished;
 - API token creation and revocation;
 - per-account appearance and reading settings.
 
@@ -73,8 +75,15 @@ The saved copy serves the captured page with a strict
 policy that allows inline CSS and embedded data images and fonts, while
 blocking scripts and network resources.
 
-Annotations remain renderable from stored rows. Annotation creation is not
-exposed until there is a complete selection-to-save flow.
+A clipping is an annotation: a transcript range, its quote, and an optional
+note. A page note belongs to the page as a whole, so it stores no position and
+survives every recapture as written.
+
+Removing a page removes its row, clippings, page notes, search blocks, saves,
+and files. It also cancels any unfinished save of its address. A save can be
+removed while it waits, after it fails, or while it captures a new page, but
+not while it refreshes a page already in the library: that capture writes into
+the page's files before it commits.
 
 ## Security and isolation
 

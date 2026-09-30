@@ -1,6 +1,6 @@
 import type { FetchRequest } from "../../contracts/item";
 import { MAX_ATTEMPTS } from "../../store/queue";
-import { ACTION, FIELD, SUBMIT } from "./controls";
+import { ACTION, FIELD, LINK, SUBMIT } from "./controls";
 import { Layout, type PageContext } from "./layout";
 import { Sheet } from "./sheet";
 
@@ -55,7 +55,7 @@ export function SavePage({ context }: { context: PageContext }) {
   );
 }
 
-export function SaveStatusPage({ request, context }: { request: FetchRequest; context: PageContext }) {
+export function SaveStatusPage({ request, removable, context }: { request: FetchRequest; removable: boolean; context: PageContext }) {
   const active = request.state === "queued" || request.state === "claimed";
   const detail = attemptDetail(request);
   return (
@@ -76,6 +76,7 @@ export function SaveStatusPage({ request, context }: { request: FetchRequest; co
         )}
         <p class="sheet-actions">
           <a href="/library" class={ACTION}>Back to your library</a>
+          {removable ? <a href={`/saves/${request.id}/delete`} class={LINK}>Remove save…</a> : null}
         </p>
       </Sheet>
     </Layout>

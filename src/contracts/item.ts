@@ -1,6 +1,7 @@
 import type {
   AnnotationId,
   ItemId,
+  PageNoteId,
   RequestId,
   TokenId,
   UserId,
@@ -54,6 +55,17 @@ export type Annotation = {
   end_offset: number;
   quote: string;
   note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+// A note on a page as a whole. It has no place in the transcript, so it
+// needs no anchor and survives every recapture as written.
+export type PageNote = {
+  id: PageNoteId;
+  user_id: UserId;
+  item_id: ItemId;
+  body: string;
   created_at: string;
   updated_at: string;
 };

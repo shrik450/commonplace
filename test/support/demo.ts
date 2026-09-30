@@ -1,10 +1,12 @@
 import type { ItemId, UserId } from "../../src/contracts/ids";
 import { addClipping } from "../../src/services/clippings";
 import { loadTranscript } from "../../src/services/library";
+import { addPageNote } from "../../src/services/page-notes";
 import { articleHtml, savePage, type TestLibrary } from "./library";
 
 // A believable library: pages about notes and reading, some with authors,
-// one with a very long title, and clippings with and without notes.
+// one with a very long title, clippings with and without notes, and notes on
+// whole pages, some of which have no clippings.
 
 type DemoPage = { title: string; host: string; author?: string; lead: string };
 
@@ -52,7 +54,8 @@ async function clip(library: TestLibrary, owner: UserId, itemId: ItemId, quote: 
   await addClipping(deps, owner, itemId, { start, end: start + quote.length }, note, library.clock.now);
 }
 
-// Saves `rounds` copies of the demo pages, oldest first, and clips a few.
+// Saves `rounds` copies of the demo pages, oldest first, and clips and notes a
+// few.
 // Later copies are titled as further parts, so a card or a search result can
 // be told from its twins.
 // Returns the item IDs newest first, as the library lists them.
@@ -71,6 +74,9 @@ export async function seedDemo(library: TestLibrary, owner: UserId, rounds = 1):
       if (round > 0) continue;
       if (index % 3 === 0) await clip(library, owner, itemId, page.lead.split(/(?<=[.;:])\s/)[0]!, index % 2 === 0 ? "This is why the habit matters." : null);
       if (index % 4 === 1) await clip(library, owner, itemId, FILLER[(index + 1) % FILLER.length]!, null);
+      const deps = { db: library.db, itemsRoot: library.itemsRoot };
+      if (index % 4 === 1) addPageNote(deps, owner, itemId, "Come back to this when writing about attention.", library.clock.now);
+      if (index % 7 === 3) addPageNote(deps, owner, itemId, "Nothing here to clip, but the argument stays with me: memory is a practice, not a store.", library.clock.now);
     }
   }
   return ids.toReversed();

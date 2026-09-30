@@ -142,13 +142,13 @@ export function enhanceBook(document: Document): void {
   const pageOf = (element: Element): number =>
     pageAt(element.getBoundingClientRect().left - flow.getBoundingClientRect().left, metrics.column, metrics.gap);
 
-  // What the reader is looking at: the first title or clipping on the
+  // What the reader is looking at: the first title or entry on the
   // spread. Recorded on every page change, because by the time a resize is
   // observed the clippings have already reflowed.
   let reading: Element | null = null;
   const remember = () => {
     const firstPage = at * metrics.perSpread;
-    reading = [...flow.querySelectorAll(".title-page, .locus-head, .clipping")].find((element) => pageOf(element) >= firstPage) ?? null;
+    reading = [...flow.querySelectorAll(".title-page, .locus-head, .clipping, .slip")].find((element) => pageOf(element) >= firstPage) ?? null;
   };
 
   // A new window size reflows the clippings into different pages, so the

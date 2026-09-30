@@ -22,11 +22,26 @@ export function parseClipSelection(fields: URLSearchParams): ClipSelection {
   return { start: integerField(fields, "start"), end: integerField(fields, "end") };
 }
 
-// A blank note is no note.
-export function parseNote(raw: string | null): string | null {
+function trimmedNote(raw: string | null): string {
   const note = (raw ?? "").trim();
   if (note.length > NOTE_MAX_LENGTH) {
     throw new AppError("VIEW_INVALID_VALUE", `Shorten the note to ${NOTE_MAX_LENGTH} characters or fewer, then save it again.`, { field: "note", length: note.length });
   }
+  return note;
+}
+
+// A blank note is no note.
+export function parseNote(raw: string | null): string | null {
+  const note = trimmedNote(raw);
   return note === "" ? null : note;
+}
+
+// A page note is nothing but its text, so a blank one is refused. Removing a
+// note is its own action, with a confirmation.
+export function parsePageNote(raw: string | null): string {
+  const note = trimmedNote(raw);
+  if (note === "") {
+    throw new AppError("VIEW_MISSING_FIELD", "Write something in the note, then save it again. To remove a note, choose “Remove note…”.", { field: "note" });
+  }
+  return note;
 }

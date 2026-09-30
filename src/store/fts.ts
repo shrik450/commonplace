@@ -70,6 +70,15 @@ export function indexBlocks(
   }
 }
 
+export function removeBlocks(db: Database, userId: UserId, itemId: ItemId): void {
+  try {
+    db.run("DELETE FROM blocks_fts WHERE user_id = ? AND item_id = ?", [userId, itemId]);
+  } catch (error) {
+    if (error instanceof Error) throw translate(error, { user_id: userId, item_id: itemId });
+    throw translate(String(error), { user_id: userId, item_id: itemId });
+  }
+}
+
 type HitRow = {
   item_id: ItemId;
   block_index: number;

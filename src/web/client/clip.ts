@@ -72,7 +72,6 @@ export function enhanceClipping(document: Document): void {
   const status = document.querySelector("[data-clip-status]");
   const openNote = document.querySelector("[data-clip-open-note]");
   const cancel = document.querySelector("[data-clip-cancel]");
-  const saveNote = document.querySelector("[data-clip-slip] button[type=submit]");
   if (
     view === null ||
     !(reader instanceof view.HTMLElement) ||
@@ -83,8 +82,7 @@ export function enhanceClipping(document: Document): void {
     !(error instanceof view.HTMLElement) ||
     !(status instanceof view.HTMLElement) ||
     !(openNote instanceof view.HTMLButtonElement) ||
-    !(cancel instanceof view.HTMLButtonElement) ||
-    !(saveNote instanceof view.HTMLButtonElement)
+    !(cancel instanceof view.HTMLButtonElement)
   ) return;
   const start = form.elements.namedItem("start");
   const end = form.elements.namedItem("end");
@@ -185,9 +183,6 @@ export function enhanceClipping(document: Document): void {
   pop.addEventListener("pointerdown", (event) => event.preventDefault());
   openNote.addEventListener("click", () => showSlip(null));
   cancel.addEventListener("click", closeSlip);
-  note.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) form.requestSubmit(saveNote);
-  });
   // A note in progress is only thrown away on purpose, with Cancel.
   view.addEventListener("beforeunload", (event) => {
     if (!slip.hidden && note.value.trim() !== "") event.preventDefault();

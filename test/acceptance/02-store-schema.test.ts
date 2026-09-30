@@ -8,29 +8,27 @@ import { blocksOf } from "../../src/contracts/transcript";
 import { sanitize } from "../../src/core/sanitize";
 import { summarize } from "../../src/core/summarize";
 import { walk } from "../../src/core/walk";
-import { MIGRATIONS, SCHEMA_VERSION, openDatabase } from "../../src/store/db";
+import { MIGRATIONS, migrate, openDatabase } from "../../src/store/db";
 
 const APPLIED_AT = new Date("2026-02-01T00:00:00.000Z");
 const roots: string[] = [];
 
 describe("database migration behavior", () => {
-  test("creates the current schema on a new database", async () => {
-    const root = await mkdtemp(join(tmpdir(), "commonplace-schema-"));
+  test("reopening a migrated database applies nothing again and keeps its rows", async () => {
+    const root = await mkdtemp(join(tmpdir(), "commonplace-reopen-"));
     roots.push(root);
-    const db = openDatabase(join(root, "db.sqlite"), APPLIED_AT);
+    const path = join(root, "db.sqlite");
+    const first = openDatabase(path, APPLIED_AT);
+    first.run("INSERT INTO users (id, subject, created_at) VALUES ('u', 'reader', 'created')");
+    first.close();
 
-    expect(SCHEMA_VERSION).toBe(6);
+    const reopened = openDatabase(path, new Date("2026-03-01T00:00:00.000Z"));
+    expect(migrate(reopened, new Date("2026-03-01T00:00:00.000Z"))).toBe(0);
     expect(
-      db.query<{ version: number }, []>(
-        "SELECT version FROM migrations ORDER BY version",
-      ).all(),
-    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }]);
-    expect(
-      db.query<{ name: string }, []>(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'items'",
-      ).get(),
-    ).toEqual({ name: "items" });
-    db.close();
+      reopened.query<{ applied_at: string }, []>("SELECT DISTINCT applied_at FROM migrations").all(),
+    ).toEqual([{ applied_at: APPLIED_AT.toISOString() }]);
+    expect(reopened.query<{ id: string }, []>("SELECT id FROM users").all()).toEqual([{ id: "u" }]);
+    reopened.close();
   });
 
   test("maps existing font categories to named choices", async () => {

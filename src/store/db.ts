@@ -46,8 +46,6 @@ export type Migration = { version: number; sql: string };
 
 export type TableInfo = { name: string; sql: string; columns: string[] };
 
-export const SCHEMA_VERSION = 6;
-
 export const MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
@@ -288,6 +286,20 @@ export const MIGRATIONS: readonly Migration[] = [
           SELECT sum(length(text)) FROM blocks_fts
           WHERE blocks_fts.item_id = items.id AND is_content = 1
         ), 0);
+    `,
+  },
+  {
+    version: 7,
+    sql: `
+      CREATE TABLE page_notes (
+        id         TEXT PRIMARY KEY,
+        user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        item_id    TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+        body       TEXT NOT NULL CHECK (body <> ''),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX page_notes_user_item_created ON page_notes(user_id, item_id, created_at, id);
     `,
   },
 ];

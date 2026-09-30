@@ -145,6 +145,31 @@ export function listSaveRequests(
     .map(requestOf);
 }
 
+export function deleteSaveRequest(db: Database, userId: UserId, id: RequestId): boolean {
+  return write(
+    db,
+    "DELETE FROM fetch_requests WHERE user_id = ? AND id = ?",
+    [userId, id],
+    { user_id: userId, id },
+  ) === 1;
+}
+
+// Every save of a page: those that made or refreshed it, and any still
+// under way for its address.
+export function deletePageSaveRequests(
+  db: Database,
+  userId: UserId,
+  itemId: ItemId,
+  url: string,
+): void {
+  write(
+    db,
+    "DELETE FROM fetch_requests WHERE user_id = ? AND (item_id = ? OR url = ?)",
+    [userId, itemId, url],
+    { user_id: userId, item_id: itemId },
+  );
+}
+
 export function completeFetch(
   db: Database,
   id: RequestId,

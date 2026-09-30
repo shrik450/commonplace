@@ -2,22 +2,20 @@ import type { ClipSelection } from "../contracts/clipping";
 import { cursorOf, type Cursor, type PagePosition } from "../contracts/cursor";
 import { AppError } from "../contracts/errors";
 import { newAnnotationId, type AnnotationId, type ItemId, type UserId } from "../contracts/ids";
-import type { Annotation, Item } from "../contracts/item";
+import type { Annotation, Item, PageNote } from "../contracts/item";
 import { runAt } from "../contracts/transcript";
 import { clipRange } from "../core/clip";
 import { shuffled } from "../core/shuffle";
 import {
-  annotationTotals,
   deleteAnnotation,
   getAnnotation,
   insertAnnotation,
   listAnnotationsForItems,
-  listClippedItems,
   updateAnnotationNote,
-  type AnnotationTotals,
-  type ClippedItem,
 } from "../store/annotations";
+import { bookTotals, listBookItems, type BookItem, type BookTotals } from "../store/book";
 import { getItem } from "../store/items";
+import { listPageNotesForItems } from "../store/page-notes";
 import { loadTranscript, type LibraryDeps } from "./library";
 
 export type NewClipping = { annotation: Annotation; block_index: number };
@@ -90,17 +88,18 @@ export type BookFilter = {
   order: BookOrder;
 };
 
-// The clippings from one page, in reading order. A shuffled book puts each
-// clipping in a locus of its own.
-export type Locus = { item: Item; clippings: Annotation[] };
+// The entries from one page: its clippings in reading order, then its page
+// notes, oldest first. A shuffled book puts each entry in a locus of its own.
+export type Locus = { item: Item; clippings: Annotation[]; pageNotes: PageNote[] };
 
-// One volume of the commonplace book. A volume holds whole pages' clippings,
-// newest page first, until it has at least `VOLUME_SIZE` clippings. The
-// totals describe the whole book, whatever the filter.
+// One volume of the commonplace book. A volume holds whole pages' entries,
+// newest page first, until it has at least `VOLUME_SIZE` of them. The totals
+// describe the whole book, whatever the filter.
 export type Book = {
   loci: Locus[];
   clippings: number;
-  totals: AnnotationTotals;
+  pageNotes: number;
+  totals: BookTotals;
   newer: Cursor | null;
   older: Cursor | null;
 };
@@ -109,15 +108,15 @@ export const VOLUME_SIZE = 120;
 
 // Compares an item to a cursor in the book's newest-first order: negative
 // when the item comes first.
-function compareToCursor(entry: ClippedItem, cursor: Cursor): number {
+function compareToCursor(entry: BookItem, cursor: Cursor): number {
   if (entry.item.created_at !== cursor.created_at) return entry.item.created_at > cursor.created_at ? -1 : 1;
   if (entry.item.id === cursor.id) return 0;
   return entry.item.id > cursor.id ? -1 : 1;
 }
 
-// Whole pages' clippings, taken in order until there are at least `size`.
-function fill(candidates: readonly ClippedItem[], size: number): ClippedItem[] {
-  const picked: ClippedItem[] = [];
+// Whole pages' entries, taken in order until there are at least `size`.
+function fill(candidates: readonly BookItem[], size: number): BookItem[] {
+  const picked: BookItem[] = [];
   let count = 0;
   for (const candidate of candidates) {
     if (count >= size) break;
@@ -128,10 +127,10 @@ function fill(candidates: readonly ClippedItem[], size: number): ClippedItem[] {
 }
 
 // The pages in one volume, and where the first sits in the whole book.
-export type Volume = { items: ClippedItem[]; startIndex: number };
+export type Volume = { items: BookItem[]; startIndex: number };
 
-// Picks the volume at `position` from every clipped item, newest first.
-export function volumeOf(clipped: readonly ClippedItem[], position: PagePosition, size: number): Volume {
+// Picks the volume at `position` from every item in the book, newest first.
+export function volumeOf(clipped: readonly BookItem[], position: PagePosition, size: number): Volume {
   if (position.kind === "newest") return { items: fill(clipped, size), startIndex: 0 };
   const cursor = position.cursor;
   if (position.kind === "before") {
@@ -145,34 +144,45 @@ export function volumeOf(clipped: readonly ClippedItem[], position: PagePosition
   return { items, startIndex: newer.length - items.length };
 }
 
+function byItem<Entry extends { item_id: ItemId }>(entries: readonly Entry[]): Map<ItemId, Entry[]> {
+  const grouped = new Map<ItemId, Entry[]>();
+  for (const entry of entries) {
+    const list = grouped.get(entry.item_id) ?? [];
+    list.push(entry);
+    grouped.set(entry.item_id, list);
+  }
+  return grouped;
+}
+
 export function commonplaceBook(
   deps: LibraryDeps,
   userId: UserId,
   filter: BookFilter,
   position: PagePosition,
 ): Book {
-  const scope = { notesOnly: filter.notesOnly, itemId: filter.itemId };
-  const clipped = listClippedItems(deps.db, userId, scope);
+  const clipped = listBookItems(deps.db, userId, { notesOnly: filter.notesOnly, itemId: filter.itemId });
   const { items, startIndex } = volumeOf(clipped, position, VOLUME_SIZE);
-  const annotations = listAnnotationsForItems(deps.db, userId, items.map((entry) => entry.item.id), scope);
-  const byItem = new Map<ItemId, Annotation[]>();
-  for (const annotation of annotations) {
-    const list = byItem.get(annotation.item_id) ?? [];
-    list.push(annotation);
-    byItem.set(annotation.item_id, list);
-  }
-  const loci = items.map(({ item }) => ({ item, clippings: byItem.get(item.id) ?? [] }));
+  const itemIds = items.map((entry) => entry.item.id);
+  const annotations = listAnnotationsForItems(deps.db, userId, itemIds, filter.notesOnly);
+  const pageNotes = listPageNotesForItems(deps.db, userId, itemIds);
+  const clippingsOf = byItem(annotations);
+  const notesOf = byItem(pageNotes);
+  const loci = items.map(({ item }) => ({ item, clippings: clippingsOf.get(item.id) ?? [], pageNotes: notesOf.get(item.id) ?? [] }));
   const first = items[0];
   const last = items.at(-1);
   return {
     loci: filter.order.kind === "shuffle"
       ? shuffled(
-        loci.flatMap((locus) => locus.clippings.map((clipping) => ({ item: locus.item, clippings: [clipping] }))),
+        loci.flatMap((locus) => [
+          ...locus.clippings.map((clipping) => ({ item: locus.item, clippings: [clipping], pageNotes: [] })),
+          ...locus.pageNotes.map((note) => ({ item: locus.item, clippings: [], pageNotes: [note] })),
+        ]),
         filter.order.seed,
       )
       : loci,
     clippings: annotations.length,
-    totals: annotationTotals(deps.db, userId),
+    pageNotes: pageNotes.length,
+    totals: bookTotals(deps.db, userId),
     newer: first !== undefined && startIndex > 0 ? cursorOf(first.item) : null,
     older: last !== undefined && startIndex + items.length < clipped.length ? cursorOf(last.item) : null,
   };
