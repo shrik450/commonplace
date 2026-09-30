@@ -117,11 +117,17 @@ function TitlePage({ book, filter, focus, context }: { book: Book; filter: BookF
   );
 }
 
-function EmptyBook({ filtered }: { filtered: boolean }) {
+// Why a view of the book holds nothing: the book itself is empty, the page it
+// is narrowed to has no clippings, or none of the clippings in view has a note.
+type Emptiness = "book" | "page" | "notes";
+
+function EmptyBook({ why }: { why: Emptiness }) {
   return (
     <div class="book-empty">
-      {filtered ? (
-        <p>No clippings match this view. Choose “By page” to see every clipping.</p>
+      {why === "page" ? (
+        <p>This page has no clippings. Choose “All pages” to see the rest of your book.</p>
+      ) : why === "notes" ? (
+        <p>No clippings here have a note. Choose “By page” to see every clipping.</p>
       ) : (
         <>
           <p><b>Your commonplace book is empty.</b></p>
@@ -170,7 +176,7 @@ export function BookPage({
               <div class="book-flow" data-flow>
                 <TitlePage book={book} filter={filter} focus={focus} context={context} />
                 {book.loci.length === 0
-                  ? <EmptyBook filtered={book.totals.clippings > 0} />
+                  ? <EmptyBook why={book.totals.clippings === 0 ? "book" : filter.notesOnly ? "notes" : "page"} />
                   : book.loci.map((locus) => <LocusSection locus={locus} locale={context.locale} anchored={view !== "shuffle"} />)}
               </div>
             </div>

@@ -307,6 +307,23 @@ describe("the commonplace book", () => {
     expect((await get(opened, "/clippings", null)).status).toBe(303);
   });
 
+  test("a view that holds nothing says why, and names a way out that works", async () => {
+    const { opened, itemId, transcript } = await garden("book-empty-views");
+    const other = await savePage(opened, ALICE, "https://example.com/unclipped", GARDEN);
+    await postForm(opened, `/items/${itemId}/clippings`, rangeOf(transcript, "The web as space."));
+
+    const page = await (await get(opened, `/clippings?item=${other}`)).text();
+    expect(page).toContain("This page has no clippings");
+    expect(page).toContain("All pages");
+    expect(page).not.toContain("Choose “By page”");
+
+    const notes = await (await get(opened, "/clippings?notes=1")).text();
+    expect(notes).toContain("No clippings here have a note");
+    expect(notes).toContain("Choose “By page”");
+    const pageNotes = await (await get(opened, `/clippings?item=${itemId}&notes=1`)).text();
+    expect(pageNotes).toContain("No clippings here have a note");
+  });
+
   test("a large book splits into volumes of whole pages", async () => {
     const opened = await openLibrary("book-volumes");
     libraries.push(opened);
