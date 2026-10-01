@@ -12,7 +12,7 @@ const browserPath = process.execPath;
 async function executable(body: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "commonplace-acquire-"));
   const path = join(dir, "single-file");
-  await writeFile(path, `#!/bin/bash\noutput="\${@: -1}"\n${body}\n`);
+  await writeFile(path, `#!/usr/bin/env bash\noutput="\${@: -1}"\n${body}\n`);
   await chmod(path, 0o755);
   return path;
 }

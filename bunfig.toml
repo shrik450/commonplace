@@ -10,3 +10,8 @@ minimumReleaseAge = 1209600
 minimumReleaseAgeExcludes = ["@types/bun"]
 
 exact = true
+
+# Without node_modules, Bun would otherwise fetch imports into a global cache
+# at run time, ignoring bun.lock and the rules above. Fail instead, so a fresh
+# checkout says to run `bun install`.
+auto = "disable"

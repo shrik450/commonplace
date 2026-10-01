@@ -44,11 +44,12 @@ case belongs; the test suite does not maintain a source-file allowlist.
 | Command | What it does |
 | ------- | ------------ |
 | `nix develop` | Enter the dev shell: Bun, Chromium for the browser tests, and build tools. |
+| `bun install` | Install the pinned dependencies. Run it first in a fresh checkout; Bun refuses to run anything without it. |
 | `bun run verify` | Type check, lint, build the assets, and test. The one gate. |
 | `bun run cp doctor` | Check config, roots, browser path, and capture tool. |
 | `bun run cp ingest <url> --user <uuid>` | Capture one URL in the foreground. |
 | `bun run serve` | Run the web app. Reads the config; `PORT` overrides 3000. |
-| `bun run assets` | Build `public/app.css` and the scripts in `public/scripts/`. `bun run css:watch` rebuilds the stylesheet on change. |
+| `bun run assets` | Build `public/app.css` and the scripts in `public/scripts/`. `serve`, `dev`, `preview`, and `verify` run it first. `bun run css:watch` rebuilds the stylesheet on change. |
 | `bun run preview shots [filter]` | Screenshot every view, both themes, desktop and phone, into `preview/shots`. |
 | `bun run preview serve [host]` | Serve a demo library, signed in, on port 8411. |
 | `docker build -t commonplace .` | Build the image. Pins Bun and installs Chromium. |

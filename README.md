@@ -103,12 +103,15 @@ objects, and form submissions.
 
 The development shell pins Bun, Chromium for the browser tests, and the
 build tools. Enter it with `nix develop`, or let `direnv` do it. Then install
-the pinned dependencies and build the stylesheet and browser scripts:
+the pinned dependencies:
 
 ```sh
 bun install
-bun run assets
 ```
+
+Bun won't run anything until the install is done. `serve`, `dev`, `preview`,
+and `verify` build the stylesheet and browser scripts before they start. To run
+the browser tests on their own, build those first with `bun run assets`.
 
 To look at the app without an identity provider, `bun run preview serve`
 serves a demo library, already signed in, on port 8411. `bun run preview

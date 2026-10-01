@@ -8,14 +8,14 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "test": "bun test test/acceptance test/unit test/browser",
-    "serve": "bun run src/web/server.ts",
+    "serve": "bun run assets && bun run src/web/server.ts",
     "css": "bunx @tailwindcss/cli -i src/web/styles/index.css -o public/app.css",
     "css:watch": "bunx @tailwindcss/cli -i src/web/styles/index.css -o public/app.css --watch",
     "cp": "bun run src/cli/main.ts",
-    "dev": "bun --watch src/web/server.ts",
+    "dev": "bun run assets && bun --watch src/web/server.ts",
     "assets": "bun run css && bun run scripts",
     "scripts": "bun run tools/build-scripts.ts",
-    "preview": "bun run tools/preview.ts"
+    "preview": "bun run assets && bun run tools/preview.ts"
   },
   "dependencies": {
     "@mozilla/readability": "0.6.0",

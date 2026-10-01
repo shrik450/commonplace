@@ -20,6 +20,8 @@
           packages = [
             pkgs.bun
             pkgs.chromium
+            # single-file-cli runs under `#!/usr/bin/env node`.
+            pkgs.nodejs
             pkgs.just
             pkgs.podman
           ];
