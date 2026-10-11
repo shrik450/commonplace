@@ -91,10 +91,9 @@ export function authRoutes(deps: WebDeps) {
     });
 }
 
-// Clear the session cookie even when it is invalid, then return to the home
-// page.
+// Clear the session cookie even when it is invalid.
 export function logoutRoute() {
   return new Elysia().get("/logout", () =>
-    seeOther("/", [CLEAR_SESSION_COOKIE]),
+    seeOther("/signed-out", [CLEAR_SESSION_COOKIE]),
   );
 }

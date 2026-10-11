@@ -84,9 +84,10 @@ server starts it in the same process because the queue is intentionally local.
 
 ### Web and CLI
 
-The web layer renders server-side HTML for the home page, library, the
-commonplace book, search, reader, structured text, saved copy, sign-in, and
-settings. Every page works without a script. Small same-origin scripts in
+The web layer renders server-side HTML for the library, the commonplace book,
+search, reader, structured text, saved copy, sign-in, sign-out, and settings.
+The root address sends the reader to the library, which sends a signed-out
+reader to sign in. Every page works without a script. Small same-origin scripts in
 `src/web/client/`, bundled into `public/scripts/`, enhance the index box, the
 book, the save card, clipping, and the settings preview, and let Ctrl or
 Cmd+Enter send any note with its form's primary button. Each keeps its

@@ -111,9 +111,9 @@ describe("the desk around every page", () => {
         }
       }
     }
-    const home = await open("/", {}, null);
-    expect(await pageProblems(home.page)).toEqual([]);
-    expect(await home.page.getByRole("link", { name: "Sign in" }).isVisible()).toBe(true);
+    const signedOut = await open("/signed-out", {}, null);
+    expect(await pageProblems(signedOut.page)).toEqual([]);
+    expect(await signedOut.page.getByRole("main").getByRole("link", { name: "Sign in" }).isVisible()).toBe(true);
   });
 
   test("the box, the reader's sheet, and search share one width that follows the reading measure", async () => {

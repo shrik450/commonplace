@@ -46,7 +46,7 @@ export function Masthead({ context, current, query }: { context: PageContext | n
   return (
     <header class="masthead">
       <div class="masthead-inner">
-        <a href={context === null ? "/" : "/library"} class="brand" translate="no">
+        <a href="/library" class="brand" translate="no">
           <img src="/icon.svg" alt="" width="32" height="32" />
           <span class="brand-name">Commonplace</span>
         </a>

@@ -98,13 +98,19 @@ describe("configuration", () => {
 describe("public HTTP behavior", () => {
   const app = publicRoutes();
 
-  test("health returns JSON and the landing page is public", async () => {
+  test("health returns JSON and the root sends the reader to their library", async () => {
     const health = await app.handle(new Request("http://localhost/health"));
     expect(health.status).toBe(200);
     expect(await health.json()).toEqual({ ok: true });
 
-    const home = await app.handle(new Request("http://localhost/"));
-    expect(home.status).toBe(200);
-    expect(await home.text()).toContain("Commonplace");
+    const root = await app.handle(new Request("http://localhost/"));
+    expect(root.status).toBe(303);
+    expect(root.headers.get("location")).toBe("/library");
+  });
+
+  test("the signed-out page is public and offers to sign in", async () => {
+    const signedOut = await app.handle(new Request("http://localhost/signed-out"));
+    expect(signedOut.status).toBe(200);
+    expect(await signedOut.text()).toContain(`href="/login"`);
   });
 });

@@ -16,8 +16,8 @@ import { pageNoteRoutes } from "./routes/page-notes";
 import { saveRoutes } from "./routes/save";
 import { libraryRoutes } from "./routes/library";
 import { settingsRoutes } from "./routes/settings";
-import { HomePage } from "./views/home";
 import { page } from "./views/layout";
+import { SignedOutPage } from "./views/signed-out";
 
 export type { WebDeps };
 
@@ -26,7 +26,8 @@ export function publicRoutes() {
   return new Elysia()
     .use(assetRoutes())
     .get("/health", () => ({ ok: true }))
-    .get("/", () => page(HomePage()));
+    .get("/", () => new Response(null, { status: 303, headers: { location: "/library" } }))
+    .get("/signed-out", () => page(SignedOutPage()));
 }
 
 export function buildApp(deps: WebDeps) {

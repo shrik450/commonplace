@@ -51,6 +51,7 @@ case belongs; the test suite does not maintain a source-file allowlist.
 | `bun run assets` | Build `public/app.css` and the scripts in `public/scripts/`. `bun run css:watch` rebuilds the stylesheet on change. |
 | `bun run preview shots [filter]` | Screenshot every view, both themes, desktop and phone, into `preview/shots`. |
 | `bun run preview serve [host]` | Serve a demo library, signed in, on port 8411. |
+| `bun run preview watch [host]` | Serve the demo library, and restart and rebuild the assets when the source changes. `PORT` overrides 8411 for either. |
 | `docker build -t commonplace .` | Build the image. Pins Bun and installs Chromium. |
 | `docker run` | Run it. Mount the config at `/home/bun/.config/commonplace/config.toml`, mount `/data/db` and `/data/items`, publish 3000. |
 

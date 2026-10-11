@@ -39,12 +39,17 @@ function user(id: UserId, subject: string): User {
 
 export async function openLibrary(name: string, rootDir?: string): Promise<TestLibrary> {
   const root = rootDir ?? await mkdtemp(join(tmpdir(), `commonplace-${name}-`));
-  await mkdir(root, { recursive: true });
+  await mkdir(join(root, "items"), { recursive: true });
+  const library = reopenLibrary(root, rootDir === undefined);
+  insertUser(library.db, user(ALICE, "alice"));
+  insertUser(library.db, user(BOB, "bob"));
+  return library;
+}
+
+// Opens a library that `openLibrary` created earlier, as it was left.
+export function reopenLibrary(root: string, removeOnClose = false): TestLibrary {
   const db = openDatabase(join(root, "db.sqlite"), new Date("2026-01-01T00:00:00.000Z"));
-  insertUser(db, user(ALICE, "alice"));
-  insertUser(db, user(BOB, "bob"));
   const itemsRoot = join(root, "items");
-  await mkdir(itemsRoot, { recursive: true });
   const config: Config = {
     db_root: root,
     items_root: itemsRoot,
@@ -65,7 +70,7 @@ export async function openLibrary(name: string, rootDir?: string): Promise<TestL
     clock,
     close: async () => {
       db.close();
-      if (rootDir === undefined) await rm(root, { recursive: true, force: true });
+      if (removeOnClose) await rm(root, { recursive: true, force: true });
     },
   };
 }
