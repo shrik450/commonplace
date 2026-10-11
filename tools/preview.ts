@@ -1,3 +1,4 @@
+import { watch } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "playwright-core";
@@ -7,14 +8,17 @@ import { seedDemo } from "../test/support/demo";
 import { newRequestId } from "../src/contracts/ids";
 import { listPageNotesForItems } from "../src/store/page-notes";
 import { enqueueFetch } from "../src/store/queue";
-import { ALICE, BOB, openLibrary, sessionCookie } from "../test/support/library";
+import { ALICE, BOB, openLibrary } from "../test/support/library";
+import { PREVIEW_LIBRARY, servePreview } from "./preview-server";
 
 // Renders every view of a demo library for a visual review.
 //
 //   bun run preview shots [filter]  screenshots into preview/shots
 //   bun run preview serve [host]    serves the demo, signed in, on port 8411
+//   bun run preview watch [host]    serves it, restarting and rebuilding on change
 //
-// The demo library lives in preview/library and is rebuilt on every run.
+// The demo library lives in preview/library and is rebuilt on every run. A
+// watched server keeps the library across restarts, since seeding is slow.
 
 const scrollStack = (to: number) => async (page: Page) => {
   await page.locator("[data-stack]").evaluate((stack, top) => {
@@ -47,8 +51,8 @@ const root = join(import.meta.dir, "..");
 const out = join(root, "preview");
 const [command = "shots", argument] = process.argv.slice(2);
 
-await rm(join(out, "library"), { recursive: true, force: true });
-const library = await openLibrary("preview", join(out, "library"));
+await rm(PREVIEW_LIBRARY, { recursive: true, force: true });
+const library = await openLibrary("preview", PREVIEW_LIBRARY);
 const ids = await seedDemo(library, ALICE, 12);
 const reader = ids.find((id) => id !== undefined)!;
 const clipped = ids.at(-18)!;
@@ -69,19 +73,28 @@ const waiting = enqueueFetch(library.db, {
 });
 
 if (command === "serve") {
-  // Signs every request in as the demo reader, since the preview has no
-  // identity provider.
-  const cookie = sessionCookie(ALICE);
-  const server = Bun.serve({
-    port: 8411,
-    hostname: argument ?? "127.0.0.1",
-    fetch: (request) => {
-      const headers = new Headers(request.headers);
-      if (!headers.has("cookie")) headers.set("cookie", cookie);
-      return library.app.handle(new Request(request, { headers }));
-    },
+  servePreview(library, argument);
+} else if (command === "watch") {
+  // `bun --watch` restarts the server when a file it imports changes. The
+  // stylesheet and the browser scripts are built files the server only reads,
+  // so their sources are watched here, one build at a time.
+  await library.close();
+  const run = (cmd: string[]) => Bun.spawn(cmd, { cwd: root, stdout: "inherit", stderr: "inherit" });
+  const server = run(["bun", "--watch", join(import.meta.dir, "preview-server.ts"), ...(argument === undefined ? [] : [argument])]);
+  let building = run(["bun", "run", "assets"]).exited;
+  let pending: Timer | undefined;
+  watch(join(root, "src", "web"), { recursive: true }, () => {
+    clearTimeout(pending);
+    pending = setTimeout(() => {
+      building = building.then(() => run(["bun", "run", "assets"]).exited);
+    }, 100);
   });
-  console.log(`Serving the demo library at http://${server.hostname}:${server.port}/library`);
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.on(signal, () => {
+      server.kill();
+      process.exit(0);
+    });
+  }
 } else {
   const shots = join(out, "shots");
   await mkdir(shots, { recursive: true });
@@ -216,7 +229,7 @@ if (command === "serve") {
       },
     },
     { name: "error", path: "/saves/unknown" },
-    { name: "home", path: "/", user: null },
+    { name: "signed-out", path: "/signed-out", user: null },
   ];
   const filter = argument ?? "";
   for (const scheme of ["light", "dark"] as const) {

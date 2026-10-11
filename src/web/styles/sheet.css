@@ -22,13 +22,6 @@
      the paper, which would cut the sheet's shadow too, so a blank shape of
      the same outline behind it casts the shadow. The cut leaves room above
      the sheet for a ribbon to hang over its edge. */
-  .sheet-frame {
-    position: relative;
-    isolation: isolate;
-    max-width: var(--page-w);
-    margin: 0 auto;
-  }
-
   .sheet-backing {
     position: absolute;
     inset: 0;
@@ -77,11 +70,6 @@
     font-variation-settings: "opsz" 48;
     text-wrap: balance;
     overflow-wrap: anywhere;
-  }
-
-  .sheet-title-large {
-    font-size: var(--text-display);
-    font-variation-settings: "opsz" 72;
   }
 
   .sheet-kicker + .sheet-title {
@@ -251,10 +239,6 @@
     .sheet {
       padding-top: 40px;
       padding-bottom: 52px;
-    }
-
-    .sheet-title-large {
-      font-size: var(--text-title);
     }
   }
 }

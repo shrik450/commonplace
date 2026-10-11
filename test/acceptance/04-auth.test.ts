@@ -155,6 +155,16 @@ describe("signed credentials", () => {
     await expect(authenticate(new Request("https://reader.example.com", { headers: { authorization: `Bearer ${created.secret}` } }), { db: database, config: CONFIG, now: NOW })).rejects.toMatchObject({ code: "AUTH_TOKEN_INVALID" });
     database.close();
   });
+
+  test("signing out clears the session and lands on a page that needs none", async () => {
+    const database = db();
+    const app = buildApp({ db: database, config: CONFIG, now: () => NOW });
+    const response = await app.handle(new Request("https://reader.example.com/logout"));
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/signed-out");
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+    database.close();
+  });
 });
 
 describe("OIDC login", () => {

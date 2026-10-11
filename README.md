@@ -58,8 +58,9 @@ are removed by the normal cleanup sweep.
 
 The web app provides:
 
-- a public landing page and health endpoint;
-- OIDC sign-in with signed, secure session cookies;
+- a health endpoint;
+- OIDC sign-in, reached straight from the root address, with signed, secure
+  session cookies;
 - a library and full-text search;
 - URL saving from the library or an API token;
 - a reader, structured text view, and authenticated saved copy;
@@ -112,8 +113,9 @@ bun run assets
 
 To look at the app without an identity provider, `bun run preview serve`
 serves a demo library, already signed in, on port 8411. `bun run preview
-shots` screenshots every view, in both themes and on desktop and phone, into
-`preview/shots`.
+watch` does the same, and restarts the server and rebuilds the assets when
+the source changes. `bun run preview shots` screenshots every view, in both
+themes and on desktop and phone, into `preview/shots`.
 
 Run the checks with:
 
